@@ -94,6 +94,7 @@ try{
   });
   const card=page.locator(`[data-research-id="${fresh.id}"]`);
   const selectedMc=recent[0].payload.avatarMediaId;
+  await card.getByRole('button', { name: 'Chi tiết & MC', exact: true }).click();
   await card.getByLabel('Ảnh MC cho tin này',{exact:true}).selectOption(selectedMc);
   assert.equal(await card.getByLabel('Ảnh MC cho tin này').locator('option').filter({hasText:'Page Avatar'}).count(),0);
   await card.getByLabel('Số video',{exact:true}).fill('3');

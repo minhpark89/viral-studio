@@ -4,13 +4,18 @@ Viral Studio is a Windows desktop app for research, AI video production, timelin
 
 ## Download for Windows
 
-- [Portable v0.7.4](https://github.com/minhpark89/viral-studio/releases/download/v0.7.4/Viral.Studio.0.7.4.exe)
-- [Installer v0.7.4](https://github.com/minhpark89/viral-studio/releases/download/v0.7.4/Viral.Studio.Setup.0.7.4.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.4/SHA256SUMS.txt)
+- [Portable v0.7.5](https://github.com/minhpark89/viral-studio/releases/download/v0.7.5/Viral.Studio.0.7.5.exe)
+- [Installer v0.7.5](https://github.com/minhpark89/viral-studio/releases/download/v0.7.5/Viral.Studio.Setup.0.7.5.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.5/SHA256SUMS.txt)
 
 The desktop app starts with a version/loading screen, uses the Viral Studio icon, and stores user data in `Viral Data`; an installed upgrade can read legacy `Dropship Data` automatically.
 
 ## Included features
+
+- Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
+- News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
+
+For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.5.md).
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
 - Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
@@ -62,6 +67,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.7.4. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-01_v0.7.4.md` for implementation and verification details.
+This repository is the dedicated Viral Studio project. The current release is v0.7.5. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-01_v0.7.5.md` for implementation and verification details.
 
 

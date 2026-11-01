@@ -128,7 +128,8 @@ function ResearchForm({ project, notify, active }) {
   );
 }
 
-function ResultCard({ result, data, notify, accounts, onImport, importing, onUse, onDreamFace, dreaming, onAssemble, onSearchImages, searchingImages, onImportSearchImages, importingSearchImages, onRerunLlm, rerunning, progress, onOpenRender, onOpenVideo, selected = false, onToggleSelect }) {
+function ResultCard({ result, data, notify, accounts, onImport, importing, onUse, onDreamFace, dreaming, onAssemble, onSearchImages, searchingImages, onImportSearchImages, importingSearchImages, onRerunLlm, rerunning, progress, onOpenRender, onOpenVideo, selected = false, onToggleSelect, onDelete, deleting, onQuickRender, quickCount, actionBusy }) {
+  const [expanded, setExpanded] = useState(false);
   const [videoCount, setVideoCount] = useState(1);
   const [avatarMediaId, setAvatarMediaId] = useState('');
   const [mcRotation, setMcRotation] = useState([]);
@@ -136,19 +137,25 @@ function ResultCard({ result, data, notify, accounts, onImport, importing, onUse
   const [autoCreateContent, setAutoCreateContent] = useState(true);
   const feedFallback = isLlmFallback(result);
   return (
-    <article className="research-result-card" data-research-id={result.id}>
+    <article className={`research-result-card${selected ? " is-selected" : ""}${expanded ? " is-expanded" : " is-compact"}`} data-research-id={result.id}>
       <div className="research-result-select-row"><label><input type="checkbox" checked={selected} onChange={() => onToggleSelect?.(result.id)} /> Chọn tin</label>
         <span className={`research-progress-badge is-${progress.state}`}>{progress.state === 'running' ? `Đang xử lý ${progress.active} video` : progress.state === 'failed' ? `Cần xử lý · ${progress.failed} lỗi / đã dừng` : progress.completed ? `Đã render · ${progress.completed} video` : 'Chưa render'}</span>
         {progress.completed > 0 && progress.state !== 'rendered' && <span className="research-history-rendered">Đã có {progress.completed} video</span>}
         {progress.posted && <span className="research-history-posted">Đã đăng</span>}
+        <div className="research-row-actions">
+          {!expanded && <Button onClick={() => onQuickRender(result)} busy={dreaming} disabled={progress.active > 0 || actionBusy}>{progress.completed ? 'Render lại' : 'Render'} {quickCount === 1 ? '1 video' : `${quickCount} videos`}</Button>}
+          <Button aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>{expanded ? 'Thu gọn' : 'Chi tiết & MC'}</Button>
+          <Button className="danger-text" onClick={() => onDelete([result])} busy={deleting} disabled={progress.active > 0 || actionBusy} title={progress.active ? 'Tin đang chuẩn bị hoặc render' : 'Xóa tin khỏi Research'}><Trash2 size={14} /> Xóa tin</Button>
+        </div>
       </div>
+      <div className="research-result-header"><div><span className="research-kicker">{result.niche} · {dateLabel(result.createdAt)}</span><h3>{result.headline || result.topic}</h3></div><div className="research-result-statuses"><span className={`research-result-source ${feedFallback ? "fallback" : "llm"}`}>{feedFallback ? <CircleHelp size={14} /> : <Sparkles size={14} />}{feedFallback ? "Fallback từ feed" : "LLM đã tổng hợp"}</span><span className="research-result-state"><CheckCircle2 size={14} /> Đã lưu</span></div></div>
       <div className="research-source-date">{sourceDateLabel(result)}<small>Ngày lưu Research: {dateLabel(result.createdAt)}</small></div>
       <div className="research-progress-detail"><span>{progress.lastAt ? `Hoạt động gần nhất: ${dateLabel(progress.lastAt)}` : 'Chưa gửi tác vụ render'}{progress.completed > progress.available ? ' · Có video đã dọn khỏi thư viện; lịch sử vẫn được giữ.' : ''}</span>
         <div>{progress.latestBatchId && <Button onClick={onOpenRender}>Xem lượt render</Button>}{progress.available > 0 && <Button onClick={onOpenVideo}>Xem video</Button>}</div>
       </div>
       {progress.failed > 0 && <p className="research-progress-error" title={progress.error}>{progress.error.slice(0, 180)}</p>}
       {result.imagePreparation?.warning && <Notice>{result.imagePreparation.warning}</Notice>}
-      <div className="research-result-header"><div><span className="research-kicker">{result.niche} · {dateLabel(result.createdAt)}</span><h3>{result.headline || result.topic}</h3></div><div className="research-result-statuses"><span className={`research-result-source ${feedFallback ? "fallback" : "llm"}`}>{feedFallback ? <CircleHelp size={14} /> : <Sparkles size={14} />}{feedFallback ? "Fallback từ feed" : "LLM đã tổng hợp"}</span><span className="research-result-state"><CheckCircle2 size={14} /> Đã lưu</span></div></div>
+      {expanded && <>
       {feedFallback && <div className="research-llm-status"><span><AlertTriangle size={15} /><strong>Research đang dùng bản tóm lược từ feed.</strong><small>{result.llmError || "LLM chưa trả về nội dung cho bản ghi này."} Bật và Test LLM rồi chạy lại để tạo headline, angle, script và image query bằng LLM.</small></span><Button onClick={() => onRerunLlm(result)} busy={rerunning}><RefreshCw size={14} /> Chạy lại bằng LLM</Button></div>}
       {(result.angle || result.script) && <details className="research-detail-block"><summary>Góc kể chuyện &amp; script</summary><div className="research-detail-content">{result.angle && <p className="research-angle"><strong>Góc tiếp cận</strong>{result.angle}</p>}{result.script && <div className="research-script"><strong>Script nháp</strong><p>{result.script}</p></div>}</div></details>}
       {result.articles?.length > 0 && <details className="research-detail-block research-articles"><summary>Nguồn tham khảo · {result.articles.length} tin</summary><div className="research-detail-content"><ol className="research-article-list">{result.articles.map((article, index) => <li key={article.id}><a className="research-article-link" href={article.url} target="_blank" rel="noreferrer" title={`Mở nguồn: ${article.title}`} aria-label={`Mở nguồn: ${article.title}`}><span className="research-article-number">{index + 1}</span><span className="research-article-copy"><b>{article.title}</b><small>{article.source || "Nguồn RSS"} · {articleDateLabel(article.publishedAt)} · Match {Math.round((article.relevance || 0) * 100)}%</small>{article.summary && <em>{article.summary.slice(0, 220)}{article.summary.length > 220 ? "…" : ""}</em>}</span><span className="research-open-source">Mở nguồn <ExternalLink size={14} /></span></a></li>)}</ol></div></details>}
@@ -158,6 +165,7 @@ function ResultCard({ result, data, notify, accounts, onImport, importing, onUse
       {result.imageQueries?.length > 0 && <details className="research-detail-block research-image-search"><summary>Kho ảnh công khai · {result.imageSearchResults?.length || 0} ảnh đã tìm</summary><div className="research-detail-content"><div className="research-image-search-heading"><div><strong>Wikimedia Commons</strong><small>Có giấy phép và nguồn để kiểm tra</small></div><Button onClick={() => onSearchImages(result)} busy={searchingImages}><Image size={14} /> {result.imageSearchResults?.length ? "Tìm lại ảnh" : "Tìm ảnh theo query"}</Button></div>{result.imageSearchResults?.length > 0 && <><div className="research-image-grid">{result.imageSearchResults.slice(0, 6).map((image) => <ResearchImageTile key={image.id} image={image} />)}</div><div className="research-image-actions"><span>{result.imageSearchResults.length} ảnh đã tìm được · tối đa 12 ảnh sẽ nhập</span><Button onClick={() => onImportSearchImages(result)} busy={importingSearchImages}><Download size={14} /> Tải ảnh về thư viện</Button></div></>}</div></details>}
       {(result.articles?.some((article) => article.imageUrl) || result.imageMediaIds?.length > 0 || result.script) && <details className="research-detail-block research-assets"><summary>Media &amp; thao tác · {result.imageMediaIds?.length || 0} ảnh sẵn sàng</summary><div className="research-detail-content">{result.articles?.some((article) => article.imageUrl) && <div className="research-image-actions"><span>{result.imageMediaIds?.length || 0} ảnh đã nhập vào thư viện</span><Button onClick={() => onImport(result)} busy={importing}><ImageDown size={14} /> Tải ảnh bài viết</Button></div>}{result.imageMediaIds?.length > 0 && <div className="research-image-actions"><span>{result.imageMediaIds.length} ảnh sẵn sàng để dựng</span><Button onClick={() => onAssemble(result)}><Film size={14} /> Ráp ảnh + caption</Button></div>}{result.script && <div className="research-image-actions"><span>Script đã sẵn sàng cho trình dựng video</span><Button onClick={() => onUse(result)}><Film size={14} /> Dùng script tạo video</Button></div>}</div></details>}
       {result.warnings?.length > 0 && <div className="research-warning"><CircleHelp size={15} />{result.warnings.join(" · ")}</div>}
+      </>}
     </article>
   );
 }
@@ -264,32 +272,32 @@ export function ResearchPage({ data, project, notify, navigate }) {
   const pageResults = visibleResults.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const onResult = (result) => setResults((current) => [result, ...current.filter((item) => item.id !== result.id)]);
   const [selectedResearchIds, setSelectedResearchIds] = useState([]);
+  const [deletingResearch, setDeletingResearch] = useState(false);
   const selectedResults = visibleResults.filter(result => selectedResearchIds.includes(result.id));
-  const fallbackResults = (selectedResults.length ? selectedResults : visibleResults).filter(isLlmFallback);
+  const fallbackResults = (selectedResearchIds.length ? selectedResults : visibleResults).filter(isLlmFallback);
   const previewVideos = (progressById.get(previewResearchId)?.mediaIds || []).map(id => data.media.find(media => media.id === id)).filter(Boolean);
-  const renderCandidates = (selectedResults.length ? selectedResults : visibleResults).filter(result => {
+  const eligibleRenderResults = (selectedResearchIds.length ? selectedResults : visibleResults).filter(result => {
     const progress = progressById.get(result.id);
     return !progress.completed && !progress.active;
-  }).slice(0, Math.floor(MAX_NEWS_VIDEOS / (Number(batchVideoCount) || 1)));
-  useEffect(() => { setPage(1); setSelectedResearchIds([]); }, [project.id, researchFilter, query, llmFilter, pageSize, sourceAge, sortBy]);
+  });
+  const renderCandidates = eligibleRenderResults.slice(0, Math.floor(MAX_NEWS_VIDEOS / (Number(batchVideoCount) || 1)));
+  const actionBusy = deletingResearch || Boolean(autoVideo || dreaming || rerunning) || llmBatch.active;
+  useEffect(() => { setPage(1); setSelectedResearchIds([]); }, [project.id, researchFilter, query, llmFilter, sourceAge, selectedResearchBatch]);
+  useEffect(() => setPage(1), [pageSize, sortBy]);
   const toggleResearch = (id) => setSelectedResearchIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-  const deleteSelectedResearch = async () => {
-    const selected = selectedResults.map(result => result.id);
-    if (!selected.length || !confirm(`Xóa ${selected.length} tin đã chọn khỏi Research? Video và bài đã đăng vẫn được giữ trong kho.`)) return;
-    const deleted = [];
-    for (const id of selected) {
-      try {
-        await api(`/research/${id}`, {}, "DELETE");
-        deleted.push(id);
-      } catch (error) {
-        notify(error.message, "error");
-      }
-    }
-    if (deleted.length) {
-      setResults((current) => current.filter((result) => !deleted.includes(result.id)));
-      setSelectedResearchIds(current => current.filter(id => !deleted.includes(id)));
-      notify(`Đã xóa ${deleted.length} tin khỏi Research.`);
-    }
+  const deleteResearch = async (targets = selectedResults) => {
+    if (actionBusy || !targets.length) return;
+    const message = targets.length === 1 ? 'Xóa tin “' + (targets[0].headline || targets[0].topic) + '” khỏi Research?' : 'Xóa ' + targets.length + ' tin đã chọn khỏi Research?';
+    if (!confirm(message + '\nVideo và bài đã đăng vẫn được giữ. Tin đang xử lý sẽ được bỏ qua.')) return;
+    setDeletingResearch(true);
+    try {
+      const response = await api('/research/delete', { projectId: project.id, ids: targets.map(result => result.id) });
+      const removed = new Set([...response.deletedIds, ...response.missingIds]);
+      setResults(current => current.filter(result => !removed.has(result.id)));
+      setSelectedResearchIds(current => current.filter(id => !removed.has(id)));
+      notify('Đã xóa ' + response.deletedIds.length + ' tin.' + (response.skipped.length ? ' Giữ lại ' + response.skipped.length + ' tin đang chuẩn bị hoặc render.' : ''));
+    } catch (error) { notify(error.message, 'error'); }
+    finally { setDeletingResearch(false); }
   };
   const rerunLlm = async (result) => {
     if (rerunning || llmBatch.active) return;
@@ -437,7 +445,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
     }
   };
   const renderAllResearch = async () => {
-    if (autoVideo || dreaming || rerunning || !renderCandidates.length) return;
+    if (actionBusy || savingRenderOptions || !renderCandidates.length) return;
     const perStory = Number(batchVideoCount);
     if (!Number.isInteger(perStory) || perStory < 1 || perStory > MAX_NEWS_VIDEOS) { notify('Nhập số video mỗi tin từ 1 đến 100.', 'error'); return; }
     if (!(await saveRenderOptions())) return;
@@ -512,8 +520,6 @@ export function ResearchPage({ data, project, notify, navigate }) {
       <label className="research-batch-content"><input type="checkbox" checked={batchAutoCreateContent} onChange={(event) => setBatchAutoCreateContent(event.target.checked)} /> Tự tạo Content</label>
       {fallbackResults.length > 0 && <Button onClick={() => rerunAllLlm()} busy={llmBatch.active || Boolean(rerunning)}><RefreshCw size={14} /> {llmBatch.active ? `LLM ${llmBatch.done}/${llmBatch.total}` : `Chạy LLM cho ${fallbackResults.length} tin`}</Button>}
       {fallbackResults.length > 0 && <Button variant="primary" onClick={() => rerunAllLlm({ renderAfter: true })} busy={llmBatch.active || Boolean(rerunning)} disabled={!renderCandidates.length}><Sparkles size={14} /> LLM → Render {renderCandidates.length} tin</Button>}
-      <Button variant="primary" onClick={renderAllResearch} busy={autoVideo === "all" || savingRenderOptions} disabled={!renderCandidates.length}><Sparkles size={14} /> Render {renderCandidates.length} tin chưa có video{batchVideoCount > 1 ? ` · ${renderCandidates.length * batchVideoCount} video` : ""}</Button>
-      {selectedResults.length > 0 && <Button className="danger-text" onClick={deleteSelectedResearch}><Trash2 size={14} /> Xóa {selectedResults.length} tin đã chọn</Button>}
     </div>}
   </div>
   {projectResults.length > 0 && <div className="research-batch-mc"><h3>MC và số video khi render hàng loạt</h3><Field label="Số video mỗi tin" hint="Mỗi lượt tối đa 100 video. MC xoay liên tục qua các tin; một tin có thể tạo nhiều phiên bản."><input type="number" min="1" max={MAX_NEWS_VIDEOS} step="1" value={batchVideoCount} onChange={event => setBatchVideoCount(event.target.value === "" ? "" : Number(event.target.value))} /></Field><NewsMcPicker data={data} projectId={project.id} value={batchAvatarMediaId} onChange={setBatchAvatarMediaId} rotation={batchMcRotation} onRotationChange={setBatchMcRotation} count={renderCandidates.length * batchVideoCount || batchVideoCount} notify={notify} /></div>}
@@ -528,9 +534,20 @@ export function ResearchPage({ data, project, notify, navigate }) {
       <Field label="Sắp xếp tin"><select value={sortBy} onChange={event => setSortBy(event.target.value)}><option value="source-new">Ngày nguồn mới nhất</option><option value="render-new">Lượt render mới nhất</option><option value="saved-new">Ngày lưu Research mới nhất</option></select></Field>
     </div>
     <p className="research-manager-hint">Mặc định ưu tiên tin chưa có video hoặc lượt render cần xử lý. “Đã có video” và “Tất cả / lịch sử” giữ các tin đã xong. Các nhóm có thể trùng khi một tin đang render thêm.</p>
-    <div className="research-manager-selection"><label><input type="checkbox" checked={visibleResults.length > 0 && selectedResults.length === visibleResults.length} onChange={event => setSelectedResearchIds(event.target.checked ? visibleResults.map(result => result.id) : [])} /> Chọn {visibleResults.length} tin trong bộ lọc</label><span>{selectedResults.length} đã chọn · Render hàng loạt bỏ qua tin đã có video hoặc đang chạy.</span></div>
   </div>}
-  {pageResults.length ? pageResults.map((result) => <ResultCard key={result.id} result={result} data={data} notify={notify} accounts={dreamfaceAccounts} progress={progressById.get(result.id)} onOpenRender={() => navigate?.('editor', { focusBatchId: progressById.get(result.id).latestBatchId, researchId: result.id })} onOpenVideo={() => setPreviewResearchId(result.id)} selected={selectedResearchIds.includes(result.id)} onToggleSelect={toggleResearch} onImport={importImages} importing={importing === result.id} onUse={useScript} onDreamFace={createDreamFaceVideo} dreaming={dreaming === result.id} onAssemble={assembleImages} onSearchImages={searchImages} searchingImages={searchingImages === result.id} onImportSearchImages={importSearchImages} importingSearchImages={importingSearchImages === result.id} onRerunLlm={rerunLlm} rerunning={rerunning === result.id || llmBatch.active} />) : <Empty icon={Newspaper} title={projectResults.length ? "Không có tin khớp bộ lọc" : "Chưa có research nào"}>{projectResults.length ? 'Chọn “Tất cả / lịch sử” hoặc thay đổi tìm kiếm để xem các tin đã lưu.' : 'Nhập một chủ đề để tạo bản ghi đầu tiên cho dự án này.'}</Empty>}
+  {projectResults.length > 0 && <section className="research-selection-toolbar" aria-label="Chọn và xử lý tin">
+    <div className="research-selection-controls">
+      <label><input type="checkbox" aria-label="Chọn trang này" disabled={actionBusy || !pageResults.length} checked={pageResults.length > 0 && pageResults.every(result => selectedResearchIds.includes(result.id))} ref={node => { if (node) node.indeterminate = pageResults.some(result => selectedResearchIds.includes(result.id)) && !pageResults.every(result => selectedResearchIds.includes(result.id)); }} onChange={event => setSelectedResearchIds(current => event.target.checked ? [...new Set([...current, ...pageResults.map(result => result.id)])] : current.filter(id => !pageResults.some(result => result.id === id)))} /> Chọn trang này ({pageResults.length})</label>
+      <Button onClick={() => setSelectedResearchIds(visibleResults.map(result => result.id))} disabled={actionBusy || !visibleResults.length}>Chọn tất cả {visibleResults.length} tin theo bộ lọc</Button>
+      <Button onClick={() => setSelectedResearchIds([])} disabled={actionBusy || !selectedResearchIds.length}>Bỏ chọn tất cả</Button>
+    </div>
+    <div className="research-selection-actions"><strong>{selectedResults.length} tin đã chọn · {visibleResults.length} tin trong bộ lọc</strong><div>
+      <Button variant="primary" onClick={renderAllResearch} busy={autoVideo === 'all' || savingRenderOptions} disabled={actionBusy || !renderCandidates.length}><Sparkles size={14} /> Render {renderCandidates.length} tin chưa có video{batchVideoCount > 1 ? ' · ' + renderCandidates.length * batchVideoCount + ' video' : ''}</Button>
+      <Button className="danger-text" onClick={() => deleteResearch()} busy={deletingResearch} disabled={actionBusy || !selectedResults.length || selectedResults.every(result => progressById.get(result.id).active > 0)}><Trash2 size={14} /> Xóa {selectedResults.length} tin đã chọn</Button>
+    </div></div>
+    <small>{selectedResearchIds.length ? 'Thao tác áp dụng cho tin đã chọn trong bộ lọc.' : 'Chọn các tin muốn xử lý. Nếu chưa chọn, nút Render áp dụng cho các tin trong bộ lọc.'} Render hàng loạt bỏ qua tin đã có video hoặc đang chạy.{eligibleRenderResults.length > renderCandidates.length ? ' Giới hạn 100 video/lượt; còn ' + (eligibleRenderResults.length - renderCandidates.length) + ' tin cho lượt sau.' : ''}</small>
+  </section>}
+  {pageResults.length ? pageResults.map((result) => <ResultCard key={result.id} result={result} data={data} notify={notify} accounts={dreamfaceAccounts} progress={progressById.get(result.id)} onOpenRender={() => navigate?.('editor', { focusBatchId: progressById.get(result.id).latestBatchId, researchId: result.id })} onOpenVideo={() => setPreviewResearchId(result.id)} selected={selectedResearchIds.includes(result.id)} onToggleSelect={toggleResearch} onDelete={deleteResearch} deleting={deletingResearch} actionBusy={actionBusy} quickCount={Number(batchVideoCount) || 1} onQuickRender={result => createDreamFaceVideo(result, Number(batchVideoCount) || 1, "auto", batchAutoCreateContent, batchAvatarMediaId, batchMcRotation)} onImport={importImages} importing={importing === result.id} onUse={useScript} onDreamFace={createDreamFaceVideo} dreaming={dreaming === result.id} onAssemble={assembleImages} onSearchImages={searchImages} searchingImages={searchingImages === result.id} onImportSearchImages={importSearchImages} importingSearchImages={importingSearchImages === result.id} onRerunLlm={rerunLlm} rerunning={rerunning === result.id || llmBatch.active} />) : <Empty icon={Newspaper} title={projectResults.length ? "Không có tin khớp bộ lọc" : "Chưa có research nào"}>{projectResults.length ? 'Chọn “Tất cả / lịch sử” hoặc thay đổi tìm kiếm để xem các tin đã lưu.' : 'Nhập một chủ đề để tạo bản ghi đầu tiên cho dự án này.'}</Empty>}
   {visibleResults.length > 0 && <div className="research-pagination"><Button disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Trang trước</Button><span>Trang {currentPage}/{totalPages} · {visibleResults.length} tin</span><Button disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>Trang sau</Button></div>}
   </section></>}{view === "dreamface" && <DreamFacePanel data={data} notify={notify} />}
   {previewResearchId && <Modal title="Video của tin Research" wide onClose={() => setPreviewResearchId(null)}><div className="research-video-previews">{previewVideos.length ? previewVideos.map(media => <div key={media.id}><h3>{media.name}</h3><video src={media.url} controls playsInline preload="metadata" /></div>) : <p>Video đã được dọn khỏi thư viện. Lịch sử render vẫn được giữ.</p>}</div></Modal>}

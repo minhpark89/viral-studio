@@ -1,5 +1,7 @@
 # News image preparation and Queue visibility — 1 November 2026
 
+Superseded by [v0.7.5](CHECKPOINT_2026-11-01_v0.7.5.md), which includes these fixes and the new Research selection/deletion workflow. The local-only release status below describes the earlier checkpoint.
+
 Local fix on top of public v0.7.4 (`3c732af909119d7d59b8c3744728baea8bb6cfeb`). Installed locally; no GitHub release assets replaced and no remote push. Package version remains 0.7.4. Previous release context: [v0.7.4 checkpoint](CHECKPOINT_2026-11-01_v0.7.4.md).
 
 ## Problem and behavior

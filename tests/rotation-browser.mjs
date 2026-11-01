@@ -36,7 +36,7 @@ try {
     application = await electron.launch({ executablePath: path.resolve(process.env.ROTATION_EXE), args: [`--user-data-dir=${path.join(root, 'electron-profile')}`], env, timeout: 60000 });
     page = await application.waitForEvent('window', { predicate: candidate => candidate.url().startsWith('http://127.0.0.1:'), timeout: 30000 }).catch(() => application.windows().find(candidate => candidate.url().startsWith('http://127.0.0.1:')));
     report.version = await application.evaluate(({ app }) => app.getVersion());
-    assert.equal(report.version, '0.7.4');
+    assert.equal(report.version, JSON.parse(await fs.readFile('package.json', 'utf8')).version);
   } else {
     studio = await startServer({ port: 0, dataDir: root });
     browser = await chromium.launch({ headless: true });
@@ -106,6 +106,7 @@ try {
   report.checks.push('Direct News production supports 100 videos and MC rotation');
   await nav('Research & News').click();
   const card = page.locator('.research-result-card').first();
+  await card.getByRole('button', { name: 'Chi tiết & MC', exact: true }).click();
   await card.getByLabel('Số video', { exact: true }).fill('100');
   await card.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
   await card.getByLabel('Số video cho MC 1', { exact: true }).fill('15');

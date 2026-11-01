@@ -16,6 +16,7 @@ import { buildResearchAssemblyTimeline } from "../shared/research-assembly.js";
 import { normalizeLlmEndpoint } from "./llm.js";
 import { readChatCompletion } from "./llm-response.js";
 import { ResearchBatchService } from "./research-batches.js";
+import { deleteResearchResults } from './research-management.js';
 
 const DEFAULT_FEEDS = [
   "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml",
@@ -530,15 +531,11 @@ export function mountResearchRoutes(app, store, options = {}) {
     res.json({ results });
   });
 
+  app.post('/api/research/delete', (req, res) => res.json(deleteResearchResults(store, req.body)));
   app.delete("/api/research/:id", (req, res) => {
     const result = store.require("researchResults", req.params.id);
-    const active = store.state.jobs.some((job) => {
-      if (job.projectId !== result.projectId || !["queued", "scheduled", "preparing", "submitting", "rendering", "downloading"].includes(job.status)) return false;
-      return job.production?.researchId === result.id || job.payload?.researchId === result.id;
-    });
-    if (active) throw new StudioError("Tin đang có tác vụ render. Hãy chờ hoàn tất trước khi xóa.", "RESEARCH_BUSY", 409);
-    store.state.researchResults = store.state.researchResults.filter((item) => item.id !== result.id);
-    store.save();
+    const deleted = deleteResearchResults(store, { projectId: result.projectId, ids: [result.id] });
+    if (deleted.skipped.length) throw new StudioError(deleted.skipped[0].reason, 'RESEARCH_BUSY', 409);
     res.json({ ok: true, id: result.id });
   });
 

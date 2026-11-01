@@ -292,3 +292,23 @@
 .research-video-previews h3 { font-size: 14px; overflow-wrap: anywhere; }
 .research-video-previews video { display: block; width: 100%; max-height: 60vh; background: #07111f; border-radius: 8px; }
 @media (max-width: 900px) { .research-manager-filters { grid-template-columns: 1fr; } .research-result-select-row { flex-wrap: wrap; } }
+.research-selection-toolbar { position: sticky; top: 84px; z-index: 4; display: grid; gap: 12px; margin: 0 0 16px; padding: 16px; background: #142238; border: 1px solid #557092; border-radius: 12px; box-shadow: 0 8px 24px #0004; }
+.research-selection-controls, .research-selection-actions, .research-selection-actions > div, .research-row-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.research-selection-actions { justify-content: space-between; }
+.research-selection-actions strong { font-size: 13px; }
+.research-selection-controls label, .research-result-select-row > label { display: flex; align-items: center; gap: 9px; min-height: 36px; cursor: pointer; }
+.research-selection-controls input, .research-result-select-row input { width: 20px; height: 20px; flex: 0 0 20px; margin: 0; accent-color: var(--research-accent); }
+.research-selection-toolbar small { color: var(--research-muted); line-height: 1.5; }
+.research-row-actions { margin-left: auto; }
+.research-result-card.is-selected { border-color: var(--research-accent); box-shadow: inset 3px 0 var(--research-accent); }
+.research-result-card.is-compact { padding: 14px 18px; margin-bottom: 10px; }
+.research-result-card.is-compact .research-result-header { margin-bottom: 0; }
+.research-result-card.is-compact .research-result-header h3 { font-size: 17px; line-height: 1.4; margin: 4px 0; }
+.research-result-card.is-compact .research-source-date, .research-result-card.is-compact .research-progress-detail { margin-bottom: 8px; }
+@media (max-width: 700px) {
+  .research-selection-toolbar { position: static; padding: 12px; }
+  .research-row-actions { width: 100%; margin-left: 0; }
+  .research-result-card.is-compact { padding: 12px; }
+  .research-selection-actions > div { width: 100%; }
+  .research-selection-controls .button, .research-selection-actions .button { white-space: normal; text-align: left; }
+}
