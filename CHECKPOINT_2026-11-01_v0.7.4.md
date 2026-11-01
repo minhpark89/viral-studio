@@ -1,5 +1,7 @@
 # Viral Studio v0.7.4 — MC rotation, Research batches and media fixes
 
+Local continuation after release: [news image preparation and Queue visibility](CHECKPOINT_2026-11-01_NEWS_IMAGES_QUEUE.md). The installed local fix is newer than the public v0.7.4 assets described here.
+
 ## Scope
 
 Release requested by the user on 1 November 2026. Includes the accumulated local v0.7.3 startup, narration, concurrency, Research management, playback and media separation fixes, plus editable Research counts and MC rotation for 100-video News batches.

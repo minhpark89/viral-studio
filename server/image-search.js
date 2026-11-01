@@ -61,7 +61,8 @@ function metadataValue(metadata, name) {
 }
 
 export function parseWikimediaImages(body, query, maxResults = 6) {
-  const pages = Object.values(body?.query?.pages || {});
+  // Object keys are numeric page IDs, so enumeration is NOT search relevance.
+  const pages = Object.values(body?.query?.pages || {}).sort((a, b) => (a.index ?? Number.MAX_SAFE_INTEGER) - (b.index ?? Number.MAX_SAFE_INTEGER));
   const images = [];
   for (const page of pages) {
     const info = page.imageinfo?.[0];
@@ -72,12 +73,14 @@ export function parseWikimediaImages(body, query, maxResults = 6) {
       query,
       title: String(page.title || "").replace(/^File:/i, "").slice(0, 300),
       imageUrl,
+      originalImageUrl: safeImageUrl(info?.url),
       pageUrl: safeImageUrl(page.canonicalurl || page.fullurl),
       width: Number(info.width) || 0,
       height: Number(info.height) || 0,
       mime: String(info.mime || "").slice(0, 80),
       license: metadataValue(info.extmetadata, "LicenseShortName"),
       attribution: metadataValue(info.extmetadata, "Artist"),
+      description: metadataValue(info.extmetadata, "ImageDescription"),
     });
     if (images.length >= maxResults) break;
   }
@@ -96,7 +99,8 @@ export async function searchWikimediaImages(query, { fetchImpl = globalThis.fetc
     gsrsearch: `${normalized} filetype:bitmap`,
     gsrnamespace: "6",
     gsrlimit: String(Math.min(20, Math.max(1, maxResults * 2))),
-    prop: "imageinfo",
+    prop: "imageinfo|info",
+    inprop: "url",
     iiprop: "url|size|mime|extmetadata",
     iiurlwidth: "1600",
   });
@@ -114,7 +118,7 @@ export async function searchWikimediaImages(query, { fetchImpl = globalThis.fetc
   }
 }
 
-export async function searchImageQueries(queries, { fetchImpl = globalThis.fetch, maxResultsPerQuery = 4, maxResults = 24, concurrency = 2 } = {}) {
+export async function searchImageQueries(queries, { fetchImpl = globalThis.fetch, maxResultsPerQuery = 4, maxResults = 24, concurrency = 2, cache } = {}) {
   const uniqueQueries = [...new Set((Array.isArray(queries) ? queries : []).map(cleanQuery).filter(Boolean))].slice(0, 12);
   const results = new Array(uniqueQueries.length);
   const warnings = [];
@@ -123,7 +127,15 @@ export async function searchImageQueries(queries, { fetchImpl = globalThis.fetch
     while (cursor < uniqueQueries.length) {
       const index=cursor++;const query = uniqueQueries[index];
       try {
-        results[index]=await searchWikimediaImages(query, { fetchImpl, maxResults: maxResultsPerQuery });
+        const key = `${maxResultsPerQuery}:${query.toLowerCase()}`;
+        let cached = cache?.get(key);
+        if (!cached || cached.expiresAt < Date.now()) {
+          cached = { expiresAt: Date.now() + 300000, promise: searchWikimediaImages(query, { fetchImpl, maxResults: maxResultsPerQuery }) };
+          cache?.set(key, cached);
+          if (cache?.size > 100) cache.delete(cache.keys().next().value);
+        }
+        try { results[index] = await cached.promise; }
+        catch (error) { cache?.delete(key); throw error; }
       } catch {
         warnings.push(`Không thể tìm ảnh Wikimedia cho "${query}".`);
       }
@@ -150,14 +162,21 @@ function extensionFor(url, contentType) {
 
 export async function downloadImageAsset({ image, store, projectId, fetchImpl = globalThis.fetch }) {
   if (!image?.imageUrl || !isPublicImageUrl(image.imageUrl)) throw new Error("URL ảnh không hợp lệ hoặc trỏ vào mạng nội bộ.");
-  const sourceUrl = new URL(image.imageUrl);
-  const response = await fetchImpl(sourceUrl, {
+  let sourceUrl = new URL(image.imageUrl);
+  const fetchImage = url => fetchImpl(url, {
     headers: { accept: "image/avif,image/webp,image/png,image/jpeg;q=0.9,*/*;q=0.2" },
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
+  let response = await fetchImage(sourceUrl);
+  if (!response.ok && image.originalImageUrl && image.originalImageUrl !== image.imageUrl && isPublicImageUrl(image.originalImageUrl)) {
+    await response.body?.cancel();
+    sourceUrl = new URL(image.originalImageUrl);
+    response = await fetchImage(sourceUrl);
+  }
   if (!response.ok) throw new Error(`Không tải được ảnh (HTTP ${response.status}).`);
   const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
   if (!contentType.startsWith("image/")) throw new Error("Nguồn không trả về ảnh.");
+  if (Number(response.headers?.get?.('content-length')) > MAX_IMAGE_BYTES) { await response.body?.cancel(); throw new Error('Ảnh vượt quá giới hạn 20 MB.'); }
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error("Ảnh vượt quá giới hạn 20 MB.");
   const extension = extensionFor(sourceUrl, contentType);

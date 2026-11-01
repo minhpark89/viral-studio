@@ -3778,3 +3778,9 @@ option {
 .research-batch-progress progress { width: 100%; }
 .research-batch-progress small { color: var(--muted); line-height: 1.6; }
 @media (max-width: 900px) { .mc-rotation-row { grid-template-columns: minmax(0, 1fr); } }
+.queue-preparations { display: grid; gap: 12px; margin: 16px 0; }
+.preparation-card { padding: 18px; }
+.preparation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.preparation-heading h3 { margin: 6px 0; overflow-wrap: anywhere; }
+.preparation-card p { margin: 8px 0; overflow-wrap: anywhere; }
+.preparation-card details { margin: 12px 0; max-height: 300px; overflow: auto; }

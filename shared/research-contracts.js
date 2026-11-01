@@ -43,6 +43,8 @@ export const researchImageSchema = z.object({
   query: z.string().max(300).default(""),
   title: z.string().max(300).default(""),
   imageUrl: z.string().url(),
+  originalImageUrl: z.string().url().nullable().optional(),
+  description: z.string().max(500).default(''),
   pageUrl: z.string().url().nullable().default(null),
   width: z.number().int().min(0).max(20000).default(0),
   height: z.number().int().min(0).max(20000).default(0),

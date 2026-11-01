@@ -29,6 +29,8 @@ import { WebsiteSettings } from "./WebsiteSettings.jsx";
 import { MediaPreview } from "../MediaPreview.jsx";
 import { jobOutput } from "../../shared/output-media.js";
 import { outputContext, sourceDateLabel, formatDateTime } from "../../shared/source-context.js";
+import { productionPreparations } from '../../shared/queue-preparation.js';
+import { QueuePreparation } from '../QueuePreparation.jsx';
 
 function jobElapsedSeconds(job) {
   if (Number.isFinite(Number(job.durationMs))) return Math.max(0, Number(job.durationMs) / 1000);
@@ -53,6 +55,12 @@ export function QueuePage({ data, project, run, navigate }) {
   const [preview, setPreview] = useState(null);
   const [period, setPeriod] = useState('all');
   const [search, setSearch] = useState('');
+  const allPreparations = productionPreparations(data, project.id);
+  const preparations = allPreparations.filter(item => (typeFilter === 'all' || item.contentType === typeFilter)
+    && (!search.trim() || `${item.name} ${item.batchId}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+    && (period === 'all' || Date.parse(item.createdAt) >= (period === 'today' ? new Date().setHours(0, 0, 0, 0) : Date.now() - 7 * 86400000))
+    && (filter === 'all' || filter === 'active' && ['pending', 'preparing'].includes(item.status) || filter === 'failed' && ['failed', 'interrupted'].includes(item.status)));
+  const projectJobs = data.jobs.filter(job => job.projectId === project.id);
   const contentType = (job) => job.type === "news" || job.production?.contentType === "news"
     ? "news"
     : job.production?.contentType === "product"
@@ -75,18 +83,18 @@ export function QueuePage({ data, project, run, navigate }) {
                 "rendering",
                 "downloading",
               ].includes(job.status)
-            : job.status === filter)),
+            : filter === 'failed' ? ['failed', 'interrupted'].includes(job.status) : job.status === filter)),
     )
     .slice()
     .sort((a, b) => Date.parse(b.finishedAt || b.createdAt) - Date.parse(a.finishedAt || a.createdAt));
-  const active = data.jobs.filter((job) =>
+  const active = projectJobs.filter((job) =>
     ["preparing", "submitting", "rendering", "downloading"].includes(
       job.status,
     ),
-  ).length;
-  const queued = data.jobs.filter((job) =>
+  ).length + allPreparations.filter(item => item.status === 'preparing').length;
+  const queued = projectJobs.filter((job) =>
     ["queued", "scheduled"].includes(job.status),
-  ).length;
+  ).length + allPreparations.filter(item => item.status === 'pending').length;
   return (
     <div className="page queue-page">
       <div className="page-heading">
@@ -133,7 +141,7 @@ export function QueuePage({ data, project, run, navigate }) {
           <CheckCircle2 size={20} />
           <span>
             <b>
-              {data.jobs.filter((job) => job.status === "completed").length}
+              {projectJobs.filter((job) => job.status === "completed").length}
             </b>{" "}
             hoàn tất
           </span>
@@ -167,9 +175,10 @@ export function QueuePage({ data, project, run, navigate }) {
             </button>
           ))}
         </div>
-        <span className="muted small">{jobs.length} tác vụ trong dự án</span>
+        <span className="muted small">{jobs.length + preparations.length} tác vụ trong dự án{preparations.length ? ` · ${preparations.length} đang chuẩn bị / cần xử lý` : ''}</span>
       </div>
       <div className="output-filters"><Field label="Thời gian render"><select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">Mọi lần render · mới nhất trước</option><option value="today">Render hôm nay</option><option value="7d">Render 7 ngày qua</option></select></Field><Field label="Tìm tác vụ"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tên video hoặc mã tác vụ…" /></Field></div>
+      {preparations.length > 0 && <QueuePreparation items={preparations} data={data} run={run} navigate={navigate} />}
       {jobs.length ? (
         <div className="job-list">
           {jobs.map((job) => {
@@ -223,7 +232,7 @@ export function QueuePage({ data, project, run, navigate }) {
                     {jobContentType === "news" && job.production?.researchId && <small>Research → MC → editorial images → website article</small>}
                     {job.contentAutomation && <small>Content: {({ generated: "Đã tạo", warehouse_ready: "Đã tạo, chờ duyệt", warehouse_error: "Lỗi tạo", published: "Đã đăng website", social_published: "Đã đăng website + Meta", meta_error: "Lỗi Meta", website_error: "Lỗi website", error: "Lỗi tạo bài" }[job.contentAutomation] || job.contentAutomation)}</small>}
                     {(job.type === "news" || job.type === "render") && (job.finishedAt || running) && <small>{running ? "Đã chạy" : "Thời gian video"}: {formatJobDuration(jobElapsedSeconds(job))}</small>}
-                    {waiting && job.type === "generate" && !available && (
+                    {waiting && ['generate', 'news'].includes(job.type) && !available && !job.payload.presenterMediaId && (
                       <button
                         className="text-button warning-text"
                         onClick={() => navigate("accounts")}
@@ -439,7 +448,7 @@ export function QueuePage({ data, project, run, navigate }) {
             );
           })}
         </div>
-      ) : (
+      ) : !preparations.length && (
         <Empty
           icon={ListVideo}
           title="Hàng đợi trống"

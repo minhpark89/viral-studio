@@ -79,6 +79,42 @@ function reportFromProgress(line, duration, update, stage, start, weight) {
   update(Math.min(99, start + ratio * weight), stage);
 }
 
+export async function createNewsSourceCard(store, research, signal) {
+  const headline = clean(research.headline || research.topic, 100);
+  const cached = store.state.media.find(media => media.projectId === research.projectId && media.visualRole === 'source-card'
+    && media.sourceCardHeadline === headline && media.newsResearchIds?.includes(research.id) && media.file && fs.existsSync(media.file));
+  if (cached) return cached;
+  const fonts = fontPaths();
+  if (!fonts) throw new StudioError('The bundled news font is missing.', 'NEWS_FONT_MISSING', 500);
+  const tempRoot = path.resolve(store.root, 'temp');
+  const directory = await fsPromises.mkdtemp(path.join(tempRoot, 'news-source-card-'));
+  try {
+    signal.throwIfAborted();
+    await fsPromises.copyFile(fonts.headline, path.join(directory, 'headline.ttf'));
+    await fsPromises.copyFile(fonts.body, path.join(directory, 'body.ttf'));
+    const article = research.articles?.[0];
+    const source = /Google News/i.test(article?.source || '') ? article?.title?.split(' - ').at(-1) : article?.source;
+    await writeText(directory, 'headline.txt', wrap(headline, 27, 5).toUpperCase());
+    await writeText(directory, 'label.txt', 'NEWS BRIEF');
+    await writeText(directory, 'source.txt', wrap(`SOURCE: ${clean(source || 'Source report', 80)}`, 55, 2));
+    await writeText(directory, 'note.txt', 'SOURCE SUMMARY / NO EVENT PHOTO');
+    const filter = [
+      'drawbox=x=40:y=40:w=1120:h=1040:color=#29435e:t=3',
+      'drawbox=x=80:y=100:w=12:h=65:color=#f6c945:t=fill',
+      'drawtext=fontfile=body.ttf:textfile=label.txt:expansion=none:fontsize=44:fontcolor=#f6c945:x=116:y=110',
+      'drawtext=fontfile=headline.ttf:textfile=headline.txt:expansion=none:fontsize=68:fontcolor=white:line_spacing=18:x=80:y=260',
+      'drawbox=x=80:y=860:w=1040:h=2:color=#29435e:t=fill',
+      'drawtext=fontfile=body.ttf:textfile=source.txt:expansion=none:fontsize=30:fontcolor=#b2c8dc:line_spacing=8:x=80:y=900',
+      'drawtext=fontfile=body.ttf:textfile=note.txt:expansion=none:fontsize=24:fontcolor=#b2c8dc:x=80:y=1010',
+    ].join(',');
+    await runProcess(binary('ffmpeg', store.state.settings), ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=#0b1629:s=1200x1120', '-vf', filter, '-frames:v', '1', '-threads', '1', '-update', '1', 'card.png'], { cwd: directory, signal, timeout: 30000 });
+    const media = await importMedia(store, path.join(directory, 'card.png'), { projectId: research.projectId, name: `News brief · ${headline}.png`, move: true, mediaType: 'news-editorial' });
+    return store.patch('media', media.id, { visualRole: 'source-card', sourceCardHeadline: headline, newsResearchIds: [research.id], sourceUrl: article?.url || '', attribution: 'Source-based text card · Viral Studio' });
+  } finally {
+    if (path.resolve(directory).startsWith(tempRoot + path.sep)) await fsPromises.rm(directory, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 /**
  * Produce the news broadcast composition around a real DreamFace Avatar file.
  * The Avatar video remains one continuous foreground track while the editorial
@@ -123,6 +159,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
     const cornerFile = await writeText(directory, "corner.txt", "US NEWS");
     const captionLabelFile = await writeText(directory, "caption-label.txt", "WHAT WE KNOW");
     const presenterLabelFile = await writeText(directory, "presenter-label.txt", "ON CAMERA");
+    await writeText(directory, 'visual-label.txt', plan.visualMode === 'source-card' ? 'SOURCE SUMMARY / NO EVENT PHOTO' : 'CONTEXT IMAGE / NOT EVENT FOOTAGE');
     const ctaFile = await writeText(directory, "cta.txt", "FULL STORY\nIN THE FIRST COMMENT");
     const captionFiles = [];
     const captionList = sentences(safePlan.narration).filter((item) => !/first comment/i.test(item));
@@ -171,29 +208,31 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
     filters.push(`[${presenterInput}:v]${pFilter},scale=342:384,setsar=1,format=rgba[mc]`);
     filters.push(`[${presenterInput}:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11[voice]`);
     filters.push(`[${background}]drawbox=x=0:y=0:w=iw:h=ih:color=${preset.dark}@0.30:t=fill[dim]`);
-    filters.push(`[dim]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:fontcolor=white:fontsize=31:x=78:y=62[header]`);
-    filters.push(`[header]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill,drawtext=fontfile=news-label.ttf:textfile=cta.txt:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58[headerCta]`);
+    filters.push(`[dim]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:expansion=none:fontcolor=white:fontsize=31:x=78:y=62[header]`);
+    filters.push(`[header]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill,drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58[headerCta]`);
     filters.push(`[headerCta]drawbox=x=48:y=140:w=984:h=900:color=${preset.panel}@0.98:t=fill[heroCard]`);
     filters.push(`[heroCard][${editorial}]overlay=x=80:y=160:enable='lt(t,${duration.toFixed(3)})'[heroPlaced]`);
-    filters.push(`[heroPlaced]drawbox=x=48:y=140:w=984:h=900:color=#ffffff@0.74:t=4[layout]`);
+    const visualLabel = ['illustration', 'source-card'].includes(plan.visualMode)
+      ? ',drawbox=x=96:y=964:w=888:h=52:color=#071526@0.94:t=fill,drawtext=fontfile=news-label.ttf:textfile=visual-label.txt:expansion=none:fontcolor=white:fontsize=26:x=118:y=978' : '';
+    filters.push(`[heroPlaced]drawbox=x=48:y=140:w=984:h=900:color=#ffffff@0.74:t=4${visualLabel}[layout]`);
     filters.push(`[layout]drawbox=x=48:y=1068:w=390:h=420:color=${preset.dark}@0.96:t=fill[mcframe]`);
     filters.push(`[mcframe][mc]overlay=x=72:y=1092:enable='lt(t,${duration.toFixed(3)})'[presenter]`);
-    filters.push(`[presenter]drawbox=x=48:y=1068:w=390:h=52:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=presenter-label.txt:fontcolor=white:fontsize=27:x=72:y=1082:enable='lt(t,${duration.toFixed(3)})'[label]`);
-    filters.push(`[label]drawbox=x=460:y=1068:w=572:h=250:color=${preset.dark}@0.94:t=fill,drawtext=fontfile=news-label.ttf:textfile=caption-label.txt:fontcolor=${preset.cta}:fontsize=24:x=488:y=1096:enable='lt(t,${duration.toFixed(3)})'[captionPanel]`);
-    filters.push(`[captionPanel]drawbox=x=48:y=1518:w=984:h=220:color=${preset.panel}@0.98:t=fill,drawbox=x=48:y=1518:w=12:h=220:color=${preset.accent}:t=fill,drawtext=fontfile=news-headline.ttf:textfile=headline.txt:fontcolor=${preset.ink}:fontsize=${preset.headlineSize}:line_spacing=4:x=86:y=1548:enable='lt(t,${duration.toFixed(3)})'[headline]`);
-    filters.push(`[headline]drawbox=x=872:y=1518:w=160:h=220:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=corner.txt:fontcolor=white:fontsize=26:x='872+(160-text_w)/2':y=1610:enable='lt(t,${duration.toFixed(3)})'[corner]`);
-    filters.push(`[corner]drawbox=x=48:y=1738:w=984:h=62:color=${preset.dark}@0.94:t=fill,drawtext=fontfile=news-body.ttf:textfile=source.txt:fontcolor=white:fontsize=24:x=78:y=1757:enable='lt(t,${duration.toFixed(3)})'[sourcebar]`);
+    filters.push(`[presenter]drawbox=x=48:y=1068:w=390:h=52:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=presenter-label.txt:expansion=none:fontcolor=white:fontsize=27:x=72:y=1082:enable='lt(t,${duration.toFixed(3)})'[label]`);
+    filters.push(`[label]drawbox=x=460:y=1068:w=572:h=250:color=${preset.dark}@0.94:t=fill,drawtext=fontfile=news-label.ttf:textfile=caption-label.txt:expansion=none:fontcolor=${preset.cta}:fontsize=24:x=488:y=1096:enable='lt(t,${duration.toFixed(3)})'[captionPanel]`);
+    filters.push(`[captionPanel]drawbox=x=48:y=1518:w=984:h=220:color=${preset.panel}@0.98:t=fill,drawbox=x=48:y=1518:w=12:h=220:color=${preset.accent}:t=fill,drawtext=fontfile=news-headline.ttf:textfile=headline.txt:expansion=none:fontcolor=${preset.ink}:fontsize=${preset.headlineSize}:line_spacing=4:x=86:y=1548:enable='lt(t,${duration.toFixed(3)})'[headline]`);
+    filters.push(`[headline]drawbox=x=872:y=1518:w=160:h=220:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=corner.txt:expansion=none:fontcolor=white:fontsize=26:x='872+(160-text_w)/2':y=1610:enable='lt(t,${duration.toFixed(3)})'[corner]`);
+    filters.push(`[corner]drawbox=x=48:y=1738:w=984:h=62:color=${preset.dark}@0.94:t=fill,drawtext=fontfile=news-body.ttf:textfile=source.txt:expansion=none:fontcolor=white:fontsize=24:x=78:y=1757:enable='lt(t,${duration.toFixed(3)})'[sourcebar]`);
     let captionVideo = "sourcebar";
     const captionDuration = duration / usableCaptionList.length;
     for (let index = 0; index < captionFiles.length; index += 1) {
       const start = index * captionDuration;
       const end = Math.min(duration, (index + 1) * captionDuration + 0.08);
       const output = `caption${index}`;
-      filters.push(`[${captionVideo}]drawbox=x=460:y=1128:w=572:h=190:color=${preset.dark}@0.94:t=fill:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})',drawtext=fontfile=news-body.ttf:textfile=caption-${index}.txt:fontcolor=white:fontsize=${preset.bodySize}:line_spacing=4:borderw=1:bordercolor=${preset.dark}:shadowcolor=#000000@0.65:shadowx=2:shadowy=3:x=488:y=1160:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'[${output}]`);
+      filters.push(`[${captionVideo}]drawbox=x=460:y=1128:w=572:h=190:color=${preset.dark}@0.94:t=fill:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})',drawtext=fontfile=news-body.ttf:textfile=caption-${index}.txt:expansion=none:fontcolor=white:fontsize=${preset.bodySize}:line_spacing=4:borderw=1:bordercolor=${preset.dark}:shadowcolor=#000000@0.65:shadowx=2:shadowy=3:x=488:y=1160:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'[${output}]`);
       captionVideo = output;
     }
     const ctaStart = Math.max(0, duration - 4.2);
-    filters.push(`[${captionVideo}]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill:enable='gte(t,${ctaStart.toFixed(3)})',drawtext=fontfile=news-label.ttf:textfile=cta.txt:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58:enable='gte(t,${ctaStart.toFixed(3)})'[outv]`);
+    filters.push(`[${captionVideo}]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill:enable='gte(t,${ctaStart.toFixed(3)})',drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58:enable='gte(t,${ctaStart.toFixed(3)})'[outv]`);
     const renderThreads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 4)));
     args.push("-filter_complex_threads", renderThreads, "-filter_complex", filters.join(";"), "-map", "[outv]", "-map", "[voice]", "-t", duration.toFixed(3), "-r", String(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", renderThreads, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "output.mp4");
     update(8, "Building smooth news transitions");

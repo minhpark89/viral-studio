@@ -24,6 +24,7 @@ export const newsPlanSchema=z.object({
   imageQueries:z.array(z.string().min(2).max(100)).max(6).default([]),
   imageMediaIds:z.array(z.string().uuid()).min(1).max(8),
   selectedImageIds:z.array(z.string()).max(5).default([]),
+  visualMode:z.enum(['photo','illustration','source-card']).default('photo'),
   resolution:z.union([z.literal(720),z.literal(1080)]).default(1080),
   brand:z.string().max(24).default("NEWS UPDATE"),
   variation:z.number().int().min(1).max(100).default(1),
@@ -66,12 +67,14 @@ export async function writeNewsNarration(store,research,{llm=requestJsonContent,
   };
 }
 
-export async function rankNewsImages(store,research,candidates,{llm=requestJsonContent}={}) {
+export async function rankNewsImages(store,research,candidates,{llm=requestJsonContent,allowIllustrations=false}={}) {
   if (!candidates.length) return [];
   try {
     const selected=await llm(store,
-      'Select editorial photographs for the supplied narration, not the broader RSS topic. Return JSON {selectedImageIds:[]}. Select at most 5 valid candidate IDs in visual story order. Every candidate, including an article image, must relate to the named subjects and confirmed events in the narration. RSS feeds can include unrelated stories. Reject unrelated events, other locations, old event photos presented as current, near duplicates, graphics, avatars and generic stock imagery. Select fewer images when necessary; return an empty list if none are relevant. Do not invent IDs.',
-      {headline:research.headline,narration:research.script,articles:research.articles?.map(({title,summary,publishedAt})=>({title,summary,publishedAt})),candidates:candidates.map(({id,title,query})=>({id,title,query}))});
+      'Select visuals for the supplied narration, not the broader RSS topic. Return JSON {selectedImageIds:[]}. Select at most 5 valid candidate IDs in visual story order. Judge the actual candidate title and description; a search query is not evidence that the image depicts that subject. Every candidate, including article images, must relate to a subject explicitly named in this report. Reject unrelated events, places, people not named in the report, avatars, near duplicates and misleading old event photos. Do not confuse Bitcoin with Bitcoin Cash or other coins. Never use screenshots/charts with unverified prices or data. ' +
+      (allowIllustrations ? 'Context images of the exact named subject are allowed (for example a Bitcoin token for a Bitcoin report, a relevant building or product). These will be visibly labeled CONTEXT IMAGE, NOT EVENT FOOTAGE. They need not show the actual event. Reject generic hacking/network visuals and unrelated subjects. ' : 'Prefer photographs of the reported subjects/events. Reject generic stock, graphics and illustrations in this pass. ') +
+      'Select fewer images when necessary; return an empty list if none are relevant. Do not invent IDs.',
+      {headline:research.headline,narration:research.script,articles:research.articles?.map(({title,summary,publishedAt})=>({title,summary,publishedAt})),candidates:candidates.map(({id,title,query,description})=>({id,title,query,description}))});
     const ids=z.array(z.string()).max(5).parse(selected?.selectedImageIds);
     return [...new Set(ids)].map(id=>candidates.find(image=>image.id===id)).filter(Boolean);
   } catch (error) {
