@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { ArrowRight, RefreshCw, Sparkles, Video } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Button, Field, Notice } from "../components.jsx";
+import { NewsMcPicker } from "../NewsMcPicker.jsx";
+import { isPageAvatar } from "../../shared/output-media.js";
+import { MAX_NEWS_VIDEOS } from "../../shared/mc-rotation.js";
 
 const statusLabels = {
   pending: "đang chuẩn bị",
@@ -28,6 +31,8 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
   const [count, setCount] = useState(1);
   const [engine, setEngine] = useState("dreamface");
   const [accountId, setAccountId] = useState("auto");
+  const [avatarMediaId, setAvatarMediaId] = useState("");
+  const [mcRotation, setMcRotation] = useState([]);
   const [references, setReferences] = useState([]);
   const [feeds, setFeeds] = useState("");
   const [fontStyle, setFontStyle] = useState("news");
@@ -42,7 +47,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
     const type = String(media.mediaType || "").toLowerCase();
     const name = String(media.name || "");
     const editorial = Boolean(media.sourceUrl || media.attribution || media.license);
-    return !newsMediaIds.has(media.id) && !newsMcIds.has(media.id) && !["news-editorial", "news-mc", "news-video"].includes(type) && media.production?.contentType !== "news" && !(media.generated && /news|broadcast|mc host/i.test(name)) && !(editorial && type !== "product");
+    return !isPageAvatar(media, data) && !newsMediaIds.has(media.id) && !newsMcIds.has(media.id) && !["news-editorial", "news-mc", "news-video"].includes(type) && media.production?.contentType !== "news" && !(media.generated && /news|broadcast|mc host/i.test(name)) && !(editorial && type !== "product");
   });
   const allBatches = (data.productionBatches || []).filter((batch) => batch.projectId === project.id && batch.request?.contentType === mode).slice().reverse();
   const focusedSet = new Set((focusBatchIds || []).filter(Boolean));
@@ -70,6 +75,8 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
         count: Number(count),
         engine: mode === "product" ? "dreamface" : engine,
         accountId,
+        avatarMediaId: mode === "news" && !mcRotation.length ? avatarMediaId || null : null,
+        mcRotation: mode === "news" ? mcRotation : [],
         references: mode === "product" ? references : [],
         feeds: feeds.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
         variationPolicy: "visual-unique",
@@ -128,12 +135,13 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
       {mode === "product" && <div className="content-filter-tabs production-source-tabs"><button type="button" className={autoResearch ? "active" : ""} onClick={() => setAutoResearch(true)}>Auto research</button><button type="button" className={!autoResearch ? "active" : ""} onClick={() => setAutoResearch(false)}>My product</button></div>}
       <div className="production-inputs">
         {mode === "news" || autoResearch ? <Field label={mode === "news" ? "News niche" : "Product niche"}><input required={mode !== "news" || !sourceUrl} minLength={mode === "news" && sourceUrl ? undefined : 2} maxLength={200} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={mode === "news" ? "US technology, space, business…" : "Kitchen gadgets, pet accessories…"} /></Field> : <Field label="Product name"><input required maxLength={200} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Portable blender" /></Field>}
-        <Field label="Number of videos"><input type="number" min="1" max="50" required value={count} onChange={(event) => setCount(event.target.value)} /></Field>
+        <Field label="Number of videos"><input type="number" min="1" max={mode === "news" ? MAX_NEWS_VIDEOS : 50} required value={count} onChange={(event) => setCount(event.target.value)} /></Field>
         {mode === "news" && <Field label="Font / style"><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value)}><option value="news">News chuẩn · Barlow Condensed</option><option value="viral">Viral mạnh · Anton + Barlow</option><option value="minimal">Viral sạch · Be Vietnam Pro</option></select></Field>}
       </div>
       {mode === "news" && <Field label="Link bài news (tuỳ chọn)" hint="Dán link bài viết để dùng đúng bài đó; bỏ trống để tự research theo từ khóa."><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://news.example.com/article" /></Field>}
+      {mode === "news" && <NewsMcPicker data={data} projectId={project.id} value={avatarMediaId} onChange={setAvatarMediaId} rotation={mcRotation} onRotationChange={setMcRotation} count={count || 1} notify={notify} />}
       {mode === "product" && <><div className="form-grid"><Field label="Product facts / creative brief"><textarea value={productBrief} maxLength={4000} onChange={(event) => setProductBrief(event.target.value)} placeholder="Verified features and the style you want. No invented offers." rows={3} /></Field><Field label="Product or store link" hint="Leave blank to use the store link from Settings."><input type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder={data.settings?.content?.storeUrl || "https://your-store.com/products/…"} /></Field></div>{images.length > 0 && <Field label="Product reference images" hint="Choose up to 10 images from this project's Library. News/editorial images are hidden."><div className="production-images">{images.map((media) => <label key={media.id}><input type="checkbox" checked={references.includes(media.id)} disabled={!references.includes(media.id) && references.length >= 10} onChange={() => setReferences((current) => current.includes(media.id) ? current.filter((id) => id !== media.id) : [...current, media.id])} /><img src={media.thumbnailUrl || media.url} alt="" /><span>{media.name}</span></label>)}</div></Field>}</>}
-      <details className="production-options"><summary>Sources, profile &amp; render rules</summary><div className="form-grid"><Field label="RSS sources (optional)"><textarea rows={2} value={feeds} onChange={(event) => setFeeds(event.target.value)} placeholder="One RSS URL per line. Blank: search current US English news." /></Field><Field label="DreamFace profile"><select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="auto">Auto · daily rotation</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.status}</option>)}</select></Field></div><div className="production-render-rules"><strong>0.6.4 render rules</strong><span>One selected profile keeps the same MC across the batch.</span><span>Auto rotates healthy profiles when no MC is pinned.</span><span>Each item gets a different image order, camera motion and visual opening while facts stay the same.</span><span>Content is optional: enable the checkbox below to ask LLM to create it after each completed video.</span></div></details>
+      <details className="production-options"><summary>Sources, profile &amp; render rules</summary><div className="form-grid"><Field label="RSS sources (optional)"><textarea rows={2} value={feeds} onChange={(event) => setFeeds(event.target.value)} placeholder="One RSS URL per line. Blank: search current US English news." /></Field><Field label="DreamFace profile" hint="Auto dùng nhiều profile sẵn sàng. Chọn một profile thì các video tạo MC lần lượt trên profile đó."><select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="auto">Auto · daily rotation</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.status}</option>)}</select></Field></div><div className="production-render-rules"><strong>Quy tắc render</strong><span>MC dùng ảnh đã chọn hoặc xoay vòng theo số video mỗi ảnh, độc lập với profile DreamFace.</span><span>Auto luân phiên profile sẵn sàng theo số tác vụ AI đồng thời trong Cài đặt.</span><span>Mỗi video có lời đọc, thứ tự ảnh và chuyển động riêng.</span><span>Xuất video dùng giới hạn “Video render song song”, áp dụng chung cho News và timeline.</span></div></details>
       <label className="toggle-field production-auto-content"><input type="checkbox" checked={autoCreateContent} onChange={(event) => setAutoCreateContent(event.target.checked)} /><span><strong>Tự tạo Content sau khi render</strong><small>{autoCreateContent ? "Sau khi có video, LLM sẽ tạo Content và báo lỗi ngay trong Queue/Content nếu không tạo được." : "Chỉ tạo video. Vào Content để chọn video và tạo bài sau."}</small></span></label>
       {!data.settings?.llm?.enabled && <Notice>Configure and enable your LLM in Settings to start automatic production.</Notice>}
       {(mode === "product" || engine === "dreamface") && !accounts.some((account) => account.status === "ready") && <p className="small muted">DreamFace MC videos wait in Queue until a verified profile is ready. <button type="button" className="inline-link" onClick={() => navigate?.("accounts")}>Open accounts</button></p>}

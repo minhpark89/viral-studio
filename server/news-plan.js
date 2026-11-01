@@ -19,22 +19,27 @@ export const newsPlanSchema=z.object({
   sourceUrl:z.string().url().optional(),
   fontStyle:z.enum(["news","viral","minimal"]).default("news"),
   avatarName:z.string().min(1).max(100).default("Alex"),
+  avatarMediaId:z.string().uuid().nullable().default(null),
   voiceName:z.string().min(1).max(100).default("Grace"),
   imageQueries:z.array(z.string().min(2).max(100)).max(6).default([]),
   imageMediaIds:z.array(z.string().uuid()).min(1).max(8),
   selectedImageIds:z.array(z.string()).max(5).default([]),
   resolution:z.union([z.literal(720),z.literal(1080)]).default(1080),
   brand:z.string().max(24).default("NEWS UPDATE"),
-  variation:z.number().int().min(1).max(50).default(1),
-  visualVariant:z.number().int().min(1).max(50).default(1),
+  variation:z.number().int().min(1).max(100).default(1),
+  visualVariant:z.number().int().min(1).max(100).default(1),
 });
 
 export async function writeNewsNarration(store,research,{llm=requestJsonContent,variation=1,total=1}={}) {
   const output=await llm(store,
-    "Use a four-sentence progression: fact-based curiosity hook, confirmed development with attribution, verified context or stakes, then what remains unknown or what to watch next. Target 55-78 spoken words. Keep every claim grounded in the supplied report; never add urgency, predictions, quotes or invented detail. " +
+    "Use a four-sentence progression: fact-based curiosity hook, confirmed development with attribution, verified context or stakes, then what remains unknown or what to watch next. Keep the summary within 400 characters including spaces. Keep every claim grounded in the supplied report; never add urgency, predictions, quotes or invented detail. " +
     `Write a short American TV news teaser from the supplied verified report. Return JSON {headline,summary,imageQueries}. Headline: factual, maximum 70 characters. Summary: 45-65 spoken words in 3-4 short sentences. Build a clear progression: sentence one is a fact-based curiosity hook; sentence two states what happened; sentence three gives verified context or a response; sentence four explains what remains unknown or why viewers should follow the full report. The hook may create tension through an unresolved fact, but use no exaggeration, rhetorical question, fake urgency or unverified claim. Attribute allegations to the person or outlet making them. No invented facts, quotes, dates, predictions, directions or branding. Do not include a CTA; it is appended by the app. Image queries: 3–5 SHORT literal noun phrases, 2–4 words each, using the actual named subjects, places and objects in the report. Avoid generic technology, infrastructure, illustrations, flags or unrelated stock imagery.${total > 1 ? ` This is variation ${variation} of ${total}; change the opening wording and pacing while keeping every fact and image subject consistent.` : ""}`,
     {variation,total,headline:research.headline,script:research.script,articles:research.articles.map(({title,summary,source,url})=>({title,summary,source,url}))});
-  const parsed=z.object({headline:z.string().trim().min(5).max(100),summary:z.string().trim().min(45).max(400),imageQueries:z.array(z.string().min(2).max(100)).min(1).max(6)}).parse(output);
+  // Models may exceed the requested length. Validate the response shape here,
+  // then apply the provider's final 500-character budget below (including CTA).
+  // Rejecting at 400 prevented that existing shortening step from ever running
+  // and left every item in a News batch stuck at PREPARATION_FAILED.
+  const parsed=z.object({headline:z.string().trim().min(5).max(100),summary:z.string().trim().min(45).max(16000),imageQueries:z.array(z.string().min(2).max(100)).min(1).max(6)}).parse(output);
   let summary = parsed.summary.replace(/\s+/g," ");
   const firstSentence = summary.split(/(?<=[.!?])\s+/u)[0] || summary;
   if (!/\b(?:but|however|unclear|unknown|not included|remains|leaves|what|why|still|yet)\b/i.test(firstSentence)) {
@@ -62,21 +67,14 @@ export async function writeNewsNarration(store,research,{llm=requestJsonContent,
 }
 
 export async function rankNewsImages(store,research,candidates,{llm=requestJsonContent}={}) {
-  const source=candidates.filter(image=>image.id.startsWith("article:"));
-  const others=candidates.filter(image=>!image.id.startsWith("article:"));
-  const fallback=[...source,...others].slice(0,5);
-  if(!others.length)return fallback;
+  if (!candidates.length) return [];
   try {
     const selected=await llm(store,
-      'Select editorial photographs for this specific news report. Return JSON {selectedImageIds:[]}. Select at most 4 IDs from the supplied candidate list, in visual story order. Reject unrelated locations/events, historical equipment, cartoons, documents, graphics and near-duplicate photos. A generic communications image is not evidence of this story. Prefer photographs of the actual named subject or relevant physical object. It is better to select fewer than to select an irrelevant image. Do not invent IDs.',
-      {headline:research.headline,summary:research.articles[0]?.summary,candidates:others.map(({id,title,query})=>({id,title,query}))});
-    const ids=z.array(z.string()).max(4).parse(selected?.selectedImageIds || []);
-    const chosen=ids.map(id=>others.find(image=>image.id===id)).filter(Boolean);
-    const remainder=others.filter(image=>!ids.includes(image.id));
-    return chosen.length ? [...source,...chosen,...remainder].slice(0,5) : fallback;
-  } catch {
-    // Image ranking is a quality pass. A malformed/empty LLM response must
-    // never block a verified Wikimedia/article image from reaching render.
-    return fallback;
+      'Select editorial photographs for the supplied narration, not the broader RSS topic. Return JSON {selectedImageIds:[]}. Select at most 5 valid candidate IDs in visual story order. Every candidate, including an article image, must relate to the named subjects and confirmed events in the narration. RSS feeds can include unrelated stories. Reject unrelated events, other locations, old event photos presented as current, near duplicates, graphics, avatars and generic stock imagery. Select fewer images when necessary; return an empty list if none are relevant. Do not invent IDs.',
+      {headline:research.headline,narration:research.script,articles:research.articles?.map(({title,summary,publishedAt})=>({title,summary,publishedAt})),candidates:candidates.map(({id,title,query})=>({id,title,query}))});
+    const ids=z.array(z.string()).max(5).parse(selected?.selectedImageIds);
+    return [...new Set(ids)].map(id=>candidates.find(image=>image.id===id)).filter(Boolean);
+  } catch (error) {
+    throw new StudioError(`Không xác minh được ảnh phù hợp với tin. Hãy thử lại bước chuẩn bị. ${String(error.message).slice(0, 180)}`, 'IMAGE_RANKING_FAILED', 422);
   }
 }

@@ -231,6 +231,15 @@ async function dreamFaceImageStill(store, session, job, account, plan, signal, u
 }
 
 export async function ensureNewsMcImage(store, session, job, account, plan, signal, update = () => {}) {
+  const selectedId = job.payload.avatarMediaId || plan?.avatarMediaId;
+  if (selectedId) {
+    const selected = store.require("media", selectedId);
+    if (selected.kind !== "image" || selected.mediaType === 'page-avatar' || selected.projectId && selected.projectId !== job.projectId)
+      throw new StudioError("Ảnh MC đã chọn không thuộc dự án này.", "INVALID_AVATAR_IMAGE", 422);
+    await fs.access(selected.file);
+    store.log(job, "Dùng ảnh MC đã chọn cho cả lô; bỏ qua bước tạo ảnh MC.");
+    return selected;
+  }
   const existingId = job.payload.avatarMediaId || account.avatarMediaId;
   const existing = existingId ? store.state.media.find((media) => media.id === existingId && media.kind === "image") : null;
   const reusable = existing && ["highlight-endpoint", "dreamface-image"].includes(account.avatarSource);

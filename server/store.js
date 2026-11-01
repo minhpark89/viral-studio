@@ -42,6 +42,7 @@ export class Store extends EventEmitter {
       socialPages: [],
       socialPosts: [],
       researchResults: [],
+      researchBatches: [],
       productionBatches: [],
       settings: {
         concurrency: 2,
@@ -111,7 +112,7 @@ export class Store extends EventEmitter {
       }
     }
     let recovered = false;
-    for (const collection of ["socialPages", "socialPosts", "researchResults", "productionBatches"]) {
+    for (const collection of ["socialPages", "socialPosts", "researchResults", "researchBatches", "productionBatches"]) {
       if (this.state[collection] === undefined) {
         this.state[collection] = [];
         recovered = true;

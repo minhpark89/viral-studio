@@ -26,6 +26,9 @@ import {
 import { api } from "../api.js";
 import { Button, Field, Badge, Empty, Notice } from "../components.jsx";
 import { WebsiteSettings } from "./WebsiteSettings.jsx";
+import { MediaPreview } from "../MediaPreview.jsx";
+import { jobOutput } from "../../shared/output-media.js";
+import { outputContext, sourceDateLabel, formatDateTime } from "../../shared/source-context.js";
 
 function jobElapsedSeconds(job) {
   if (Number.isFinite(Number(job.durationMs))) return Math.max(0, Number(job.durationMs) / 1000);
@@ -47,6 +50,9 @@ export function QueuePage({ data, project, run, navigate }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [expanded, setExpanded] = useState("");
   const [locations, setLocations] = useState({});
+  const [preview, setPreview] = useState(null);
+  const [period, setPeriod] = useState('all');
+  const [search, setSearch] = useState('');
   const contentType = (job) => job.type === "news" || job.production?.contentType === "news"
     ? "news"
     : job.production?.contentType === "product"
@@ -56,6 +62,8 @@ export function QueuePage({ data, project, run, navigate }) {
     .filter(
       (job) =>
         job.projectId === project.id &&
+        (!search.trim() || `${job.name} ${job.id}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())) &&
+        (period === 'all' || Date.parse(job.finishedAt || job.createdAt) >= (period === 'today' ? new Date().setHours(0, 0, 0, 0) : Date.now() - 7 * 86400000)) &&
         (typeFilter === "all" || contentType(job) === typeFilter) &&
         (filter === "all" ||
           (filter === "active"
@@ -70,7 +78,7 @@ export function QueuePage({ data, project, run, navigate }) {
             : job.status === filter)),
     )
     .slice()
-    .reverse();
+    .sort((a, b) => Date.parse(b.finishedAt || b.createdAt) - Date.parse(a.finishedAt || a.createdAt));
   const active = data.jobs.filter((job) =>
     ["preparing", "submitting", "rendering", "downloading"].includes(
       job.status,
@@ -80,7 +88,7 @@ export function QueuePage({ data, project, run, navigate }) {
     ["queued", "scheduled"].includes(job.status),
   ).length;
   return (
-    <div className="page">
+    <div className="page queue-page">
       <div className="page-heading">
         <div>
           <div className="eyebrow">PRODUCTION QUEUE</div>
@@ -161,6 +169,7 @@ export function QueuePage({ data, project, run, navigate }) {
         </div>
         <span className="muted small">{jobs.length} tác vụ trong dự án</span>
       </div>
+      <div className="output-filters"><Field label="Thời gian render"><select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">Mọi lần render · mới nhất trước</option><option value="today">Render hôm nay</option><option value="7d">Render 7 ngày qua</option></select></Field><Field label="Tìm tác vụ"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tên video hoặc mã tác vụ…" /></Field></div>
       {jobs.length ? (
         <div className="job-list">
           {jobs.map((job) => {
@@ -168,7 +177,8 @@ export function QueuePage({ data, project, run, navigate }) {
             const account = data.accounts.find(
               (item) => item.id === (job.accountId || job.payload.accountId),
             );
-            const output = data.media.find((item) => item.id === job.mediaId);
+            const output = jobOutput(job, data.media, data.jobs);
+            const context = outputContext(output, data, job);
             const running = [
               "preparing",
               "submitting",
@@ -184,7 +194,7 @@ export function QueuePage({ data, project, run, navigate }) {
                   item.id === job.payload.accountId),
             );
             return (
-              <article className="panel job-card" key={job.id}>
+              <article className="panel job-card" key={job.id} data-job-id={job.id}>
                 <div className="job-row">
                   <span className={`job-type ${job.type}`}>
                     {jobContentType === "news" ? <Newspaper size={22} /> : jobContentType === "product" ? <ShoppingBag size={22} /> : job.type === "render" ? (
@@ -199,6 +209,7 @@ export function QueuePage({ data, project, run, navigate }) {
                   </span>
                   <div className="job-details">
                     <h3>{job.name}</h3>
+                    <div className="output-context"><span>{job.status === 'completed' ? 'Hoàn tất lúc' : 'Tạo lúc'}: {formatDateTime(job.finishedAt || job.createdAt)} · Mã {job.id.slice(0, 8)}{context.variant ? ` · Phiên bản ${context.variant}` : ''}</span>{context.research && <><span>Tin: {context.research.headline || context.research.topic}</span><span>{sourceDateLabel(context.research)}</span></>}{context.avatar && <span>Ảnh MC: {context.avatar.name} · {context.avatar.id.slice(0, 8)}</span>}{job.status === 'completed' && !output && <span>Tệp kết quả đã dọn khỏi thư viện; đây là lịch sử render.</span>}</div>
                     <p>
                       {jobContentType === "news"
                         ? `NEWS BROADCAST · ${job.production?.title || job.payload.newsPlan?.headline || "Research story"}`
@@ -233,16 +244,15 @@ export function QueuePage({ data, project, run, navigate }) {
                   <div className="inline-actions">
                     {output && (
                       <>
-                      <a
-                        className="icon-button"
+                      <button
+                        className="button primary job-play"
                         title="Xem video"
                         aria-label={`Xem video ${output.name}`}
-                        href={output.url}
-                        target="_blank"
-                        rel="noreferrer"
+                        onClick={() => setPreview(output)}
                       >
                         <Play size={17} />
-                      </a>
+                        {output.kind === 'video' ? 'Phát video' : 'Xem kết quả'}
+                      </button>
                       {data.capabilities?.desktop && (
                         <button
                           className="icon-button"
@@ -442,6 +452,7 @@ export function QueuePage({ data, project, run, navigate }) {
           Tác vụ tạo AI và xuất video sẽ xuất hiện ở đây.
         </Empty>
       )}
+      {preview && <MediaPreview media={preview} data={data} onClose={() => setPreview(null)} />}
     </div>
   );
 }
@@ -746,7 +757,7 @@ export function SettingsPage({ data, project, run, notify }) {
                   }
                 />
               </Field>
-              <Field label="Video render song song" hint="Số job FFmpeg có thể xuất cùng lúc.">
+              <Field label="Video render song song" hint="Tổng video News và timeline xuất cùng lúc. Tạo MC dùng số tác vụ AI đồng thời ở trên.">
                 <input
                   type="number"
                   min="1"
@@ -760,7 +771,7 @@ export function SettingsPage({ data, project, run, notify }) {
                   }
                 />
               </Field>
-              <Field label="FFmpeg threads / video" hint="Số luồng cho mỗi video đang render.">
+              <Field label="FFmpeg threads / video" hint="Số luồng xử lý hiệu ứng và mã hóa mỗi video; khác với số video song song.">
                 <input
                   type="number"
                   min="1"

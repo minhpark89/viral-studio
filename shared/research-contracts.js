@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_RESEARCH_STORIES } from "./mc-rotation.js";
 
 const id = z.string().uuid();
 
@@ -30,6 +31,11 @@ export const researchArticleSchema = z.object({
   imageUrl: z.string().url().nullable().default(null),
   imageQuery: z.string().max(300).default(""),
   relevance: z.number().min(0).max(1).default(0),
+});
+
+export const researchBatchRequestSchema = researchRequestSchema.omit({ maxArticles: true }).extend({
+  requestId: id,
+  count: z.number().int().min(1).max(MAX_RESEARCH_STORIES).default(10),
 });
 
 export const researchImageSchema = z.object({

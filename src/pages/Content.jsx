@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Button, Empty, Field, Modal, Notice } from "../components.jsx";
-import { isPublishableVideo } from "../../shared/output-media.js";
+import { isPublishableVideo, isPageAvatar } from "../../shared/output-media.js";
 
 const statusNames = {
   draft: "Bản nháp",
@@ -162,7 +162,7 @@ export function ContentPage({ data, project, notify, navigate }) {
   }, [project.id, filter, search]);
 
   const media = useMemo(() => (data.media || [])
-    .filter((item) => (item.projectId === project.id || !item.projectId) && ["image", "video"].includes(item.kind))
+    .filter((item) => (item.projectId === project.id || !item.projectId) && ["image", "video"].includes(item.kind) && !isPageAvatar(item, data))
     .slice()
     .sort((left, right) => Number(right.generated) - Number(left.generated) || new Date(right.createdAt || 0) - new Date(left.createdAt || 0)), [data.media, project.id]);
   const renderedVideos = media.filter((item) => isPublishableVideo(item, data.jobs));

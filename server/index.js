@@ -237,7 +237,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     };
   });
   const socialScheduler = new SocialScheduler(store, metaService.publishReel);
-  mountResearchRoutes(app, store, { queue });
+  const researchBatches = mountResearchRoutes(app, store, { queue });
   const production = mountProductionRoutes(app, store, queue);
 
   const checkAccount = async (id) => {
@@ -337,7 +337,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
             projectId: req.body.projectId || undefined,
             name,
             move: true,
-            mediaType: "product",
+            mediaType: req.body.mediaType === 'news-mc' ? 'news-mc' : 'product',
           });
           results.push({ ok: true, id: media.id, name: media.name });
         } catch (error) {
@@ -364,7 +364,8 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   });
   app.get("/api/media/:id/location", (req, res) => {
     const media = store.require("media", req.params.id);
-    res.json({ file: media.file, directory: path.dirname(media.file), name: media.name });
+    const file = fs.realpathSync(media.file);
+    res.json({ file, directory: path.dirname(file), name: media.name });
   });
   app.delete("/api/media/:id", (req, res) => {
     const media = store.require("media", req.params.id);
@@ -758,7 +759,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     const target = req.body.mediaId
       ? store.require("media", req.body.mediaId).file
       : store.root;
-    await desktop.reveal(target);
+    await desktop.reveal(fs.realpathSync(target));
     res.json({ ok: true });
   });
 
@@ -795,6 +796,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       listening.once("error", reject);
     });
   } catch (error) {
+    await researchBatches.close();
     await socialScheduler.close();
     await queue.close();
     throw error;
@@ -807,6 +809,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       clearTimeout(changeTimer);
       await socialScheduler.close();
       await metaService.close();
+      await researchBatches.close();
       await production.close();
       await queue.close();
       dreamfaceSetup.stop();

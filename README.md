@@ -4,20 +4,24 @@ Viral Studio is a Windows desktop app for research, AI video production, timelin
 
 ## Download for Windows
 
-- [Portable v0.7.3](https://github.com/minhpark89/viral-studio/releases/download/v0.7.3/Viral.Studio.0.7.3.exe)
-- [Installer v0.7.3](https://github.com/minhpark89/viral-studio/releases/download/v0.7.3/Viral.Studio.Setup.0.7.3.exe)
-- SHA-256 checksums: `release/SHA256SUMS.txt`
+- [Portable v0.7.4](https://github.com/minhpark89/viral-studio/releases/download/v0.7.4/Viral.Studio.0.7.4.exe)
+- [Installer v0.7.4](https://github.com/minhpark89/viral-studio/releases/download/v0.7.4/Viral.Studio.Setup.0.7.4.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.4/SHA256SUMS.txt)
 
 The desktop app starts with a version/loading screen, uses the Viral Studio icon, and stores user data in `Viral Data`; an installed upgrade can read legacy `Dropship Data` automatically.
 
 ## Included features
 
+- MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
+- Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
+- Completed videos play inline with their source, MC and version details. The library separates final videos, MC images, raw presenter clips and Page avatars; folder reveal selects the exact video file.
+- News and timeline exports share the selected FFmpeg concurrency limit. Research exposes AI task concurrency and video export concurrency separately.
 - Page and post managers include filters, pagination, selection across all matching results, bulk previews and CSV export. Page review groups, notes, reminders, read-only checks, token/CSV/JSON imports and recoverable trash support large collections.
 - Posts that cannot be retried safely return to the Content warehouse with their video and content intact. Reassign a Page to reuse them. A returned or edited draft stays on hold until explicitly approved or scheduled.
 - Select multiple posts and use **Sửa … bài đã chọn** to edit each post or apply one field to all selected posts. Details can navigate the selection; stale and busy rows are skipped with reasons.
 - Successful Reel and first-comment publication removes the draft from the queue and cleans its unreferenced local video. Publication history and the Facebook link remain under **Lịch sử đã đăng** to prevent duplicates. A comment-only failure reuses the existing Reel.
 - The desktop splash and main window remain hidden until their content is painted; the main interface waits for initial data before appearing.
-- Batch production: choose News or Product, research a niche or supply a product, and create 1–50 independent videos. Each video keeps its source context for Content.
+- Batch production: choose News or Product, research a niche or supply a product, and create 1–100 News videos or 1–50 Product videos. Each video keeps its source context for Content.
 - Content uses the saved LLM to write complete English news articles, or short product first comments with the configured store link. News articles are included as `article.md` in handoff exports; drafts can be saved before assigning a Page.
 - Bundled Inter font works offline, and the app shows its actual package version in the top bar and sidebar.
 - Separate Channels, Content, Product and Research workspaces; Page selection, Meta token status and Page management.
@@ -58,6 +62,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.7.3. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-10-30_v0.7.3.md` for implementation and verification details.
+This repository is the dedicated Viral Studio project. The current release is v0.7.4. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-01_v0.7.4.md` for implementation and verification details.
 
 

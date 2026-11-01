@@ -172,6 +172,8 @@ export async function importMedia(
   if (!stat.isFile())
     throw new StudioError("Hãy chọn một tệp media.", "INVALID_MEDIA");
   const metadata = await probe(source, store.state.settings);
+  if (mediaType === 'news-mc' && metadata.kind !== 'image')
+    throw new StudioError('Ảnh MC phải là một tệp ảnh.', 'INVALID_AVATAR_IMAGE', 422);
   if (
     metadata.kind !== "image" &&
     (!Number.isFinite(metadata.duration) || metadata.duration <= 0)

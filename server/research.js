@@ -15,13 +15,14 @@ import { downloadImageAsset, searchImageQueries, newsImageCandidates } from "./i
 import { buildResearchAssemblyTimeline } from "../shared/research-assembly.js";
 import { normalizeLlmEndpoint } from "./llm.js";
 import { readChatCompletion } from "./llm-response.js";
+import { ResearchBatchService } from "./research-batches.js";
 
 const DEFAULT_FEEDS = [
   "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml",
   "https://feeds.bbci.co.uk/news/rss.xml",
 ];
 const MAX_FEED_BYTES = 1024 * 1024;
-const MAX_FEED_ITEMS = 40;
+const MAX_FEED_ITEMS = 150;
 const MAX_FEED_CONCURRENCY = 3;
 const DEFAULT_FETCH_TIMEOUT_MS = 12_000;
 const TRACKING_PARAMS = /^(utm_|fbclid$|gclid$|mc_cid$|mc_eid$)/i;
@@ -165,12 +166,12 @@ async function readBoundedBody(response, maxBytes = MAX_FEED_BYTES) {
   return new TextDecoder().decode(bytes);
 }
 
-async function fetchFeed(url, fetchImpl, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
+async function fetchFeed(url, fetchImpl, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, signal) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(url, {
-      signal: controller.signal,
+      signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
       headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9" },
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -180,7 +181,7 @@ async function fetchFeed(url, fetchImpl, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS) {
   }
 }
 
-async function fetchFeeds(feeds, fetchImpl, warnings) {
+async function fetchFeeds(feeds, fetchImpl, warnings, signal) {
   const output = [];
   let cursor = 0;
   async function worker() {
@@ -188,7 +189,7 @@ async function fetchFeeds(feeds, fetchImpl, warnings) {
       const index = cursor++;
       const url = feeds[index];
       try {
-        output.push(...await fetchFeed(url, fetchImpl));
+        output.push(...await fetchFeed(url, fetchImpl, DEFAULT_FETCH_TIMEOUT_MS, signal));
       } catch {
         warnings.push(`Không thể tải feed ${domainOf(url) || url}.`);
       }
@@ -208,7 +209,7 @@ function parseModelContent(content) {
   return JSON.parse(text);
 }
 
-async function requestLlm({ settings, request, articles, fetchImpl }) {
+async function requestLlm({ settings, request, articles, fetchImpl, signal }) {
   const prompt = {
     topic: request.topic,
     niche: request.niche,
@@ -230,7 +231,7 @@ async function requestLlm({ settings, request, articles, fetchImpl }) {
     const response = await fetchImpl(endpointUrl(settings.endpoint), {
       method: "POST",
       headers,
-      signal: controller.signal,
+      signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
       body: JSON.stringify({
         model: settings.model,
         stream: false,
@@ -347,20 +348,25 @@ function validateFeedUrls(feeds) {
 export function createResearchService({ fetchImpl = globalThis.fetch, now = () => new Date().toISOString() } = {}) {
   if (typeof fetchImpl !== "function") throw new Error("Fetch implementation is required");
   return {
-    async discover({ topic, feeds = [], count = 12 }) {
+    async discover({ topic, feeds = [], count = 12, excludeArticles = [], signal }) {
       const warnings = [];
       const sources = feeds.length ? feeds : [
         `https://news.google.com/rss/search?q=${encodeURIComponent(`${topic} when:1d`)}&hl=en-US&gl=US&ceid=US:en`,
       ];
-      const entries = await fetchFeeds(validateFeedUrls(sources), fetchImpl, warnings);
+      const entries = await fetchFeeds(validateFeedUrls(sources), fetchImpl, warnings, signal);
+      signal?.throwIfAborted();
       const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" });
       const today = day.format(new Date(now()));
       const current = entries.filter(article => article.publishedAt && day.format(new Date(article.publishedAt)) === today);
-      const articles = dedupeArticles(current, { topic, maxArticles: count }).filter(article => article.relevance > 0);
+      const seenUrls = new Set(excludeArticles.map(article => canonicalArticleUrl(article.url)));
+      const titleKey = title => String(title || '').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+      const seenTitles = new Set(excludeArticles.map(article => titleKey(article.title)));
+      const articles = dedupeArticles(current, { topic, maxArticles: current.length }).filter(article => article.relevance > 0
+        && !seenUrls.has(canonicalArticleUrl(article.url)) && !seenTitles.has(titleKey(article.title))).slice(0, count);
       if (!articles.length) throw new StudioError("No matching reports from today (US Eastern time). Try a broader niche or another RSS feed.", "NO_CURRENT_NEWS", 422);
       return { articles, warnings };
     },
-    async research(requestInput, store, { articles: selectedArticles } = {}) {
+    async research(requestInput, store, { articles: selectedArticles, batchId, batchItemIndex, signal } = {}) {
       const request = researchRequestSchema.parse(requestInput);
       store.require("projects", request.projectId);
       const warnings = [];
@@ -376,7 +382,7 @@ export function createResearchService({ fetchImpl = globalThis.fetch, now = () =
       // remote provider can still reject the request and fall back visibly.
       if (llm.enabled) {
         try {
-          content = await requestLlm({ settings: llm, request, articles, fetchImpl });
+          content = await requestLlm({ settings: llm, request, articles, fetchImpl, signal });
           contentSource = "llm";
         } catch (error) {
           llmError = llmErrorMessage(error);
@@ -386,6 +392,7 @@ export function createResearchService({ fetchImpl = globalThis.fetch, now = () =
         llmError = "LLM chưa được bật trong Cài đặt.";
         warnings.push(`${llmError} Kết quả đang dùng bản tóm lược từ feed.`);
       }
+      signal?.throwIfAborted();
       const normalized = normalizeLlmContent(content, request, articles);
       const articleRecords = articles.map((article) => researchArticleSchema.parse({
         id: randomUUID(),
@@ -413,7 +420,7 @@ export function createResearchService({ fetchImpl = globalThis.fetch, now = () =
         imageMediaIds: [],
         warnings: [...new Set(warnings)],
       });
-      return store.add("researchResults", result);
+      return store.add("researchResults", { ...result, ...(batchId ? { batchId, batchItemIndex } : {}) });
     },
     async rewriteLlm(resultId, store) {
       const result = store.require("researchResults", resultId);
@@ -457,7 +464,11 @@ export function createResearchService({ fetchImpl = globalThis.fetch, now = () =
 
 export function mountResearchRoutes(app, store, options = {}) {
   const service = options.service || createResearchService(options);
+  const batches = new ResearchBatchService(store, service);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
+  app.post("/api/research/batches", (req, res) => res.status(202).json(batches.create(req.body)));
+  app.post("/api/research/batches/:id/retry", (req, res) => res.json(batches.retry(req.params.id)));
+  app.post("/api/research/batches/:id/cancel", (req, res) => res.json(batches.cancel(req.params.id)));
   app.get("/api/settings/llm", (req, res) => {
     res.json(publicLlmSettings(store.state.settings?.llm));
   });
@@ -678,6 +689,7 @@ export function mountResearchRoutes(app, store, options = {}) {
     const result = await service.research(req.body, store);
     res.status(201).json(result);
   });
+  return batches;
 }
 
 function isPublicRemoteUrl(url) {

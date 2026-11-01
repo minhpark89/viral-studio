@@ -7,6 +7,8 @@ import { requestJsonContent } from "./llm.js";
 import { searchImageQueries, downloadImageAsset, newsImageCandidates } from "./image-search.js";
 import { StudioError } from "./store.js";
 import { newsPlanSchema, writeNewsNarration, rankNewsImages } from "./news-plan.js";
+import { isPageAvatar, isMcImage } from "../shared/output-media.js";
+import { mcForVideo } from "../shared/mc-rotation.js";
 
 const productOutput = z.object({ productName: z.string().trim().min(1).max(200), productBrief: z.string().trim().min(1).max(4000), prompt: z.string().trim().min(20).max(16000) });
 
@@ -190,13 +192,13 @@ export class ProductionService {
     const request = productionRequestSchema.parse(input);
     const existing = this.store.state.productionBatches.find(batch => batch.request.requestId === request.requestId);
     if (existing) {
-      if (JSON.stringify(existing.request) !== JSON.stringify(request)) throw new StudioError("This request was already used with different options.", "REQUEST_CONFLICT", 409);
+      if (JSON.stringify(productionRequestSchema.parse(existing.request)) !== JSON.stringify(request)) throw new StudioError("This request was already used with different options.", "REQUEST_CONFLICT", 409);
       return existing;
     }
     this.store.require("projects", request.projectId);
     if (!this.store.state.settings.llm?.enabled) throw new StudioError("Enable and test the LLM in Settings first.", "LLM_DISABLED", 409);
-    if (request.researchId) {
-      const research = this.store.require("researchResults", request.researchId);
+    for (const researchId of new Set([request.researchId, ...request.researchIds].filter(Boolean))) {
+      const research = this.store.require("researchResults", researchId);
       if (research.projectId !== request.projectId)
         throw new StudioError("Use research from this project.", "RESEARCH_PROJECT_MISMATCH", 409);
     }
@@ -205,9 +207,14 @@ export class ProductionService {
       if (media.kind !== "image" || media.projectId && media.projectId !== request.projectId) throw new StudioError("Use product images from this project.", "INVALID_REFERENCE");
     }
     if (request.accountId !== "auto" && this.store.require("accounts", request.accountId).provider !== "dreamface") throw new StudioError("Select a DreamFace profile.", "INVALID_ACCOUNT");
+    for (const avatarId of new Set([request.avatarMediaId, ...request.mcRotation.map(entry => entry.avatarMediaId)].filter(Boolean))) {
+      const avatar = this.store.require("media", avatarId);
+      if (request.contentType !== "news" || avatar.kind !== "image" || isPageAvatar(avatar, this.store.state) || avatar.projectId && avatar.projectId !== request.projectId)
+        throw new StudioError("Chọn ảnh MC trong thư viện của dự án này.", "INVALID_AVATAR_IMAGE", 422);
+    }
     const batch = this.store.add("productionBatches", {
       projectId: request.projectId, request, status: "pending", sources: [], warnings: [],
-      items: Array.from({length:request.count}, (_, index) => ({index,status:"pending",jobId:null,researchId:null,error:null})),
+      items: Array.from({length:request.count}, (_, index) => ({index,status:"pending",jobId:null,researchId:request.researchIds[index] || request.researchId,avatarMediaId:mcForVideo(request,index),error:null})),
     });
     this.kick();
     return batch;
@@ -243,7 +250,10 @@ export class ProductionService {
       batch.status = "preparing";
       this.store.save();
       try {
-        if (request.sourceUrl && !batch.sources.length) {
+        if (request.researchIds?.length && !batch.sources.length) {
+          batch.sources = [...new Set(request.researchIds)].flatMap(id => this.store.require("researchResults", id).articles || []);
+          this.store.save();
+        } else if (request.sourceUrl && !batch.sources.length) {
           batch.sources = [await articleFromUrl(this.fetch, request.sourceUrl)];
           batch.warnings = [];
           this.store.save();
@@ -297,12 +307,13 @@ export class ProductionService {
 
   async prepareItem(batch, item) {
     const request = batch.request;
-      const source = batch.sources.length ? batch.sources[item.index % batch.sources.length] : null;
+    if (item.avatarMediaId === undefined) item.avatarMediaId = mcForVideo(request, item.index);
     let research = item.researchId
       ? this.store.require("researchResults", item.researchId)
       : request.researchId
         ? this.store.require("researchResults", request.researchId)
         : null;
+    const source = research?.articles?.[item.index % (research.articles.length || 1)] || (batch.sources.length ? batch.sources[item.index % batch.sources.length] : null);
     if (research && !item.researchId) {
       item.researchId = research.id;
       this.store.save();
@@ -343,6 +354,7 @@ export class ProductionService {
         variation: item.index + 1,
         visualVariant: item.index + 1,
         fontStyle: request.fontStyle,
+        avatarMediaId: item.avatarMediaId,
       });
       item.title = newsPlan.headline;
       item.newsPlan = newsPlan;
@@ -370,7 +382,8 @@ export class ProductionService {
       visualVariant: item.index + 1,
       variationPolicy: request.variationPolicy,
       autoCreateContent: request.autoCreateContent === true,
-      presenterMode: request.contentType === "news" && request.accountId !== "auto" ? "same-account" : "auto-rotate",
+      presenterMode: request.mcRotation?.length ? "image-rotation" : item.avatarMediaId ? "selected-image" : request.contentType === "news" && request.accountId !== "auto" ? "same-account" : "auto-rotate",
+      avatarMediaId: item.avatarMediaId,
       contentType: request.contentType,
       researchId: item.researchId,
       topic: request.topic,
@@ -409,79 +422,67 @@ export class ProductionService {
   }
 
   async prepareNewsMedia(batch, request, research, narration, callLlm) {
-    const targetImageCount = 5;
-    const savedResearchIds = Array.isArray(research.imageMediaIds) ? research.imageMediaIds : [];
-    const cachedIds = [...new Set([
-      ...(Array.isArray(batch.newsImageMediaIds) ? batch.newsImageMediaIds : []),
-      ...savedResearchIds,
-    ])].filter((id) => this.store.state.media.some((media) => media.id === id && media.kind === "image"));
-    if (cachedIds.length >= targetImageCount) {
-      batch.newsImageMediaIds = cachedIds.slice(0, 8);
-      batch.newsSelectedImageIds ??= [];
-      this.store.save();
-      return {
-        imageMediaIds: cachedIds.slice(0, targetImageCount),
-        selectedImageIds: Array.isArray(batch.newsSelectedImageIds) ? batch.newsSelectedImageIds : [],
-      };
+    // A batch can contain different stories. Neither its cache nor its in-flight
+    // promise may be shared between research IDs.
+    const key = batch.id + ':' + research.id;
+    const usable = media => media?.kind === 'image' && media.projectId === request.projectId
+      && media.id !== request.avatarMediaId && !request.mcRotation?.some(entry => entry.avatarMediaId === media.id)
+      && !isPageAvatar(media, this.store.state) && !isMcImage(media, this.store.state);
+    const scoped = batch.newsMediaByResearch?.[research.id];
+    if (scoped?.revision === 2 && scoped.imageMediaIds?.length
+      && scoped.imageMediaIds.every(id => usable(this.store.state.media.find(media => media.id === id)))) {
+      return { imageMediaIds: [...scoped.imageMediaIds], selectedImageIds: [...scoped.selectedImageIds] };
     }
-    const prior = this.newsMediaPromises.get(batch.id);
+    const prior = this.newsMediaPromises.get(key);
     if (prior) return prior;
     const promise = (async () => {
+      const savedIds = [...new Set([
+        ...(research.imageMediaIds || []),
+        ...(batch.newsImageResearchId === research.id ? batch.newsImageMediaIds || [] : []),
+      ])];
+      const saved = savedIds.map(id => this.store.state.media.find(media => media.id === id)).filter(usable);
       let candidates = newsImageCandidates(research.articles, research.imageSearchResults || []);
-      if (candidates.length < targetImageCount) {
-        const found = await this.imageSearch(
-          [...narration.imageQueries, ...(research.imageQueries || [])],
-          { fetchImpl: this.fetch, maxResultsPerQuery: 4, maxResults: 20 },
-        );
+      const addSavedCandidates = () => {
+        for (const media of saved) {
+          if (media.sourceUrl && candidates.some(image => (image.pageUrl || image.imageUrl) === media.sourceUrl)) continue;
+          candidates.push({ id: 'media:' + media.id, mediaId: media.id, title: media.name || 'Saved research image', query: research.topic || research.headline, pageUrl: media.sourceUrl });
+        }
+      };
+      addSavedCandidates();
+      if (candidates.length < 3) {
+        const found = await this.imageSearch([...narration.imageQueries, ...(research.imageQueries || [])], { fetchImpl: this.fetch, maxResultsPerQuery: 4, maxResults: 20 });
         candidates = newsImageCandidates(research.articles, found.images);
-        this.store.patch("researchResults", research.id, {
-          imageSearchResults: found.images,
-          imageSearchWarnings: found.warnings,
-        });
+        addSavedCandidates();
+        this.store.patch('researchResults', research.id, { imageSearchResults: found.images, imageSearchWarnings: found.warnings });
       }
-      const ranked = await rankNewsImages(this.store, research, candidates, { llm: callLlm });
-      const assets = cachedIds
-        .map((id) => this.store.state.media.find((media) => media.id === id))
-        .filter((media) => media?.kind === "image");
-      const assetKeys = new Set(assets.map((media) => media.sourceUrl).filter(Boolean));
-      const existing = this.store.state.media.filter((media) => media.projectId === request.projectId && media.kind === "image");
-      for (const image of ranked.slice(0, 16)) {
-        if (assetKeys.has(image.pageUrl || image.imageUrl)) continue;
-        const cached = existing.find((media) => media.sourceUrl && media.sourceUrl === (image.pageUrl || image.imageUrl));
-        if (cached) {
-          assets.push(cached);
-          assetKeys.add(cached.sourceUrl);
-          if (assets.length >= 5) break;
-          continue;
-        }
+      const ranked = await rankNewsImages(this.store, { ...research, headline: narration.headline, script: narration.narration }, candidates, { llm: callLlm });
+      const assets = [];
+      const assetKeys = new Set();
+      for (const image of ranked) {
+        const source = image.pageUrl || image.imageUrl;
+        const cached = image.mediaId ? saved.find(media => media.id === image.mediaId)
+          : this.store.state.media.find(media => usable(media) && source && media.sourceUrl === source);
+        if (assetKeys.has(cached?.id || source || image.id)) continue;
         try {
-          const media = await this.downloadImage({ image, store: this.store, projectId: request.projectId, fetchImpl: this.fetch });
-          assets.push(media);
-          if (media.sourceUrl) assetKeys.add(media.sourceUrl);
-        } catch {
-          // Keep the remaining verified article images.
+          const media = cached || await this.downloadImage({ image, store: this.store, projectId: request.projectId, fetchImpl: this.fetch });
+          if (!usable(media)) continue;
+          assets.push(media); assetKeys.add(media.id); if (source) assetKeys.add(source);
+          this.store.patch('media', media.id, { newsResearchIds: [...new Set([...(media.newsResearchIds || []), research.id])] });
+        } catch (error) {
+          this.controller.signal.throwIfAborted();
+          // Another selected, relevant photograph may still be available.
         }
-        if (assets.length >= 5) break;
       }
-      const minimumImageCount = candidates.length >= 3 ? 3 : 1;
-      if (assets.length < minimumImageCount) {
-        throw new StudioError("News video needs at least three verified editorial images. Search returned too few usable images; retry with a broader topic.", "IMAGE_SEARCH_INSUFFICIENT", 422);
-      }
-      const imageMediaIds = assets.map((media) => media.id);
-      const selectedImageIds = ranked.map((image) => image.id);
-      batch.newsImageMediaIds = imageMediaIds;
-      batch.newsSelectedImageIds = selectedImageIds;
-      this.store.patch("researchResults", research.id, { imageMediaIds });
+      if (!assets.length) throw new StudioError('Chưa có ảnh phù hợp với nội dung tin. Hãy kiểm tra nguồn hoặc tìm lại ảnh rồi thử lại.', 'IMAGE_SEARCH_INSUFFICIENT', 422);
+      const result = { imageMediaIds: assets.map(media => media.id), selectedImageIds: ranked.map(image => image.id) };
+      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, revision: 2 } };
+      this.store.patch('researchResults', research.id, { imageMediaIds: result.imageMediaIds });
       this.store.save();
-      return { imageMediaIds, selectedImageIds };
+      return result;
     })();
-    this.newsMediaPromises.set(batch.id, promise);
-    try {
-      return await promise;
-    } catch (error) {
-      this.newsMediaPromises.delete(batch.id);
-      throw error;
-    }
+    this.newsMediaPromises.set(key, promise);
+    try { return await promise; }
+    finally { this.newsMediaPromises.delete(key); }
   }
 
   async close() {

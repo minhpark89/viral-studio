@@ -93,7 +93,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
   const fonts = fontPaths(plan?.fontStyle);
   if (!fonts) throw new StudioError("The bundled news font is missing.", "NEWS_FONT_MISSING", 500);
   const duration = Math.max(12, Math.min(60, Number(presenter.duration) || 15));
-  const visualVariant = Math.max(1, Math.min(50, Number(plan?.visualVariant || plan?.variation || 1)));
+  const visualVariant = Math.max(1, Math.min(100, Number(plan?.visualVariant || plan?.variation || 1)));
   const segment = (duration + (usable.length - 1) * TRANSITION) / usable.length;
   const frames = Math.max(30, Math.round(segment * FPS));
   const tempRoot = path.join(store.root, "temp");

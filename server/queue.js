@@ -8,6 +8,7 @@ import { StudioError } from "./store.js";
 import { renderTimeline, validateTimeline } from "./render.js";
 import { generate } from "./providers/generate.js";
 import { renderNewsBroadcast } from "./news-render.js";
+import { isPageAvatar, isMcImage } from "../shared/output-media.js";
 
 function elapsedMs(job, finishedAt) {
   const started = Date.parse(job.startedAt || job.createdAt || "");
@@ -26,6 +27,7 @@ export class JobQueue {
     this.newsAutomation = options.newsAutomation || null;
     this.videoAutomation = options.videoAutomation || null;
     this.render = options.render || renderTimeline;
+    this.renderNews = options.renderNews || renderNewsBroadcast;
     this.now = options.now || Date.now;
     this.running = new Map();
     this.stopping = false;
@@ -155,7 +157,7 @@ export class JobQueue {
       if (account.provider !== "dreamface") throw new StudioError("News presenters use a DreamFace profile.");
     }
     const images = (imageMediaIds || []).map((id) => this.store.require("media", id));
-    if (!images.length || images.some((media) => media.kind !== "image")) throw new StudioError("News presenter needs verified editorial images.");
+    if (!images.length || images.some((media) => media.kind !== "image" || media.projectId && media.projectId !== projectId || isPageAvatar(media, this.store.state) || isMcImage(media, this.store.state) || media.id === plan?.avatarMediaId)) throw new StudioError("News presenter needs editorial images from the same project, separate from MC and Page avatars.", "INVALID_EDITORIAL_IMAGE", 422);
     return this.store.add("jobs", {
       type: "news",
       ...(production ? { production } : {}),
@@ -166,6 +168,7 @@ export class JobQueue {
         accountId,
         workflow: "avatar-news",
         newsPlan: structuredClone(plan),
+        avatarMediaId: plan?.avatarMediaId || null,
         imageMediaIds: [...imageMediaIds],
         presenterMediaId: null,
         scheduledAt: null,
@@ -186,6 +189,15 @@ export class JobQueue {
     const batches = new Set();
     let activeRenders = [...this.running.values()].filter((entry) => entry.type === "render").length;
     const renderConcurrency = Math.max(1, Math.min(4, Number(this.store.state.settings.renderConcurrency) || 1));
+    // News jobs move from provider work to this shared FFmpeg pool. They must
+    // obey the same limit as timeline exports and free the browser meanwhile.
+    for (const entry of this.running.values()) {
+      if (activeRenders >= renderConcurrency) break;
+      if (entry.type !== "render-wait" || entry.controller.signal.aborted) continue;
+      entry.type = "render";
+      activeRenders += 1;
+      entry.resumeRender?.();
+    }
     for (const job of this.store.state.jobs) {
       if (job.type !== "generate" || !job.payload.autoAssemble || !job.batchId) continue;
       if (batches.has(job.batchId)) continue;
@@ -199,7 +211,7 @@ export class JobQueue {
         Date.parse(job.payload.scheduledAt) > this.now()
       )
         continue;
-      if (job.type === "render") {
+      if (job.type === "render" || job.type === "news" && job.payload.presenterMediaId) {
         if (activeRenders >= renderConcurrency) continue;
         this.start(job, null);
         activeRenders += 1;
@@ -246,7 +258,7 @@ export class JobQueue {
     const controller = new AbortController();
     const entry = {
       controller,
-      type: job.type === "render" ? "render" : "provider",
+      type: job.type === "render" || job.type === "news" && job.payload.presenterMediaId ? "render" : "provider",
       accountId: account?.id,
       profileId: account?.profileId || account?.id,
     };
@@ -293,6 +305,9 @@ export class JobQueue {
                 controller.signal,
                 update,
               );
+      const running = this.running.get(job.id);
+      if (running) running.type = "postprocess";
+      this.tick();
       if (job.production) {
         this.store.patch("media", media.id, {
           production: job.production,
@@ -354,7 +369,7 @@ export class JobQueue {
         });
       }
     } finally {
-      if (account?.status === "busy")
+      if (account?.status === "busy" && (!this.running.has(job.id) || this.running.get(job.id).accountId === account.id))
         this.store.patch("accounts", account.id, {
           status: "ready",
           lastUsedAt: new Date().toISOString(),
@@ -380,8 +395,33 @@ export class JobQueue {
       this.store.patch("jobs", job.id, { payload: { ...job.payload, presenterMediaId: presenter.id } });
       job.payload.presenterMediaId = presenter.id;
     }
+    const entry = this.running.get(job.id);
+    if (entry && entry.type !== "render") {
+      // The presenter is persisted: a retry can render it without another
+      // provider request or a logged-in account. Release only our own lease.
+      if (account?.status === "busy" && entry.accountId === account.id) {
+        this.store.patch("accounts", account.id, {
+          status: "ready", lastUsedAt: new Date().toISOString(),
+          ...(account.rotationEnabled !== false ? { rotationDay: new Date().toISOString().slice(0, 10), rotationMode: account.rotationMode || "daily" } : {}),
+        });
+      }
+      entry.accountId = null;
+      entry.profileId = null;
+      entry.type = "render-wait";
+      update({ status: "preparing", stage: "Chờ lượt xuất video", progress: 0 });
+      await new Promise((resolve, reject) => {
+        const cleanup = () => { signal.removeEventListener("abort", abort); delete entry.resumeRender; };
+        const abort = () => { cleanup(); reject(new StudioError("Đã hủy tác vụ.", "CANCELLED")); };
+        entry.resumeRender = () => { cleanup(); resolve(); };
+        if (signal.aborted) return abort();
+        signal.addEventListener("abort", abort, { once: true });
+        this.tick();
+      });
+    }
+    signal.throwIfAborted();
     const images = (job.payload.imageMediaIds || []).map((id) => this.store.require("media", id));
-    return renderNewsBroadcast(this.store, job, presenter, job.payload.newsPlan, images, signal, update);
+    return this.renderNews(this.store, job, presenter, job.payload.newsPlan, images, signal,
+      (progress, stage) => update({ status: "rendering", progress, stage }));
   }
 
   originalAttempt(job) {

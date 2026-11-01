@@ -3,6 +3,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+// Windows display drivers can present a black GPU surface before Chromium's
+// first composed frame, even after ready-to-show. Use software compositing for
+// this desktop shell; FFmpeg encoding remains a separate process.
+if (process.platform === "win32") app.disableHardwareAcceleration();
+
 let studio;
 let window;
 let splash;
@@ -16,6 +21,8 @@ async function createSplash() {
   const firstPaint = new Promise(resolve=>splash.once('ready-to-show',resolve));
   await splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(splashHtml(app.getVersion()))}`);
   await firstPaint;
+  // Flush the rendered loading card before revealing its native window.
+  await splash.webContents.capturePage();
   if(!splash?.isDestroyed())splash.show();
 }
 
@@ -184,10 +191,18 @@ app
         },
       ]),
     );
-    let painted=false,uiReady=false;
-    const reveal=()=>{
-      if(!painted || !uiReady || window.isDestroyed() || closing)return;
-      window.show();closeSplash();
+    let painted=false,uiReady=false,revealing=false;
+    const reveal=async()=>{
+      if(!painted || !uiReady || revealing || window.isDestroyed() || closing)return;
+      revealing=true;
+      try {
+        await window.webContents.capturePage();
+        if(window.isDestroyed() || closing)return;
+        window.show();closeSplash();
+      } catch (error) {
+        revealing=false;
+        if(!closing) setSplashStatus("Chưa hiển thị được giao diện. Vui lòng mở lại ứng dụng.");
+      }
     };
     ipcMain.on('studio:ui-ready',(event)=>{
       if(event.sender!==window.webContents || event.senderFrame!==window.webContents.mainFrame || new URL(event.senderFrame.url).origin!==new URL(studio.address).origin)return;

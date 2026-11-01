@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   Film,
@@ -12,25 +12,26 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { api, bytes, timecode, clipFrom } from "../api.js";
-import { Button, Empty, MediaThumb, Modal, Uploader } from "../components.jsx";
-import { mediaOutputType as classifyMediaOutput } from "../../shared/output-media.js";
-
-function mediaOutputType(media) {
-  const explicit = String(media?.production?.contentType || media?.mediaType || "").toLowerCase();
-  if (explicit === "news" || explicit === "news-video" || /^news(?:\s|[·-])/i.test(String(media?.name || ""))) return "news";
-  if (explicit === "product" || explicit === "product-video") return "product";
-  return "other";
-}
+import { Button, Empty, Field, MediaThumb, Uploader } from "../components.jsx";
+import { mediaOutputType as classifyMediaOutput, mediaLibraryGroup, isPageAvatar, isNewsPresenterMedia } from "../../shared/output-media.js";
+import { outputContext, formatDateTime, sourceDateLabel } from "../../shared/source-context.js";
+import { MediaPreview } from "../MediaPreview.jsx";
 
 export function LibraryPage({ data, project, run, notify, navigate }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [preview, setPreview] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [group, setGroup] = useState('finished');
+  const [period, setPeriod] = useState('all');
+  useEffect(() => setSelected([]), [group, filter, search, project.id, period]);
+  const projectMedia = data.media.filter(item => item.projectId === project.id || !item.projectId);
   const media = data.media
     .filter(
       (item) =>
         (item.projectId === project.id || !item.projectId) &&
+        (group === 'all' || mediaLibraryGroup(item, data) === group) &&
+        (period === 'all' || Date.parse(outputContext(item, data).renderedAt) >= (period === 'today' ? new Date().setHours(0, 0, 0, 0) : Date.now() - 7 * 86400000)) &&
         (filter === "all" ||
           (filter === "exports"
             ? item.generated
@@ -40,7 +41,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
         item.name.toLowerCase().includes(search.toLowerCase()),
     )
     .slice()
-    .reverse();
+    .sort((a, b) => Date.parse(outputContext(b, data).renderedAt || 0) - Date.parse(outputContext(a, data).renderedAt || 0));
   const append = async (items) => {
     const timeline = structuredClone(project.timeline);
     for (const item of items) {
@@ -86,15 +87,16 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
     }
   };
   return (
-    <div className="page">
+    <div className="page library-page">
       <div className="page-heading">
         <div>
           <div className="eyebrow">MEDIA LIBRARY</div>
-          <h1>Mọi chất liệu, một nơi.</h1>
-          <p>Video AI, ảnh sản phẩm, nhạc và các bản xuất của dự án.</p>
+          <h1>Video và tư liệu theo mục đích.</h1>
+          <p>Video hoàn tất ở kho riêng. Ảnh MC, video MC thô và avatar Page có nhóm riêng để dễ quản lý.</p>
         </div>
         <Uploader compact projectId={project.id} notify={notify} />
       </div>
+      <div className="segmented library-groups" aria-label="Nhóm kho media">{[['finished','Video hoàn tất'],['assets','Tư liệu'],['mc-image','Ảnh MC'],['presenter','Video MC thô'],['page-avatar','Avatar Page'],['all','Tất cả media']].map(([value,label]) => <button key={value} className={group === value ? 'selected' : ''} aria-pressed={group === value} onClick={() => { setGroup(value); setFilter('all'); }}>{label} <b>{projectMedia.filter(item => value === 'all' || mediaLibraryGroup(item, data) === value).length}</b></button>)}</div>
       <div className="toolbar">
         <div className="segmented">
           {[
@@ -125,6 +127,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
           />
         </div>
       </div>
+      <div className="output-filters"><Field label="Ngày tạo video / media"><select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">Tất cả · mới nhất trước</option><option value="today">Hôm nay</option><option value="7d">7 ngày qua</option></select></Field><span className="muted small">{media.length} tệp trong nhóm đang chọn</span></div>
       {selected.length > 0 && (
         <div className="selection-toolbar">
           <span>Đã chọn {selected.length} tệp</span>
@@ -156,6 +159,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
             <article
               key={item.id}
               className={`media-card ${selected.includes(item.id) ? "selected" : ""}`}
+              data-media-id={item.id}
             >
               <div className="media-cover">
                 <button
@@ -208,6 +212,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
               </div>
               <div className="media-info">
                 <h3 title={item.name}>{item.name}</h3>
+                <div className="output-context"><span>{item.generated ? 'Hoàn tất' : 'Nhập lúc'}: {formatDateTime(outputContext(item, data).renderedAt)} · Mã {item.id.slice(0, 8)}</span>{outputContext(item, data).research && <span>{sourceDateLabel(outputContext(item, data).research)}</span>}{outputContext(item, data).variant && <span>Phiên bản {outputContext(item, data).variant}</span>}</div>
                 <p>
                   {item.kind === "audio"
                     ? "AUDIO"
@@ -223,7 +228,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
                     <Scissors size={14} />
                     Dựng video
                   </button>
-                  {item.kind !== "audio" && (
+                  {item.kind !== "audio" && !isPageAvatar(item, data) && !isNewsPresenterMedia(item, data.jobs) && (
                     <button
                       className="text-button"
                       onClick={() => handoffToContent(item)}
@@ -290,36 +295,12 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
         <Uploader projectId={project.id} notify={notify} />
       </div>
       {preview && (
-        <Modal title={preview.name} wide onClose={() => setPreview(null)}>
-          <div className="preview-modal">
-            {preview.kind === "video" ? (
-              <video src={preview.url} controls autoPlay />
-            ) : preview.kind === "audio" ? (
-              <audio src={preview.url} controls autoPlay />
-            ) : (
-              <img src={preview.url} alt={preview.name} />
-            )}
-          </div>
-          <div className="modal-actions">
-            {data.capabilities?.desktop && (
-              <Button onClick={() => run(
-                () => api("/desktop/reveal", { mediaId: preview.id }),
-                "Đã mở thư mục chứa tệp.",
-              )}>
-                <FolderOpen size={16} />
-                Mở thư mục
-              </Button>
-            )}
-            <a href={`${preview.url}?download=1`} className="button">
-              <Download size={16} />
-              Tải về
-            </a>
+        <MediaPreview media={preview} data={data} onClose={() => setPreview(null)}>
             <Button variant="primary" onClick={() => append([preview])}>
               <Scissors size={16} />
               Thêm vào trình dựng
             </Button>
-          </div>
-        </Modal>
+        </MediaPreview>
       )}
     </div>
   );

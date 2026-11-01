@@ -7,6 +7,7 @@ import { Store } from "../server/store.js";
 import { JobQueue } from "../server/queue.js";
 import { ProductionService } from "../server/production.js";
 import { createResearchService } from "../server/research.js";
+import { NEWS_CTA } from "../server/news-plan.js";
 
 async function fixture(t, options={}) {
   const root=path.resolve(".verification",`production-${randomUUID()}`);
@@ -39,6 +40,47 @@ test("a single product render is marked for automatic local assembly after Dream
   await service.worker;
   const job=store.require("jobs",batch.items[0].jobId);
   assert.equal(job.payload.autoAssemble,true);
+});
+
+test("retry queues all six news items after an overlong summary without duplicating jobs", async t => {
+  const summary = "Officials published the transport review, but the next decision remains unknown. ".repeat(8);
+  assert.ok(summary.length > 400);
+  const { store, project, service } = await fixture(t, {
+    llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.slice(0, 5).map(image => image.id) } : ({ headline: "City transport review remains open", summary, imageQueries: ["city transport"] }),
+    fetchImpl: async () => { throw new Error("No external requests expected"); },
+  });
+  const images = Array.from({ length: 5 }, (_, i) => store.add("media", { projectId: project.id, kind: "image", file: `editorial-${i}.jpg`, duration: 5 }));
+  const mc = store.add('media', { projectId: project.id, kind: 'image', mediaType: 'news-mc', file: 'mc.png' });
+  const research = store.add("researchResults", {
+    projectId: project.id, topic: "city transport", headline: "City transport review remains open", script: summary,
+    articles: [{ title: "Transport review", summary, source: "City News", url: "https://example.test/review" }],
+    imageMediaIds: images.map(m => m.id), warnings: [],
+  });
+  const batch = store.add("productionBatches", {
+    projectId: project.id,
+    request: { requestId: randomUUID(), projectId: project.id, contentType: "news", researchId: research.id, count: 6, engine: "dreamface", accountId: "auto", avatarMediaId: mc.id, fontStyle: "news" },
+    status: "failed", sources: research.articles, warnings: [],
+    items: Array.from({ length: 6 }, (_, index) => ({ index, status: "failed", jobId: null, researchId: research.id, error: "Too big: expected string to have <=400 characters", errorCode: "PREPARATION_FAILED" })),
+  });
+  service.retry(batch.id);
+  await service.worker;
+  assert.equal(batch.status, "queued", JSON.stringify(batch.items));
+  assert.equal(store.state.jobs.length, 6);
+  for (const item of batch.items) {
+    assert.equal(item.status, "queued");
+    assert.equal(item.error, null);
+    const job = store.require("jobs", item.jobId);
+    assert.ok(job.payload.newsPlan.narration.length <= 500);
+    assert.ok(job.payload.newsPlan.narration.endsWith(NEWS_CTA));
+    assert.equal(job.payload.avatarMediaId, mc.id);
+    assert.equal(job.payload.newsPlan.avatarMediaId, mc.id);
+    assert.ok(!job.payload.imageMediaIds.includes(mc.id));
+    assert.equal(job.production.presenterMode, "selected-image");
+    assert.equal(job.production.itemIndex, item.index);
+  }
+  service.retry(batch.id);
+  await service.worker;
+  assert.equal(store.state.jobs.length, 6);
 });
 
 test("retry prepares only failed items and restart recovers already-enqueued item IDs",async t=>{
@@ -126,7 +168,7 @@ test("news broadcast uses the research result selected in the UI", async t => {
         throw new Error("The selected research should be reused.");
       },
     },
-    llm: async () => ({
+    llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.map(image => image.id) } : ({
       headline: "A verified Washington development",
       summary: "A verified development is drawing attention today. Officials say more details are expected as the debate continues.",
       imageQueries: ["Washington development"],
@@ -236,7 +278,7 @@ test("news batches can use a supplied article URL without running keyword discov
 
 test("news batch rotates the same story's editorial visuals and records each variation", async t => {
   const { store, project, service } = await fixture(t, {
-    llm: async () => ({
+    llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.map(image => image.id) } : ({
       headline: "A verified development remains unresolved",
       summary: "Officials confirmed the development today, while the available report leaves the next step open for now.",
       imageQueries: ["city meeting", "official document", "public building"],

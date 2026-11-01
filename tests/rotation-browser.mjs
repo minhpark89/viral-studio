@@ -1,0 +1,138 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import http from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { chromium, _electron as electron } from 'playwright';
+import { Store } from '../server/store.js';
+import { startServer } from '../server/index.js';
+
+// Deterministic local RSS and LLM; no external requests or DreamFace credits.
+const source = http.createServer(async (req, res) => {
+  if (req.url === '/rss') {
+    res.setHeader('content-type', 'application/rss+xml');
+    res.end(`<rss><channel><title>City QA</title>${Array.from({ length: 100 }, (_, i) => `<item><title>City update ${String(i + 1).padStart(3, '0')}</title><description>Officials released a city transport review.</description><link>https://example.test/city/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join('')}</channel></rss>`);
+    return;
+  }
+  let raw = ''; for await (const chunk of req) raw += chunk;
+  const body = JSON.parse(raw || '{}');
+  const input = JSON.parse(body.messages?.find(message => message.role === 'user')?.content || '{}');
+  res.setHeader('content-type', 'application/json');
+  res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ headline: input.topic || 'City report', angle: 'Public review', script: 'Officials released the city report today. The findings concern local transport services. Residents can review the published findings. The next decision is still pending. Follow the verified report for updates.', imageQueries: ['city hall'] }) } }] }));
+});
+await new Promise(resolve => source.listen(0, '127.0.0.1', resolve));
+const fixtureUrl = `http://127.0.0.1:${source.address().port}`;
+const root = path.resolve('.verification', `rotation-ui-${Date.now()}`);
+const store = new Store(root); const project = store.createProject('100 news + MC rotation');
+store.state.settings.queuePaused = true;
+store.state.settings.llm = { ...store.state.settings.llm, enabled: true, endpoint: fixtureUrl + '/v1', model: 'fixture', timeoutSeconds: 10 };
+const hosts = ['Alice MC', 'Bob MC'].map(name => store.add('media', { projectId: project.id, kind: 'image', mediaType: 'news-mc', name, file: path.resolve('build/icon.png') }));
+store.save();
+let studio, application, browser, page;
+const report = { passed: false, root, checks: [], errors: [], requests: [] };
+try {
+  if (process.env.ROTATION_EXE) {
+    const env = { ...process.env, STUDIO_DATA_DIR: root }; delete env.ELECTRON_RUN_AS_NODE;
+    application = await electron.launch({ executablePath: path.resolve(process.env.ROTATION_EXE), args: [`--user-data-dir=${path.join(root, 'electron-profile')}`], env, timeout: 60000 });
+    page = await application.waitForEvent('window', { predicate: candidate => candidate.url().startsWith('http://127.0.0.1:'), timeout: 30000 }).catch(() => application.windows().find(candidate => candidate.url().startsWith('http://127.0.0.1:')));
+    report.version = await application.evaluate(({ app }) => app.getVersion());
+    assert.equal(report.version, '0.7.4');
+  } else {
+    studio = await startServer({ port: 0, dataDir: root });
+    browser = await chromium.launch({ headless: true });
+    page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    await page.goto(studio.address);
+  }
+  page.setDefaultTimeout(20000);
+  page.on('pageerror', error => report.errors.push(error.message));
+  const nav = name => page.locator('nav').getByRole('button', { name, exact: true });
+  await nav('Research & News').click();
+  await page.getByLabel('Chủ đề cần nghiên cứu', { exact: true }).fill('City');
+  await page.getByLabel('Số tin muốn research', { exact: true }).fill('100');
+  await page.getByLabel('RSS/Atom feeds riêng (tùy chọn)', { exact: true }).fill(fixtureUrl + '/rss');
+  await page.getByRole('button', { name: 'Bắt đầu research', exact: true }).click();
+  await page.getByRole('button', { name: 'Chọn 100 tin của lượt này', exact: true }).waitFor({ timeout: 90000 });
+  await page.getByText('Đã xong · City', { exact: true }).waitFor();
+  const snapshot = await page.evaluate(async () => (await fetch('/api/state')).json());
+  assert.equal(snapshot.researchResults.length, 100);
+  assert.equal(snapshot.researchResults.every(result => result.articles.length === 1 && result.contentSource === 'llm'), true);
+  assert.equal(new Set(snapshot.researchResults.map(result => result.articles[0].url)).size, 100);
+  await page.getByRole('button', { name: 'Chọn 100 tin của lượt này', exact: true }).click();
+  assert.equal(await page.getByLabel('Lượt research', { exact: true }).inputValue(), snapshot.researchBatches[0].id);
+  await page.getByRole('button', { name: 'Render 100 tin chưa có video', exact: true }).waitFor();
+  report.checks.push('Editable 100-story request researches 100 distinct sources through real local HTTP, persists progress and selects that research run');
+  const bulk = page.locator('.research-batch-mc');
+  await bulk.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
+  await bulk.getByLabel('Ảnh MC 1', { exact: true }).selectOption(hosts[0].id);
+  await bulk.getByLabel('Số video cho MC 1', { exact: true }).fill('10');
+  await bulk.getByRole('button', { name: 'Thêm MC vào vòng', exact: true }).click();
+  await bulk.getByLabel('Ảnh MC 2', { exact: true }).selectOption(hosts[1].id);
+  await bulk.getByLabel('Số video cho MC 2', { exact: true }).fill('20');
+  assert.match(await bulk.getByLabel('Thứ tự MC khi render').innerText(), /Video 1–10: Alice MC/);
+  assert.match(await bulk.getByLabel('Thứ tự MC khi render').innerText(), /Video 11–30: Bob MC/);
+  assert.match(await bulk.getByLabel('Thứ tự MC khi render').innerText(), /Video 91–100: Alice MC/);
+  await bulk.getByRole('button', { name: 'Đưa MC 2 lên', exact: true }).click();
+  assert.match(await bulk.getByLabel('Thứ tự MC khi render').innerText(), /Video 1–20: Bob MC/);
+  await bulk.getByRole('button', { name: 'Đưa MC 1 xuống', exact: true }).click();
+  await page.getByLabel('Tác vụ AI song song', { exact: true }).selectOption('3');
+  await page.getByLabel('Video render song song', { exact: true }).selectOption('2');
+  await bulk.screenshot({ path: path.join(root, 'rotation-desktop.png') });
+  await page.route('**/api/production/batches', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const request = route.request().postDataJSON(); report.requests.push(request);
+    await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: randomUUID(), items: Array.from({ length: request.count }, () => ({ status: 'pending' })) }) });
+  });
+  await page.getByRole('button', { name: 'Render 100 tin chưa có video', exact: true }).click();
+  await page.locator('.render-hub').waitFor();
+  const submitted = report.requests.at(-1);
+  assert.equal(submitted.count, 100);
+  assert.equal(new Set(submitted.researchIds).size, 100);
+  assert.deepEqual(submitted.mcRotation, [{ avatarMediaId: hosts[0].id, count: 10 }, { avatarMediaId: hosts[1].id, count: 20 }]);
+  assert.equal(submitted.avatarMediaId, null);
+  const savedSettings = await page.evaluate(async () => (await (await fetch('/api/state')).json()).settings);
+  assert.equal(savedSettings.concurrency, 3); assert.equal(savedSettings.renderConcurrency, 2);
+  report.checks.push('100-story render submits one ordered batch, repeats MC 10/20 across story boundaries and saves separate AI/render concurrency');
+  await page.getByLabel('Number of videos', { exact: true }).fill('100');
+  const production = page.locator('.production-panel');
+  await production.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
+  await production.getByLabel('Số video cho MC 1', { exact: true }).fill('25');
+  await production.getByRole('button', { name: 'Thêm MC vào vòng', exact: true }).click();
+  await production.getByLabel('Số video cho MC 2', { exact: true }).fill('25');
+  await page.getByLabel('News niche', { exact: true }).fill('City news');
+  await page.getByRole('button', { name: 'Create 100 videos', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.production-panel button[type="submit"]')?.disabled === false);
+  assert.equal(report.requests.at(-1).count, 100);
+  assert.deepEqual(report.requests.at(-1).mcRotation.map(entry => entry.count), [25, 25]);
+  report.checks.push('Direct News production supports 100 videos and MC rotation');
+  await nav('Research & News').click();
+  const card = page.locator('.research-result-card').first();
+  await card.getByLabel('Số video', { exact: true }).fill('100');
+  await card.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
+  await card.getByLabel('Số video cho MC 1', { exact: true }).fill('15');
+  await card.getByRole('button', { name: 'Thêm MC vào vòng', exact: true }).click();
+  await card.getByLabel('Số video cho MC 2', { exact: true }).fill('5');
+  await card.getByRole('button', { name: 'Render 100 videos', exact: true }).click();
+  await page.locator('.render-hub').waitFor();
+  assert.equal(report.requests.at(-1).count, 100);
+  assert.ok(report.requests.at(-1).researchId);
+  assert.deepEqual(report.requests.at(-1).mcRotation.map(entry => entry.count), [15, 5]);
+  report.checks.push('One research story can produce 100 versions with a 15/5 MC cycle');
+  await nav('Research & News').click();
+  await bulk.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
+  await bulk.getByRole('button', { name: 'Thêm MC vào vòng', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await bulk.scrollIntoViewIfNeeded();
+  await bulk.screenshot({ path: path.join(root, 'rotation-mobile.png') });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.deepEqual(report.errors, []);
+  report.checks.push('Rotation controls fit narrow screens without JavaScript errors');
+  report.passed = true;
+} catch (error) {
+  report.failure = error.stack; process.exitCode = 1;
+  await page?.screenshot({ path: path.join(root, 'failure.png'), fullPage: true }).catch(() => {});
+} finally {
+  await application?.close(); await browser?.close(); await studio?.close();
+  await new Promise(resolve => source.close(resolve));
+  await fs.writeFile('.verification/rotation-ui-report.json', JSON.stringify(report, null, 2));
+  console.log(JSON.stringify({ ...report, requests: report.requests.map(request => ({ count: request.count, researchCount: request.researchIds?.length, rotation: request.mcRotation })) }, null, 2));
+}

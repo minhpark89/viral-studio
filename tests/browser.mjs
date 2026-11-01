@@ -33,6 +33,7 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: 'Tạo dự án', exact: true }).click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
   await nav('Thư viện');
+  await page.getByLabel('Nhóm kho media').getByRole('button', { name: /^Tư liệu/ }).click();
   const sources = ['video có âm thanh.mp4', 'video im lặng.mp4', 'logo.png', 'nhạc.wav'];
   await page.locator('.upload-zone input').first().setInputFiles(sources.map((name) => path.join(fixture.root, name)));
   await page.getByRole('heading', { name: 'video có âm thanh.mp4', exact: true }).waitFor();

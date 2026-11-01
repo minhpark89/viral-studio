@@ -7,6 +7,26 @@ import { generateImageEndpoint, ensureNewsMcImage } from "../server/mc-image.js"
 import { Store } from "../server/store.js";
 import { newsPlanSchema } from "../server/news-plan.js";
 
+test("a selected batch MC bypasses image generation across different profiles", async t => {
+  const root = path.resolve(".verification", `mc-selected-${randomUUID()}`);
+  const store = new Store(root);
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = store.createProject("Selected MC");
+  const file = path.join(root, "media", "selected.png");
+  await fs.writeFile(file, "fixture");
+  const image = store.add("media", { kind: "image", projectId: project.id, file });
+  // No browser/session or endpoint is supplied: any attempt to create a new
+  // image would fail. The chosen media must win over both profiles' defaults.
+  for (let i = 0; i < 2; i++) {
+    const job = { id: randomUUID(), projectId: project.id, payload: { avatarMediaId: image.id }, logs: [] };
+    const result = await ensureNewsMcImage(store, null, job, { id: randomUUID(), avatarMediaId: randomUUID() }, {}, new AbortController().signal);
+    assert.equal(result.id, image.id);
+  }
+  await assert.rejects(ensureNewsMcImage(store, null, { projectId: randomUUID(), payload: { avatarMediaId: image.id } }, {}, {}, new AbortController().signal), error => error.code === "INVALID_AVATAR_IMAGE");
+  await fs.unlink(file);
+  await assert.rejects(ensureNewsMcImage(store, null, { projectId: project.id, payload: { avatarMediaId: image.id } }, {}, {}, new AbortController().signal), error => error.code === "ENOENT");
+});
+
 test("AI MC image generation accepts the Highlight-compatible base64 response without leaking credentials", async () => {
   const bytes = Buffer.alloc(1400, 7);
   let request;

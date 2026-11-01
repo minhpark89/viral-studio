@@ -8,7 +8,7 @@ import { binary, importMedia, probe, runProcess } from "../server/media.js";
 import { renderNewsBroadcast } from "../server/news-render.js";
 import { rankNewsImages, writeNewsNarration } from "../server/news-plan.js";
 
-test("news preparation bounds long source labels and falls back when image ranking is empty", async () => {
+test("news preparation bounds long source labels and respects empty image ranking", async () => {
   const research = {
     headline: "Trump rallies Michigan Republicans",
     script: "A verified report describes a political rally in Michigan.",
@@ -32,7 +32,7 @@ test("news preparation bounds long source labels and falls back when image ranki
     { id: "wikimedia:2", title: "Michigan supporters photo", query: "Michigan supporters", imageUrl: "https://upload.wikimedia.org/two.jpg" },
   ];
   const ranked = await rankNewsImages({}, research, candidates, { llm: async () => ({ selectedImageIds: [] }) });
-  assert.deepEqual(ranked.map((image) => image.id), ["wikimedia:1", "wikimedia:2"]);
+  assert.deepEqual(ranked, [], 'Rejected images must not be added back as a fallback');
 });
 
 test("news broadcast uses a narrated presenter, animated editorial images and the first-comment CTA", { timeout: 150000 }, async (t) => {

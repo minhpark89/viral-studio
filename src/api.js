@@ -19,9 +19,10 @@ export async function api(url, body, method = 'POST') {
   return data;
 }
 
-export async function uploadFiles(files, projectId) {
+export async function uploadFiles(files, projectId, mediaType = 'general') {
   const form = new FormData();
   form.append('projectId', projectId);
+  form.append('mediaType', mediaType);
   for (const file of files) form.append('files', file);
   const response = await fetch('/api/media/upload', { method: 'POST', body: form });
   const raw = await response.text();

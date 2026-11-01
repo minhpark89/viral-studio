@@ -69,6 +69,7 @@ export async function renderTimeline(store, job, signal, progress) {
   const directory = await fs.mkdtemp(path.join(tempRoot, "render-"));
   const ffmpeg = binary("ffmpeg", store.state.settings);
   const crf = { draft: 27, standard: 21, high: 17 }[timeline.quality];
+  const threads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 4)));
   const encoding = [
     "-c:v",
     "libx264",
@@ -87,7 +88,7 @@ export async function renderTimeline(store, job, signal, progress) {
     "-ac",
     "2",
     "-threads",
-    String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 4))),
+    threads,
   ];
   const baseArgs = [
     "-hide_banner",
@@ -173,7 +174,7 @@ export async function renderTimeline(store, job, signal, progress) {
       const filename = `clip-${index}.mp4`;
       args.push(
         "-filter_complex_threads",
-        "2",
+        threads,
         "-filter_complex",
         `${videoFilter};${audioFilter}`,
         "-map",
@@ -302,7 +303,7 @@ export async function renderTimeline(store, job, signal, progress) {
       );
       args.push(
         "-filter_complex_threads",
-        "2",
+        threads,
         "-filter_complex_script",
         "filters.txt",
       );
