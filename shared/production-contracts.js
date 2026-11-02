@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_NEWS_VIDEOS } from "./mc-rotation.js";
+import { newsDurationSchema, newsImageCountSchema } from './news-format.js';
 
 export const productionRequestSchema = z.object({
   requestId: z.string().uuid(),
@@ -25,6 +26,8 @@ export const productionRequestSchema = z.object({
   ratio: z.enum(["9:16", "16:9"]).default("9:16"),
   variationPolicy: z.enum(["visual-unique"]).default("visual-unique"),
   fontStyle: z.enum(["news", "viral", "minimal"]).default("news"),
+  newsDuration: newsDurationSchema.default('auto'),
+  newsImageCount: newsImageCountSchema.default('auto'),
 }).superRefine((value, context) => {
   if ((value.contentType === "news" || value.autoResearch) && value.topic.length < 2 && !value.sourceUrl)
     context.addIssue({code:"custom",path:["topic"],message:"Enter a news or product niche."});

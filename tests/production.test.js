@@ -15,7 +15,7 @@ async function fixture(t, options={}) {
   store.state.settings.llm.enabled=true;
   const project=store.createProject("Batch QA");
   const queue=new JobQueue(store,{}, {intervalMs:0});
-  const service=new ProductionService(store,queue,options);
+  const service=new ProductionService(store,queue,{imageSearch:async()=>({images:[],warnings:[]}),fetchImpl:async()=>{throw new Error('No external requests expected');},...options});
   t.after(async()=>{await service.close();await queue.close();await fs.rm(root,{recursive:true,force:true});});
   return {store,project,queue,service,root};
 }

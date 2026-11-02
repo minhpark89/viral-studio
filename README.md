@@ -4,13 +4,18 @@ Viral Studio is a Windows desktop app for research, AI video production, timelin
 
 ## Download for Windows
 
-- [Portable v0.7.7](https://github.com/minhpark89/viral-studio/releases/download/v0.7.7/Viral.Studio.0.7.7.exe)
-- [Installer v0.7.7](https://github.com/minhpark89/viral-studio/releases/download/v0.7.7/Viral.Studio.Setup.0.7.7.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.7/SHA256SUMS.txt)
+- [Portable v0.7.8](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/Viral.Studio.0.7.8.exe)
+- [Installer v0.7.8](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/Viral.Studio.Setup.0.7.8.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/SHA256SUMS.txt)
 
-The desktop app starts with a version/loading screen, uses the Viral Studio icon, and stores user data in `Viral Data`; an installed upgrade can read legacy `Dropship Data` automatically.
+The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 
 ## Included features
+
+- News clips summarize the source and direct viewers to the full article in the first comment. Choose automatic pacing (approximately 15–30 seconds) or a 15/20/30-second script target. Actual duration follows the voice; short results hold the closing CTA to reach at least 15 seconds. Queue distinguishes processing time from actual clip duration.
+- Choose up to 6, 8 or 10 illustrations, or let duration determine the target. Source galleries and captions, full-name/context queries, relevance ranking and duplicate checks improve variety. The app reports shortages instead of filling them with unrelated photos. Shot length stays at least about 2.5 seconds; actual image count is saved with the output.
+- Photos render individually, followed by pairwise transitions and final MC composition, limiting simultaneous decoders and filter memory. DreamFace MC image creation waits for page readiness and submission acknowledgement; retry can recover a matching submitted image without generating another one.
+- Avatar downloads must match the acknowledged task ID and narration/profile receipt. Existing videos with the same title cannot substitute for a new result. Exhausted free usage or insufficient credits reports a quota error; unconfirmed submissions are not automatically sent again.
 
 - News presenter fitting handles landscape, portrait, square, small and non-square-pixel inputs without the crop failure. Eight geometry checks and two full broadcast fixtures cover this release.
 - Portable owns its adjacent data/profile. Copied media paths are relinked with a snapshot backup; missing old-PC FFmpeg paths fall back to the bundled tools. New workspaces default to one export and two render threads.
@@ -20,7 +25,7 @@ The desktop app starts with a version/loading screen, uses the Viral Studio icon
 - Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
 - News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
 
-For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.7.md). For future debugging, start with the [v0.7.7 checkpoint](CHECKPOINT_2026-11-02_v0.7.7.md).
+For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.8.md). For future debugging, start with the [v0.7.8 checkpoint](CHECKPOINT_2026-11-02_v0.7.8.md).
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
 - Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
@@ -72,6 +77,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.7.7. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-02_v0.7.7.md` for implementation and verification details.
+This repository is the dedicated Viral Studio project. The current release is v0.7.8. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-02_v0.7.8.md` for implementation and verification details.
 
 

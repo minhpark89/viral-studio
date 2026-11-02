@@ -106,7 +106,7 @@ export async function runRenderSelfTest(directory) {
       const metadata = await probe(output, store.state.settings);
       assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
       assert.equal(metadata.videoCodec, "h264"); assert.equal(metadata.audioCodec, "aac");
-      assert.ok(Math.abs(metadata.duration - 13) < 0.25);
+      assert.ok(Math.abs(metadata.duration - 15) < 0.25);
       await runProcess(ffmpeg, ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"], { signal, timeout: 120000 });
       const volume = await runProcess(ffmpeg, ["-hide_banner", "-i", output, "-vn", "-af", "volumedetect", "-f", "null", "-"], { signal, timeout: 60000 });
       const meanVolumeDb = Number(/mean_volume:\s*([\d.-]+) dB/.exec(volume.stderr)?.[1]);

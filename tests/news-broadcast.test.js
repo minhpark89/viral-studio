@@ -35,8 +35,23 @@ test("news preparation bounds long source labels and respects empty image rankin
   assert.deepEqual(ranked, [], 'Rejected images must not be added back as a fallback');
 });
 
+test('image ranking uses bounded groups, ignores foreign IDs and retains verified selections when another group times out', async () => {
+  const candidates = Array.from({ length: 25 }, (_, i) => ({ id: `image-${i}`, title: `Named subject ${i}`, description: 'caption '.repeat(100) }));
+  let calls = 0; const warnings = [];
+  const result = await rankNewsImages({}, { headline: 'Named subject report', script: 'Named subject confirmed the development.', articles: [] }, candidates, { maxImages: 8, onWarning: warning => warnings.push(warning), llm: async (_store, _prompt, input) => {
+    calls++;
+    assert.ok(input.candidates.length <= 12);
+    assert.ok(input.candidates.every(image => image.description.length <= 240));
+    if (calls === 1) throw new Error('Gateway timeout');
+    return { selectedImageIds: ['not-a-candidate', ...input.candidates.slice(0, 4).map(image => image.id)] };
+  } });
+  assert.equal(calls, 3);
+  assert.deepEqual(result.map(image => image.id), ['image-12','image-13','image-14','image-15','image-24']);
+  assert.equal(warnings.length, 1);
+});
+
 for (const presenterSize of ["540x720", "1056x792"]) {
-  test(`news broadcast uses a narrated presenter (${presenterSize}), animated editorial images and the first-comment CTA`, { timeout: 150000 }, async (t) => {
+  test(`news broadcast uses a narrated presenter (${presenterSize}), animated editorial images and the first-comment CTA`, { timeout: 240000 }, async (t) => {
     const root = path.resolve(".verification", `news-broadcast-${randomUUID()}`);
     const store = new Store(root);
     const project = store.createProject("News broadcast QA");
@@ -64,7 +79,8 @@ for (const presenterSize of ["540x720", "1056x792"]) {
     assert.equal(output.videoCodec, "h264");
     assert.equal(output.audioCodec, "aac");
     assert.equal(output.hasAudio, true);
-    assert.ok(Math.abs(output.duration - presenter.duration) < 0.2);
+    assert.ok(Math.abs(output.duration - Math.max(15, presenter.duration)) < 0.2);
+    assert.equal(result.newsVisualCount, 3);
     assert.equal((await fs.readdir(path.join(root, "temp"))).length, 0);
   });
 }

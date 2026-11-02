@@ -8,7 +8,8 @@ import { JobQueue } from '../server/queue.js';
 import { ProductionService } from '../server/production.js';
 import { createNewsSourceCard } from '../server/news-render.js';
 import { parseWikimediaImages, searchImageQueries } from '../server/image-search.js';
-import { articleImageFromHtml, newsVisualQueries } from '../server/news-visuals.js';
+import { articleImageFromHtml, articleImagesFromHtml, newsVisualQueries } from '../server/news-visuals.js';
+import { newsImageCandidates } from '../server/image-search.js';
 import { productionPreparations } from '../shared/queue-preparation.js';
 
 test('Wikimedia candidates retain relevance order rather than ascending numeric page IDs', () => {
@@ -69,4 +70,35 @@ test('Queue includes unqueued failures and pending preparation, scoped to the pr
   const data = { jobs: [], productionBatches: [{ id: 'a', projectId: 'p', request: { topic: 'Coin', contentType: 'news' }, items: [{ index: 0, status: 'pending' }, { index: 1, status: 'failed', error: 'Could not write narration' }] }, { id: 'b', projectId: 'other', items: [{ index: 0, status: 'preparing' }] }] };
   const items = productionPreparations(data, 'p');
   assert.equal(items.length, 2); assert.equal(items[1].error, 'Could not write narration');
+});
+
+test('source galleries retain distinct photos and captions, excluding sidebar photos and small author images', () => {
+  const images = articleImagesFromHtml(`<meta property="og:image" content="/cover.jpg"><script type="application/ld+json">{"@type":"NewsArticle","image":[{"url":"/cover.jpg","caption":"Mayor at the council meeting"},{"url":"/city.jpg","caption":"The named city"}]}</script><article><figure><img src="/small.jpg" srcset="/small.jpg 400w, /hall.jpg 1200w"><figcaption>City hall in the named city</figcaption></figure><figure><img width="64" height="64" src="/author.jpg" alt="The author"></figure></article><aside><figure><img src="/unrelated.jpg" alt="A different event"></figure></aside>`, { id: 'story', title: 'Council report', url: 'https://news.test/story' });
+  assert.deepEqual(images.map(image => image.imageUrl), ['https://news.test/cover.jpg', 'https://news.test/city.jpg', 'https://news.test/hall.jpg']);
+  assert.equal(images[0].imageDescription, 'Mayor at the council meeting');
+  const candidates = newsImageCandidates(images);
+  assert.equal(new Set(candidates.map(image => image.id)).size, 3);
+  assert.equal(candidates[2].description, 'City hall in the named city');
+  assert.ok(newsVisualQueries({ headline: 'Salina report' }, { imageQueries: ['Donald Trump Salina Kansas'] }).includes('Donald Trump Salina Kansas'));
+});
+
+test('one usable source photo is supplemented with relevant context, preserving multiple images from the same page', async t => {
+  const root = path.resolve('.verification', 'more-news-images-' + randomUUID()); const store = new Store(root); const project = store.createProject('More photos');
+  const queue = new JobQueue(store, {}, { intervalMs: 0 }); let searches = 0;
+  const service = new ProductionService(store, queue, {
+    fetchImpl: async () => new Response('<article><figure><img src="/second.jpg" alt="The named town hall"></figure></article>', { headers: { 'content-type': 'text/html' } }),
+    imageSearch: async queries => { searches++; assert.ok(queries.every(q => q !== 'Donald')); return { images: Array.from({ length: 9 }, (_, i) => ({ id: `context-${i}`, title: `Named subject view ${i}`, imageUrl: `https://images.test/${i}.jpg` })), warnings: [] }; },
+    downloadImage: async ({ image }) => store.add('media', { projectId: project.id, kind: 'image', file: image.imageUrl, sourceUrl: image.pageUrl, sourceImageUrl: image.imageUrl, contentHash: image.id === 'context-1' ? 'context-0' : image.id }),
+  });
+  t.after(async () => { await service.close(); await queue.close(); await fs.rm(root, { recursive: true, force: true }); });
+  const research = store.add('researchResults', { projectId: project.id, headline: 'Named subject report', articles: [{ id: 'story', title: 'Named subject report', imageUrl: 'https://news.test/first.jpg', url: 'https://news.test/story' }] });
+  const batch = store.add('productionBatches', { projectId: project.id, request: {}, items: [], warnings: [] });
+  const result = await service.prepareNewsMedia(batch, { projectId: project.id, newsImageCount: 10 }, research, { headline: research.headline, narration: 'A confirmed development.', imageQueries: ['Donald Trump Salina Kansas'] }, async (_store, _prompt, input) => ({ selectedImageIds: input.candidates.map(image => image.id) }));
+  assert.equal(searches, 1);
+  assert.equal(result.visualMode, 'illustration');
+  assert.equal(result.diagnostics.target, 10);
+  assert.ok(result.imageMediaIds.length >= 8, 'Images beyond the old five-image cap survive preparation');
+  const selected = result.imageMediaIds.map(id => store.require('media', id));
+  assert.equal(new Set(selected.map(image => image.contentHash)).size, selected.length, 'Identical downloads do not occupy two shots');
+  assert.equal(selected.filter(image => image.sourceUrl === 'https://news.test/story').length, 2, 'A page URL is not a unique photo key');
 });

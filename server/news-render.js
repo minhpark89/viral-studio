@@ -3,11 +3,12 @@ import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { binary, importMedia, probe, runProcess } from "./media.js";
 import { StudioError, safeName } from "./store.js";
+import { NEWS_MIN_SECONDS, NEWS_MAX_IMAGES } from '../shared/news-format.js';
+import { renderNewsVisualTrack } from './news-motion.js';
 
 const FPS = 30;
 const WIDTH = 1080;
 const HEIGHT = 1920;
-const TRANSITION = 0.42;
 
 function fontPaths(style = "news") {
   const roots = [
@@ -120,14 +121,16 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
   if (!presenter?.file || presenter.kind !== "video" || !presenter.hasAudio) {
     throw new StudioError("DreamFace did not return a presenter video with audio.", "NEWS_PRESENTER_AUDIO_REQUIRED", 422);
   }
-  const usable = images.filter((item) => item?.file && item.kind === "image").slice(0, 5);
+  const presenterDuration = Number(presenter.duration);
+  if (!Number.isFinite(presenterDuration) || presenterDuration <= 0 || presenterDuration > 600) throw new StudioError('The presenter duration is invalid.', 'NEWS_PRESENTER_DURATION_INVALID', 422);
+  const duration = Math.max(NEWS_MIN_SECONDS, presenterDuration);
+  const padDuration = Math.max(0, duration - presenterDuration);
+  const usable = [...new Map(images.filter((item) => item?.file && item.kind === "image").map(item => [item.contentHash || item.file, item])).values()]
+    .slice(0, Math.min(NEWS_MAX_IMAGES, Math.max(1, Math.floor(duration / 2.5))));
   if (!usable.length) throw new StudioError("News broadcast needs at least one verified editorial image.", "NEWS_IMAGES_REQUIRED", 422);
   const fonts = fontPaths(plan?.fontStyle);
   if (!fonts) throw new StudioError("The bundled news font is missing.", "NEWS_FONT_MISSING", 500);
-  const duration = Math.max(12, Math.min(60, Number(presenter.duration) || 15));
   const visualVariant = Math.max(1, Math.min(100, Number(plan?.visualVariant || plan?.variation || 1)));
-  const segment = (duration + (usable.length - 1) * TRANSITION) / usable.length;
-  const frames = Math.max(30, Math.round(segment * FPS));
   const tempRoot = path.join(store.root, "temp");
   const directory = await fsPromises.mkdtemp(path.join(tempRoot, "news-broadcast-"));
   const ffmpeg = binary("ffmpeg", store.state.settings);
@@ -163,55 +166,17 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
     for (let index = 0; index < usableCaptionList.length; index += 1) {
       captionFiles.push(await writeText(directory, `caption-${index}.txt`, wrap(usableCaptionList[index], 31, 2).toUpperCase()));
     }
-    const args = ["-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-progress", "pipe:1", "-stats_period", "0.5"];
-    for (const image of usable) args.push("-loop", "1", "-i", image.file);
-    args.push("-i", presenter.file);
-    const presenterInput = usable.length;
+    const timeout = Math.max(120000, Number(store.state.settings.maxWaitMinutes || 30) * 60000);
+    const visualTrack = await renderNewsVisualTrack({ ffmpeg, directory, images: usable, duration, visualVariant, preset, visualMode: plan.visualMode, signal, timeout, update });
+    const args = ["-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-progress", "pipe:1", "-stats_period", "0.5", '-i', visualTrack, '-i', presenter.file];
+    const presenterInput = 1;
     const filters = [];
-    for (let index = 0; index < usable.length; index += 1) {
-      const variantSeed = (visualVariant - 1) * 5 + index;
-      const direction = variantSeed % 2 === 0 ? "in" : "out";
-      const zoomDelta = 0.105 + (variantSeed % 3) * 0.018;
-      const start = direction === "in" ? 1.018 + (variantSeed % 3) * 0.008 : 1.15 - (variantSeed % 3) * 0.008;
-      const end = direction === "in" ? start + zoomDelta : start - zoomDelta;
-      const zoom = `${start.toFixed(4)}${direction === "in" ? "+" : "-"}${Math.abs(end - start).toFixed(4)}*on/${Math.max(1, frames - 1)}`;
-      const panXValues = ["0.22", "0.48", "0.70", "0.36", "0.58"];
-      const panYValues = ["0.24", "0.42", "0.64", "0.76"];
-      const panX = `(iw-iw/zoom)*(${panXValues[variantSeed % panXValues.length]})`;
-      const panY = `(ih-ih/zoom)*(${panYValues[variantSeed % panYValues.length]})`;
-      filters.push(`[${index}:v]split=2[bgsrc${index}][herosrc${index}]`);
-      filters.push(`[bgsrc${index}]scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,zoompan=z='${zoom}':x='${panX}':y='${panY}':d=${frames}:s=${WIDTH}x${HEIGHT}:fps=${FPS},setsar=1,format=yuv420p[shot${index}]`);
-      // The editorial image is fitted inside a dedicated card. This keeps the
-      // complete source photo visible while the cropped branch only supplies
-      // the moving full-frame background.
-      filters.push(`[herosrc${index}]scale=920:860:force_original_aspect_ratio=decrease,pad=920:860:(ow-iw)/2:(oh-ih)/2:color=#0b1629,zoompan=z='1':x='0':y='0':d=${frames}:s=920x860:fps=${FPS},setsar=1,format=yuv420p[hero${index}]`);
-    }
-    let background = "shot0";
-    let backgroundDuration = segment;
-    let editorial = "hero0";
-    let editorialDuration = segment;
-    for (let index = 1; index < usable.length; index += 1) {
-      const output = `mix${index}`;
-      filters.push(`[${background}][shot${index}]xfade=transition=fade:duration=${TRANSITION}:offset=${Math.max(0, backgroundDuration - TRANSITION).toFixed(3)}[${output}]`);
-      background = output;
-      backgroundDuration += segment - TRANSITION;
-      const editorialOutput = `heroMix${index}`;
-      filters.push(`[${editorial}][hero${index}]xfade=transition=fade:duration=${TRANSITION}:offset=${Math.max(0, editorialDuration - TRANSITION).toFixed(3)}[${editorialOutput}]`);
-      editorial = editorialOutput;
-      editorialDuration += segment - TRANSITION;
-    }
     const pFilter = presenterFilter(342, 384);
-    filters.push(`[${presenterInput}:v]${pFilter},setsar=1,format=rgba[mc]`);
-    filters.push(`[${presenterInput}:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11[voice]`);
-    filters.push(`[${background}]drawbox=x=0:y=0:w=iw:h=ih:color=${preset.dark}@0.30:t=fill[dim]`);
-    filters.push(`[dim]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:expansion=none:fontcolor=white:fontsize=31:x=78:y=62[header]`);
+    filters.push(`[${presenterInput}:v]${pFilter},setsar=1,format=rgba,tpad=stop_mode=clone:stop_duration=${padDuration.toFixed(3)}[mc]`);
+    filters.push(`[${presenterInput}:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11,apad=pad_dur=${padDuration.toFixed(3)}[voice]`);
+    filters.push(`[0:v]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:expansion=none:fontcolor=white:fontsize=31:x=78:y=62[header]`);
     filters.push(`[header]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill,drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58[headerCta]`);
-    filters.push(`[headerCta]drawbox=x=48:y=140:w=984:h=900:color=${preset.panel}@0.98:t=fill[heroCard]`);
-    filters.push(`[heroCard][${editorial}]overlay=x=80:y=160:enable='lt(t,${duration.toFixed(3)})'[heroPlaced]`);
-    const visualLabel = ['illustration', 'source-card'].includes(plan.visualMode)
-      ? ',drawbox=x=96:y=964:w=888:h=52:color=#071526@0.94:t=fill,drawtext=fontfile=news-label.ttf:textfile=visual-label.txt:expansion=none:fontcolor=white:fontsize=26:x=118:y=978' : '';
-    filters.push(`[heroPlaced]drawbox=x=48:y=140:w=984:h=900:color=#ffffff@0.74:t=4${visualLabel}[layout]`);
-    filters.push(`[layout]drawbox=x=48:y=1068:w=390:h=420:color=${preset.dark}@0.96:t=fill[mcframe]`);
+    filters.push(`[headerCta]drawbox=x=48:y=1068:w=390:h=420:color=${preset.dark}@0.96:t=fill[mcframe]`);
     filters.push(`[mcframe][mc]overlay=x=72:y=1092:enable='lt(t,${duration.toFixed(3)})'[presenter]`);
     filters.push(`[presenter]drawbox=x=48:y=1068:w=390:h=52:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=presenter-label.txt:expansion=none:fontcolor=white:fontsize=27:x=72:y=1082:enable='lt(t,${duration.toFixed(3)})'[label]`);
     filters.push(`[label]drawbox=x=460:y=1068:w=572:h=250:color=${preset.dark}@0.94:t=fill,drawtext=fontfile=news-label.ttf:textfile=caption-label.txt:expansion=none:fontcolor=${preset.cta}:fontsize=24:x=488:y=1096:enable='lt(t,${duration.toFixed(3)})'[captionPanel]`);
@@ -229,14 +194,14 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
     }
     const ctaStart = Math.max(0, duration - 4.2);
     filters.push(`[${captionVideo}]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill:enable='gte(t,${ctaStart.toFixed(3)})',drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58:enable='gte(t,${ctaStart.toFixed(3)})'[outv]`);
-    const renderThreads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 2)));
+    const renderThreads = String(Math.max(1, Math.min(4, Number(store.state.settings.renderThreads) || 2)));
     args.push("-filter_complex_threads", renderThreads, "-filter_complex", filters.join(";"), "-map", "[outv]", "-map", "[voice]", "-t", duration.toFixed(3), "-r", String(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", renderThreads, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "output.mp4");
-    update(8, "Building smooth news transitions");
+    update(46, "Đang ghép MC, lời đọc và đồ họa");
     await runProcess(ffmpeg, args, {
       signal,
       cwd: directory,
       timeout: Math.max(120000, Number(store.state.settings.maxWaitMinutes || 30) * 60000),
-      onLine: (line) => reportFromProgress(line, duration, update, "Rendering broadcast graphics", 8, 86),
+      onLine: (line) => reportFromProgress(line, duration, update, "Rendering broadcast graphics", 46, 48),
     });
     signal.throwIfAborted();
     const output = path.join(directory, "output.mp4");
@@ -245,7 +210,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       throw new StudioError("The broadcast output failed its audio, frame size or duration check.", "NEWS_OUTPUT_VALIDATION_FAILED", 500);
     }
     update(98, "Validating news broadcast");
-    return await importMedia(store, output, {
+    const media = await importMedia(store, output, {
       projectId: job.projectId,
       name: `${safeName(job.name || "News broadcast")}.mp4`,
       generated: true,
@@ -253,6 +218,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       jobId: job.id,
       mediaType: "news-video",
     });
+    return store.patch('media', media.id, { newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto' });
   } finally {
     const resolved = path.resolve(directory);
     if (resolved.startsWith(path.resolve(tempRoot) + path.sep)) await fsPromises.rm(resolved, { recursive: true, force: true }).catch(() => {});

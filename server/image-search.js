@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { importMedia } from "./media.js";
 
 export const WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php";
@@ -13,7 +13,7 @@ export function newsImageCandidates(articles,images=[]) {
   const sourceImages=(articles||[]).filter(article=>article.imageUrl&&isPublicImageUrl(article.imageUrl)).map(article=>{
     const url=new URL(article.imageUrl);
     if(url.hostname==="ichef.bbci.co.uk")url.pathname=url.pathname.replace(/\/standard\/\d+\//,"/standard/1280/");
-    return {id:`article:${article.id}`,query:article.title,title:article.title,imageUrl:url.toString(),pageUrl:article.url,width:0,height:0,mime:"image/jpeg",license:"",attribution:article.source||""};
+    return {id:`article:${article.id || 'source'}:${createHash('sha256').update(url.toString()).digest('hex').slice(0, 12)}`,query:article.title,title:article.title,description:article.imageDescription||'',publishedAt:article.publishedAt,imageUrl:url.toString(),pageUrl:article.url,width:0,height:0,mime:"image/jpeg",license:"",attribution:article.source||""};
   });
   const seen=new Set();
   return [...sourceImages,...editorialImages(images)].filter(image=>{if(seen.has(image.imageUrl))return false;seen.add(image.imageUrl);return true;});
@@ -142,7 +142,10 @@ export async function searchImageQueries(queries, { fetchImpl = globalThis.fetch
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, uniqueQueries.length || 1) }, () => worker()));
-  const images=results.flatMap(items=>items||[]);
+  // Round-robin the query results so the first subject cannot crowd out the
+  // named place and other subjects before the story's ranking pass.
+  const images=[];
+  for (let rank = 0; rank < maxResultsPerQuery; rank++) for (const items of results) if (items?.[rank]) images.push(items[rank]);
   const seen = new Set();
   const deduped = images.filter((image) => {
     if (seen.has(image.imageUrl)) return false;
@@ -179,6 +182,7 @@ export async function downloadImageAsset({ image, store, projectId, fetchImpl = 
   if (Number(response.headers?.get?.('content-length')) > MAX_IMAGE_BYTES) { await response.body?.cancel(); throw new Error('Ảnh vượt quá giới hạn 20 MB.'); }
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error("Ảnh vượt quá giới hạn 20 MB.");
+  const contentHash = createHash('sha256').update(bytes).digest('hex');
   const extension = extensionFor(sourceUrl, contentType);
   const temporary = path.join(store.root, "temp", `${randomUUID()}${extension}`);
   await fs.writeFile(temporary, bytes, { flag: "wx" });
@@ -189,7 +193,7 @@ export async function downloadImageAsset({ image, store, projectId, fetchImpl = 
       move: true,
       mediaType: "news-editorial",
     });
-    return store.patch("media",media.id,{sourceUrl:image.pageUrl||image.imageUrl,attribution:image.attribution||"",license:image.license||""});
+    return store.patch("media",media.id,{sourceUrl:image.pageUrl||image.imageUrl,sourceImageUrl:image.imageUrl,imageDescription:image.description||'',contentHash,attribution:image.attribution||"",license:image.license||""});
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => {});
   }

@@ -6,6 +6,7 @@ import { providers } from "../../shared/contracts.js";
 import { importMedia, probe, binary, runProcess } from "../media.js";
 import { StudioError } from "../store.js";
 import { ensureNewsMcImage } from "../mc-image.js";
+import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
 import { getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
 import {
   CAPTCHA_BROWSER_HOOK,
@@ -297,15 +298,6 @@ function collectUrls(value, result = [], depth = 0) {
     for (const item of Object.values(value)) collectUrls(item, result, depth + 1);
   }
   return result;
-}
-
-function isLikelyVideoResultUrl(value) {
-  const url = String(value || "");
-  if (!/^(?:https?:|blob:)/i.test(url)) return false;
-  // Creations exposes poster/thumbnail images under the same /work/ path as
-  // the video. Never send those image URLs to ffprobe as presenter videos.
-  if (/(?:_image|thumbnail|poster)\.(?:jpe?g|png|webp)(?:[?#]|$)/i.test(url)) return false;
-  return /(?:\.mp4|\.webm|\.mov)(?:[?#]|$)|blob:|download|video|media|\/work(?:\/|[?#]|$)/i.test(url);
 }
 
 async function importBrowserDownload(store, job, download, signal) {
@@ -883,6 +875,7 @@ export class DreamFaceProvider {
 
   /** Create a narrated presenter clip in DreamFace's Avatar tool. */
   async generateNewsAvatar(store, job, account, signal, update) {
+    try {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         return await this.generateNewsAvatarOnce(store, job, account, signal, update);
@@ -898,50 +891,28 @@ export class DreamFaceProvider {
       }
     }
     throw providerError("DreamFace presenter could not be reopened.", "PROVIDER_NOT_READY");
+    } finally {
+      // A finished/failed background task must not keep a Chrome profile in
+      // memory while FFmpeg renders or the account pool moves to other PCs.
+      // Leave a visible session explicitly opened by the user alone.
+      if (this.sessions.get(accountId(account))?.visible === false) await this.close(account);
+    }
   }
 
   async recoverExistingNewsAvatar(store, job, account, signal, update) {
     const session = await this.open(account, { visible: false });
     const state = await this.inspect(account, session, { navigate: true });
-    if (state.status !== "ready") {
-      throw providerError(state.message, state.status === "verification" ? "VERIFICATION" : "NEEDS_LOGIN", 401);
-    }
-    const { page } = session;
-    const plan = job.payload.newsPlan || {};
-    const terms = [...new Set(`${plan.headline || ""} ${plan.narration || ""}`
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .match(/[a-z0-9]{5,}/g) || [])];
-    await page.goto("https://www.dreamfaceapp.com/creation", { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(1500);
-    const cards = page.locator('div[class*="_card_"]');
-    for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
-      signal.throwIfAborted();
-      const card = cards.nth(index);
-      const text = `${await card.innerText().catch(() => "")} ${await card.locator("img").first().getAttribute("alt").catch(() => "")}`
-        .toLowerCase()
-        .normalize("NFKD")
-        .replace(/[\u0300-\u036f]/g, "");
-      if (!terms.some((term) => text.includes(term))) continue;
-      const downloadButton = card.locator("button").first();
-      if (!await downloadButton.count()) continue;
-      await card.hover().catch(() => {});
-      const downloadPromise = page.waitForEvent("download", { timeout: 12000 }).catch(() => null);
-      await downloadButton.click({ timeout: 8000 }).catch(() => {});
-      const download = await downloadPromise;
-      if (!download) continue;
-      update({ status: "recovering", workflow: "avatar-news", progress: 82 });
-      const media = await importBrowserDownload(store, job, download, signal);
-      if (!media.hasAudio) throw providerError("DreamFace Avatar result has no audio track.", "NEWS_PRESENTER_AUDIO_REQUIRED", 422);
-      store.log(job, `Recovered the submitted DreamFace Avatar result from Creations: ${media.width}x${media.height}, ${media.duration.toFixed(2)} seconds.`);
-      return media;
-    }
-    throw providerError("No completed DreamFace Avatar result matching this submitted News job was found in Creations.", "PROVIDER_RESULT_NOT_FOUND", 404);
+    if (state.status !== "ready") throw providerError(state.message, state.status === "verification" ? "VERIFICATION" : "NEEDS_LOGIN", 401);
+    return waitForNewsAvatar({ page: session.page, narration: job.payload.newsPlan?.narration,
+      profileId: accountId(account), receipt: job.payload.newsAvatarRequest, signal, update,
+      timeoutMs: Math.max(2, Number(store.state.settings.maxWaitMinutes || 30)) * 60000,
+      pollMs: Math.max(8000, Number(store.state.settings.pollSeconds || 5) * 2000),
+      download: download => importBrowserDownload(store, job, download, signal) });
   }
 
   async generateNewsAvatarOnce(store, job, account, signal, update) {
-    if (job.payload.recoverSubmitted) return this.recoverExistingNewsAvatar(store, job, account, signal, update);
+    if (job.payload.newsAvatarRequest?.id || job.payload.recoverSubmitted) return this.recoverExistingNewsAvatar(store, job, account, signal, update);
+    if (job.payload.newsAvatarRequest?.submittedAt && !job.payload.newsAvatarRequest.rejected) throw providerError("The previous MC submission is unconfirmed. Check Creations before submitting again.", "PROVIDER_SUBMISSION_UNCONFIRMED");
     const session = await this.open(account, { visible: false });
     const state = await this.inspect(account, session, { navigate: true });
     if (state.status !== "ready") {
@@ -949,13 +920,6 @@ export class DreamFaceProvider {
     }
     const { page } = session;
     const plan = job.payload.newsPlan || {};
-    const oldCreationImages = new Set();
-    // Snapshot existing creation thumbnails before submitting so polling never
-    // downloads an older work when a profile already has history.
-    await page.goto("https://www.dreamfaceapp.com/creation", { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
-    await page.waitForTimeout(700);
-    for (const url of await page.locator("img").evaluateAll((nodes) => nodes.map((node) => node.currentSrc || node.src).filter(Boolean)).catch(() => [])) oldCreationImages.add(url);
-
     // Avatar 3.0 Fast needs a processed still. Generate one original AI MC
     // automatically, reuse it for this DreamFace profile, and fall back to the
     // DreamFace Image tool only when the configured Highlight-compatible image
@@ -966,6 +930,9 @@ export class DreamFaceProvider {
     await page.goto("https://www.dreamfaceapp.com/avatar", { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.getByText("More", { exact: true }).first().waitFor({ state: "visible", timeout: 30000 });
     await page.waitForTimeout(1800);
+    // A profile can remember its previous Audio tab on another PC/session.
+    const textTab = page.getByText('Text', { exact: true }).first();
+    if (await textTab.isVisible().catch(() => false)) await textTab.click();
     await page.getByPlaceholder("Type or paste text here").waitFor({ state: "visible", timeout: 30000 });
     // Upload the saved still first. This unlocks the Avatar 3.0 family in the
     // current DreamFace UI and makes the selected effect explicit and testable.
@@ -975,7 +942,9 @@ export class DreamFaceProvider {
     await page.waitForTimeout(1800);
 
     const prompt = page.getByPlaceholder("Type or paste text here");
-    await prompt.fill(String(plan.narration || "").slice(0, 500));
+    const narration = String(plan.narration || '').trim();
+    if (!narration || narration.length > 500) throw providerError('The news narration must fit within 500 characters including the full CTA.', 'NEWS_SCRIPT_TOO_LONG', 422);
+    await prompt.fill(narration);
     const effect = page.getByRole("button", { name: /Animate Effect/i }).first();
     if (!await effect.isVisible().catch(() => false)) throw providerError("DreamFace Animate Effect is unavailable.", "PROVIDER_NOT_READY");
     await effect.click();
@@ -1003,15 +972,13 @@ export class DreamFaceProvider {
     const selectedResolution = resolutionChoice?.label || "";
     if (!selectedResolutionRadio) throw providerError("DreamFace không có độ phân giải khả dụng cho profile này.", "PROVIDER_NOT_READY");
     await selectedResolutionRadio.click();
-    update({ status: "configured", workflow: "avatar-news", effect: selectedEffect, resolution: selectedResolution, quota: "Free Daily", progress: 3 });
-    const baseline = new Set(await page.locator("video, video source").evaluateAll((nodes) => nodes.map((node) => node.currentSrc || node.src).filter(Boolean)));
-    for (const url of oldCreationImages) baseline.add(url);
+    update({ status: "configured", workflow: "avatar-news", effect: selectedEffect, resolution: selectedResolution, progress: 3 });
     let generate = null;
     await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => /generate|free\s+daily/i.test(button.innerText.trim())), null, { timeout: 30000 }).catch(() => {});
     generate = await findGenerateButton(page);
     if (!generate) throw providerError("DreamFace Avatar chưa có nút Generate khả dụng. Hãy kiểm tra effect, quota và ảnh MC.", "PROVIDER_NOT_READY");
-    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => /generate|free\s+daily/i.test(button.innerText.trim()) && !button.disabled), null, { timeout: 30000 }).catch(() => {
-      const body = document.body?.innerText || "";
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => /generate|free\s+daily/i.test(button.innerText.trim()) && !button.disabled), null, { timeout: 30000 }).catch(async () => {
+      const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
       if (/\b0\s+Free\b|not enough credits|insufficient credits|daily free.*limit/i.test(body)) {
         throw providerError("DreamFace has no free generation credit left on this profile today.", "PROVIDER_QUOTA");
       }
@@ -1019,128 +986,26 @@ export class DreamFaceProvider {
     });
     generate = await findGenerateButton(page);
     if (!generate || await generate.isDisabled().catch(() => true)) throw providerError("DreamFace Avatar chưa mở nút Generate khả dụng.", "PROVIDER_NOT_READY");
-    update({ status: "submitting", submittedAt: new Date().toISOString(), workflow: "avatar-news", progress: 5 });
-    const downloadCandidates = new Set();
-    const responseListener = async (response) => {
-      // Register before clicking Generate.  DreamFace can return the work
-      // result in the submit response and that response is otherwise lost
-      // before the old listener was attached.
-      if (!/task|work|creation|result|video|download/i.test(response.url())) return;
-      try {
-        const type = String(response.headers()["content-type"] || "");
-        if (type.includes("json")) for (const url of collectUrls(await response.json())) if (isLikelyVideoResultUrl(url)) downloadCandidates.add(url);
-      } catch {}
-    };
-    page.on("response", responseListener);
-    const browserDownloads = [];
-    const downloadListener = (download) => browserDownloads.push(download);
-    page.on("download", downloadListener);
-    await Promise.allSettled([
-      page.waitForURL(/\/creation/, { waitUntil: "domcontentloaded", timeout: 20000 }),
-      generate.click(),
-    ]);
-    store.log(job, "DreamFace Avatar submitted; waiting for the new Creations result.");
-    update({ status: "rendering", workflow: "avatar-news", progress: 18, elapsedSeconds: 0 });
-    // The Avatar composer sometimes keeps the same route after submission.
-    // Explicitly open Creations so polling observes the server-side result in
-    // both route behaviours.
-    await page.goto("https://www.dreamfaceapp.com/creation", { waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
-    await page.waitForTimeout(1200);
-    const deadline = Date.now() + Math.max(2, Number(store.state.settings.maxWaitMinutes || 30)) * 60000;
-    const started = Date.now();
-    let nextRefresh = 0;
-    while (Date.now() < deadline) {
-      signal.throwIfAborted();
-      for (const download of browserDownloads.splice(0)) {
-        update({ status: "downloading", workflow: "avatar-news", progress: 82 });
-        try {
-          const media = await importBrowserDownload(store, job, download, signal);
-          if (!media.hasAudio) throw providerError("DreamFace Avatar result has no audio track.", "NEWS_PRESENTER_AUDIO_REQUIRED", 422);
-          store.log(job, `DreamFace Avatar browser download received: ${media.width}x${media.height}, ${media.duration.toFixed(2)} seconds.`);
-          page.off("response", responseListener);
-          page.off("download", downloadListener);
-          return media;
-        } catch (error) {
-          store.log(job, `DreamFace browser download is not a valid presenter yet (${error.message}).`);
-        }
-      }
-      if (Date.now() >= nextRefresh) {
-        // Creations is a client-rendered list and does not always subscribe to
-        // the generation stream. Refreshing it periodically is what makes a
-        // completed card visible after a long provider render.
-        await page.reload({ waitUntil: "domcontentloaded", timeout: 45000 }).catch(() => {});
-        nextRefresh = Date.now() + Math.max(8000, Number(store.state.settings.pollSeconds || 5) * 2000);
-      }
-      const body = await page.locator("body").innerText().catch(() => "");
-      if (/verify you are human|confirm you.re not a robot|captcha/i.test(body)) throw providerError("DreamFace requires verification. Complete it in the open account, then check the profile.", "VERIFICATION", 401);
-      if (/not enough credits|insufficient credits|failed to generate|daily free.*limit/i.test(body)) throw providerError("DreamFace reported that this profile has no available generation credit.", "PROVIDER_QUOTA");
-      // The Creations page has changed its hashed card class several times.
-      // Look for fresh media elements and their nearest action container rather
-      // than depending on one private CSS class. The response listener also
-      // catches the official download URL returned by the site.
-      const mediaNodes = page.locator("img, video, video source");
-      for (let mediaIndex = 0; mediaIndex < await mediaNodes.count().catch(() => 0); mediaIndex += 1) {
-        const mediaNode = mediaNodes.nth(mediaIndex);
-        const imageUrl = await mediaNode.evaluate((node) => node.currentSrc || node.src || node.getAttribute("poster") || "").catch(() => "");
-        if (!imageUrl || baseline.has(imageUrl)) continue;
-        const isVideoNode = await mediaNode.evaluate((node) => node.tagName === "VIDEO" || node.tagName === "SOURCE").catch(() => false);
-        if (isVideoNode && /^(?:blob:|https?:)/i.test(imageUrl)) downloadCandidates.add(imageUrl);
-        let container = mediaNode;
-        let buttons = null;
-        for (let level = 0; level < 6; level += 1) {
-          const candidate = container.locator("xpath=..");
-          const candidateButtons = candidate.locator('button, [role="button"], a');
-          if (await candidateButtons.count().catch(() => 0)) {
-            container = candidate;
-            buttons = candidateButtons;
-            break;
-          }
-          container = candidate;
-        }
-        if (!buttons) continue;
-        // DreamFace keeps card actions hidden until hover. Hover the nearest
-        // action container before clicking its official Download control.
-        await container.scrollIntoViewIfNeeded().catch(() => {});
-        await container.hover({ timeout: 5000 }).catch(() => {});
-        const downloadButton = await firstVisible([
-          buttons.filter({ hasText: /download|save|export/i }),
-          buttons.filter({ has: container.locator('[aria-label*="download" i], [title*="download" i]') }),
-          container.getByRole("button", { name: /download|save|export/i }),
-          container.locator('[aria-label*="download" i], [title*="download" i]'),
-          // The current Creations card renders the official download action
-          // as an icon-only first button; the second button is delete.
-          buttons.first(),
-        ]);
-        if (downloadButton) {
-          await downloadButton.click({ timeout: 5000 }).catch(() => {});
-          await page.waitForTimeout(1200);
-        }
-      }
-      for (const href of await page.locator('a[href]').evaluateAll((nodes) => nodes.map((node) => node.href).filter(Boolean)).catch(() => [])) {
-        if (isLikelyVideoResultUrl(href) && !baseline.has(href)) downloadCandidates.add(href);
-      }
-      for (const url of [...downloadCandidates]) {
-        downloadCandidates.delete(url);
-        update({ status: "downloading", workflow: "avatar-news", progress: 82 });
-        try {
-          const media = await downloadResult(store, session, job, url, signal);
-          if (!media.hasAudio) throw providerError("DreamFace Avatar result has no audio track.", "NEWS_PRESENTER_AUDIO_REQUIRED", 422);
-          store.log(job, `DreamFace Avatar presenter ready: ${media.width}×${media.height}, ${media.duration.toFixed(2)} seconds.`);
-          page.off("response", responseListener);
-          return media;
-        } catch (error) {
-          store.log(job, `DreamFace Avatar result is not downloadable yet (${error.message}).`);
-        }
-      }
-      update({ elapsedSeconds: Math.floor((Date.now() - started) / 1000), progress: 20 + Math.min(55, Math.floor((Date.now() - started) / 1000)) });
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(resolve, Math.max(3000, Number(store.state.settings.pollSeconds || 5) * 1000));
-        signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason || new Error("aborted")); }, { once: true });
-      });
-    }
-    page.off("response", responseListener);
-    page.off("download", downloadListener);
-    throw providerError("Timed out waiting for the DreamFace Avatar presenter. Check Creations before retrying.", "PROVIDER_TIMEOUT", 408);
+    update({ quota: (await generate.innerText()).trim() });
+    // Model/image hydration can replace a previously filled composer. Check
+    // the exact narration immediately before submission, after all controls.
+    if (await prompt.inputValue() !== narration) await prompt.fill(narration);
+    await page.waitForTimeout(250);
+    if (await prompt.inputValue() !== narration) throw providerError("DreamFace reset the news narration before submission. Please retry.", "PROVIDER_NOT_READY");
+    update({ status: "submitting", workflow: "avatar-news", progress: 5 });
+    const receipt = await submitNewsAvatar({ page, narration, profileId: accountId(account), signal,
+      click: () => generate.click({ timeout: 15000 }),
+      saveReceipt: receipt => {
+        store.patch('jobs', job.id, { payload: { ...job.payload, accountId: account.id, newsAvatarRequest: receipt } });
+        update({ submittedAt: receipt.submittedAt, workflow: 'avatar-news', progress: 8 });
+      } });
+    store.log(job, "DreamFace acknowledged the MC task; waiting for its matching Creations result.");
+    const media = await waitForNewsAvatar({ page, narration, profileId: accountId(account), receipt, signal, update,
+      timeoutMs: Math.max(2, Number(store.state.settings.maxWaitMinutes || 30)) * 60000,
+      pollMs: Math.max(8000, Number(store.state.settings.pollSeconds || 5) * 2000),
+      download: download => importBrowserDownload(store, job, download, signal) });
+    store.log(job, 'Verified MC task downloaded: ' + media.duration.toFixed(2) + ' seconds.');
+    return media;
   }
 
   /**

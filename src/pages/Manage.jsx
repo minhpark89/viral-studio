@@ -231,7 +231,9 @@ export function QueuePage({ data, project, run, navigate }) {
                     </p>
                     {jobContentType === "news" && job.production?.researchId && <small>Research → MC → editorial images → website article</small>}
                     {job.contentAutomation && <small>Content: {({ generated: "Đã tạo", warehouse_ready: "Đã tạo, chờ duyệt", warehouse_error: "Lỗi tạo", published: "Đã đăng website", social_published: "Đã đăng website + Meta", meta_error: "Lỗi Meta", website_error: "Lỗi website", error: "Lỗi tạo bài" }[job.contentAutomation] || job.contentAutomation)}</small>}
-                    {(job.type === "news" || job.type === "render") && (job.finishedAt || running) && <small>{running ? "Đã chạy" : "Thời gian video"}: {formatJobDuration(jobElapsedSeconds(job))}</small>}
+                    {(job.type === "news" || job.type === "render") && (job.finishedAt || running) && <small>{running ? "Đã xử lý" : "Thời gian xử lý"}: {formatJobDuration(jobElapsedSeconds(job))}</small>}
+                    {output?.duration > 0 && <small>Độ dài clip: {Number(output.duration).toFixed(1)} giây{job.type === 'news' ? ` · ${(output.newsVisualCount ?? job.payload.imageMediaIds?.length) || 0} ảnh minh họa` : ''}</small>}
+                    {job.type === 'news' && !output && job.payload.newsPlan?.newsDuration && <small>Clip tóm tắt: {job.payload.newsPlan.newsDuration === 'auto' ? 'theo tin · khoảng 15–30 giây' : `khoảng ${job.payload.newsPlan.newsDuration} giây`} · {job.payload.imageMediaIds?.length || 0} ảnh đã chọn</small>}
                     {waiting && ['generate', 'news'].includes(job.type) && !available && !job.payload.presenterMediaId && (
                       <button
                         className="text-button warning-text"

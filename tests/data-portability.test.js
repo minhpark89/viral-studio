@@ -103,3 +103,13 @@ test("missing absolute tool overrides fall back to the shipped tools", t => {
     assert.equal(binary(name, { [`${name}Path`]: "custom-command" }), "custom-command");
   }
 });
+
+test('fresh installed data lives outside the removable app directory while a moved install follows its preserved pointer', () => {
+  const root = path.resolve('Programs', 'Viral Studio');
+  const relocated = path.resolve('Older installation.data', 'Viral Data');
+  const options = { isPackaged: true, executable: path.join(root, 'Viral Studio.exe'), env: {}, exists: () => false, readText: () => { throw new Error('No pointer'); } };
+  assert.equal(dataDirectory(options), path.join(root + '.data', 'Viral Data'));
+  assert.equal(dataDirectory({ ...options, exists: p => p === relocated, readText: () => relocated }), relocated);
+  assert.equal(dataDirectory({ ...options, exists: () => true, readText: () => 'relative-path' }), path.join(root + '.data', 'Viral Data'));
+  assert.equal(dataDirectory({ ...options, env: { PORTABLE_EXECUTABLE_DIR: root }, exists: p => p === relocated, readText: () => relocated }), path.join(root, 'Viral Data'));
+});

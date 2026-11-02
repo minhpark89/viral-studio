@@ -3784,3 +3784,7 @@ option {
 .preparation-heading h3 { margin: 6px 0; overflow-wrap: anywhere; }
 .preparation-card p { margin: 8px 0; overflow-wrap: anywhere; }
 .preparation-card details { margin: 12px 0; max-height: 300px; overflow: auto; }
+.news-video-options { margin: 16px 0; padding: 16px; border: 1px solid var(--border, #29435e); border-radius: 12px; }
+.news-video-options .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.news-video-options .field select { width: 100%; }
+.news-video-options > p { margin: 10px 0 0; }

@@ -1,6 +1,6 @@
 {
   "name": "viral-studio",
-  "version": "0.7.7-mcfix.1",
+  "version": "0.7.8",
   "private": true,
   "license": "UNLICENSED",
   "author": "Viral Studio",
@@ -72,6 +72,7 @@
       "signExecutable": false
     },
     "nsis": {
+      "include": "build/installer.nsh",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,

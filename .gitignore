@@ -11,6 +11,7 @@ dist/
 build/*
 !build/icon.ico
 !build/icon.png
+!build/installer.nsh
 
 __pycache__/
 *.pyc

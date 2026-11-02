@@ -24,6 +24,7 @@ import { researchProgress, researchViews, matchesResearchView } from "../../shar
 import { Button, Empty, Field, Notice, Modal } from "../components.jsx";
 import "./research.css";
 import { NewsMcPicker } from "../NewsMcPicker.jsx";
+import { NewsVideoOptions, useNewsVideoOptions } from '../NewsVideoOptions.jsx';
 import { researchSourceDates, matchesSourceAge, sourceDateLabel } from "../../shared/source-context.js";
 import { MAX_NEWS_VIDEOS, MAX_RESEARCH_STORIES } from "../../shared/mc-rotation.js";
 import { ResearchBatchProgress } from "../ResearchBatchProgress.jsx";
@@ -235,6 +236,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
   const [batchVideoCount, setBatchVideoCount] = useState(1);
   const [llmBatch, setLlmBatch] = useState({ active: false, done: 0, total: 0 });
   const [batchAutoCreateContent, setBatchAutoCreateContent] = useState(true);
+  const [newsOptions, setNewsOptions] = useNewsVideoOptions(project.id);
   const [renderOptions, setRenderOptions] = useState({
     concurrency: Number(data.settings?.concurrency) || 2,
     renderConcurrency: Number(data.settings?.renderConcurrency) || 1,
@@ -415,6 +417,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
         feeds: [],
         variationPolicy: "visual-unique",
         fontStyle: "news",
+        ...newsOptions,
       });
       notify(`Đã đưa ${batch.items?.length || count} video vào hàng đợi. ${mcRotation.length ? 'MC xoay theo số video đã nhập.' : selectedAvatarMediaId ? 'Dùng ảnh MC đã chọn.' : 'Dùng MC theo profile.'}${readyCount ? ` ${readyCount} profile sẵn sàng.` : ' Hãy đăng nhập DreamFace để chạy.'}`);
       // The News render workspace owns the preparation batch as well as the
@@ -469,6 +472,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
       feeds: [],
       variationPolicy: "visual-unique",
       fontStyle: "news",
+      ...newsOptions,
     });
     notify(`Đã đưa ${selected.length} tin · ${batch.items.length} video vào một lượt render. ${batchMcRotation.length ? 'MC xoay liên tục qua toàn bộ lượt theo cấu hình.' : 'Dùng cấu hình MC đã chọn.'}`);
     navigate?.("editor", { focusBatchId: batch.id });
@@ -523,6 +527,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
     </div>}
   </div>
   {projectResults.length > 0 && <div className="research-batch-mc"><h3>MC và số video khi render hàng loạt</h3><Field label="Số video mỗi tin" hint="Mỗi lượt tối đa 100 video. MC xoay liên tục qua các tin; một tin có thể tạo nhiều phiên bản."><input type="number" min="1" max={MAX_NEWS_VIDEOS} step="1" value={batchVideoCount} onChange={event => setBatchVideoCount(event.target.value === "" ? "" : Number(event.target.value))} /></Field><NewsMcPicker data={data} projectId={project.id} value={batchAvatarMediaId} onChange={setBatchAvatarMediaId} rotation={batchMcRotation} onRotationChange={setBatchMcRotation} count={renderCandidates.length * batchVideoCount || batchVideoCount} notify={notify} /></div>}
+  {projectResults.length > 0 && <NewsVideoOptions value={newsOptions} onChange={setNewsOptions} />}
   {projectResults.length > 0 && <div className="research-manager">
     <div className="research-status-tabs" aria-label="Trạng thái render Research">{researchViews.map(([value, label]) => <button key={value} type="button" aria-pressed={researchFilter === value} className={researchFilter === value ? 'active' : ''} onClick={() => setResearchFilter(value)}>{label}<b>{projectResults.filter(result => matchesResearchView(progressById.get(result.id), value)).length}</b></button>)}</div>
     <div className="research-manager-filters">

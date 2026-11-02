@@ -83,7 +83,7 @@ test("submitted News recovery queues the same job without resubmitting provider 
     generateDreamFace: async (_store, job, selected) => {
       assert.equal(job.payload.recoverSubmitted, true);
       assert.equal(selected.id, account.id);
-      return { id: "recovered-presenter", kind: "video", file: "presenter.mp4", hasAudio: true };
+      return { id: "recovered-presenter", kind: "video", file: "presenter.mp4", hasAudio: true, duration: 20 };
     },
     executeNews: undefined,
   });

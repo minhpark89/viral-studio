@@ -11,6 +11,7 @@ import { isPageAvatar, isMcImage } from "../shared/output-media.js";
 import { mcForVideo } from "../shared/mc-rotation.js";
 import { discoverArticleImages, newsVisualQueries } from './news-visuals.js';
 import { createNewsSourceCard } from './news-render.js';
+import { newsImageTarget } from '../shared/news-format.js';
 
 const productOutput = z.object({ productName: z.string().trim().min(1).max(200), productBrief: z.string().trim().min(1).max(4000), prompt: z.string().trim().min(20).max(16000) });
 
@@ -361,6 +362,8 @@ export class ProductionService {
           llm: callLlm,
           variation: item.index + 1,
           total: request.count,
+          newsDuration: request.newsDuration,
+          newsImageCount: request.newsImageCount,
         });
       } catch (error) {
         // A transient gateway timeout or malformed JSON should not make a
@@ -372,6 +375,8 @@ export class ProductionService {
           llm: callLlm,
           variation: item.index + 1,
           total: request.count,
+          newsDuration: request.newsDuration,
+          newsImageCount: request.newsImageCount,
         });
       }
       const sharedMedia = await this.prepareNewsMedia(batch, request, research, narration, callLlm, stage);
@@ -457,12 +462,13 @@ export class ProductionService {
   async prepareNewsMedia(batch, request, research, narration, callLlm, stage = () => {}) {
     // A batch can contain different stories. Neither its cache nor its in-flight
     // promise may be shared between research IDs.
-    const key = batch.id + ':' + research.id;
+    const target = newsImageTarget(request.newsDuration, request.newsImageCount);
+    const key = batch.id + ':' + research.id + ':' + target;
     const usable = media => media?.kind === 'image' && media.projectId === request.projectId
       && media.id !== request.avatarMediaId && !request.mcRotation?.some(entry => entry.avatarMediaId === media.id)
       && !isPageAvatar(media, this.store.state) && !isMcImage(media, this.store.state);
     const scoped = batch.newsMediaByResearch?.[research.id];
-    if (scoped?.revision >= 2 && scoped.imageMediaIds?.length
+    if (scoped?.revision >= 4 && scoped.target === target && scoped.imageMediaIds?.length
       && scoped.imageMediaIds.every(id => usable(this.store.state.media.find(media => media.id === id)))) {
       return { imageMediaIds: [...scoped.imageMediaIds], selectedImageIds: [...scoped.selectedImageIds], visualMode: scoped.visualMode || 'photo', diagnostics: scoped.diagnostics };
     }
@@ -478,48 +484,54 @@ export class ProductionService {
       let candidates = newsImageCandidates(research.articles, research.imageSearchResults || []);
       const addSavedCandidates = () => {
         for (const media of saved) {
-          if (media.sourceUrl && candidates.some(image => (image.pageUrl || image.imageUrl) === media.sourceUrl)) continue;
-          candidates.push({ id: 'media:' + media.id, mediaId: media.id, title: media.name || 'Saved research image', query: research.topic || research.headline, pageUrl: media.sourceUrl });
+          if (media.sourceImageUrl && candidates.some(image => image.imageUrl === media.sourceImageUrl)) continue;
+          candidates.push({ id: 'media:' + media.id, mediaId: media.id, title: media.name || 'Saved research image', description: media.imageDescription || '', query: research.topic || research.headline, pageUrl: media.sourceUrl, imageUrl: media.sourceImageUrl });
         }
       };
       addSavedCandidates();
-      const diagnostics = { attempts: [], downloadErrors: [], warnings: [] };
+      const diagnostics = { target, attempts: [], downloadErrors: [], warnings: [] };
       const queries = newsVisualQueries(research, narration);
-      const merge = extra => { const seen = new Set(); candidates = [...extra, ...candidates].filter(image => { const key = image.imageUrl || image.id; if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 40); };
+      const merge = extra => { const seen = new Set(); candidates = [...extra, ...candidates].filter(image => { const key = image.originalImageUrl || image.imageUrl || image.id; if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 64); };
       const search = async searchQueries => {
         stage('Đang tìm ảnh liên quan');
         try {
-          const found = await this.imageSearch(searchQueries, { fetchImpl: this.fetch, maxResultsPerQuery: 6, maxResults: 24, cache: this.imageSearchCache });
+          const found = await this.imageSearch(searchQueries, { fetchImpl: this.fetch, maxResultsPerQuery: 8, maxResults: 48, cache: this.imageSearchCache });
           merge(newsImageCandidates([], found.images));
           diagnostics.warnings.push(...(found.warnings || []));
           this.store.patch('researchResults', research.id, { imageSearchResults: candidates.filter(image => image.imageUrl && !image.id.startsWith('article:')), imageSearchWarnings: diagnostics.warnings });
         } catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
       };
-      if (candidates.length < 3) {
+      if (candidates.filter(image => image.id.startsWith('article:')).length < target) {
         const source = await discoverArticleImages(research.articles, { fetchImpl: this.fetch });
         merge(newsImageCandidates(source.articles));
         diagnostics.warnings.push(...source.warnings);
-        if (candidates.length < 3) await search(queries);
       }
       const assets = [];
       const assetKeys = new Set();
       const selectedIds = [];
       const downloadFailed = new Set();
+      const selectedCandidateIds = new Set();
+      const contentHashes = new Set();
       const select = async allowIllustrations => {
         stage(allowIllustrations ? 'Đang chọn ảnh minh họa đúng chủ thể' : 'Đang xác minh ảnh theo nội dung tin');
         let ranked = [];
-        try { ranked = await rankNewsImages(this.store, { ...research, headline: narration.headline, script: narration.narration }, candidates, { llm: callLlm, allowIllustrations }); }
+        const available = candidates.filter(image => !selectedCandidateIds.has(image.id) && !downloadFailed.has(image.id));
+        try { ranked = await rankNewsImages(this.store, { ...research, headline: narration.headline, script: narration.narration }, available, { llm: callLlm, allowIllustrations, maxImages: target - assets.length, onWarning: warning => diagnostics.warnings.push(warning) }); }
         catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
         diagnostics.attempts.push({ mode: allowIllustrations ? 'illustration' : 'photo', candidates: candidates.length, selected: ranked.length });
         for (const image of ranked) {
-        const source = image.pageUrl || image.imageUrl;
+        if (assets.length >= target) break;
+        selectedCandidateIds.add(image.id);
+        const source = image.originalImageUrl || image.imageUrl || image.id;
         if (downloadFailed.has(image.id)) continue;
         const cached = image.mediaId ? saved.find(media => media.id === image.mediaId)
-          : this.store.state.media.find(media => usable(media) && source && media.sourceUrl === source);
+          : this.store.state.media.find(media => usable(media) && image.imageUrl && media.sourceImageUrl === image.imageUrl);
         if (assetKeys.has(cached?.id || source || image.id)) continue;
         try {
           const media = cached || await this.downloadImage({ image, store: this.store, projectId: request.projectId, fetchImpl: this.fetch });
           if (!usable(media)) continue;
+          if (media.contentHash && contentHashes.has(media.contentHash)) continue;
+          if (media.contentHash) contentHashes.add(media.contentHash);
           assets.push(media); assetKeys.add(media.id); if (source) assetKeys.add(source);
           selectedIds.push(image.id);
           this.store.patch('media', media.id, { newsResearchIds: [...new Set([...(media.newsResearchIds || []), research.id])] });
@@ -532,12 +544,12 @@ export class ProductionService {
       };
       await select(false);
       let visualMode = selectedIds.some(id => !id.startsWith('article:')) ? 'illustration' : 'photo';
-      if (!assets.length) {
+      if (assets.length < target) {
         // Rejected cached candidates must trigger another search, even if their
         // count is high. Context imagery is labeled, never treated as event proof.
-        await search([...new Set([...queries, ...queries.slice(0, 3).map(query => query.split(' ')[0])])].slice(0, 8));
+        await search(queries);
         await select(true);
-        visualMode = 'illustration';
+        if (selectedIds.some(id => !id.startsWith('article:'))) visualMode = 'illustration';
       }
       if (!assets.length) {
         this.controller.signal.throwIfAborted();
@@ -545,12 +557,14 @@ export class ProductionService {
         assets.push(await this.sourceCard(this.store, research, this.controller.signal));
         visualMode = 'source-card';
       }
-      const warning = visualMode === 'source-card' ? 'Không tìm được ảnh liên quan tải được; video dùng thẻ tin từ tiêu đề/nguồn và MC.'
+      let warning = visualMode === 'source-card' ? 'Không tìm được ảnh liên quan tải được; video dùng thẻ tin từ tiêu đề/nguồn và MC.'
         : visualMode === 'illustration' ? 'Video dùng ảnh minh họa đúng chủ thể, có nhãn CONTEXT IMAGE; không phải ảnh hiện trường.' : '';
+      if (assets.length < target && visualMode !== 'source-card') warning += ` Chọn được ${assets.length}/${target} ảnh phù hợp; không chèn ảnh ngoài nội dung để đủ số.`;
+      if (diagnostics.warnings.some(item => /Không kiểm tra được|Không xác minh được/.test(item))) warning += ' Một số ảnh chưa kiểm tra được vì lỗi LLM; có thể thử lại bước chuẩn bị để bổ sung ảnh.';
       if (warning) batch.warnings = [...new Set([...(batch.warnings || []), warning])];
       Object.assign(diagnostics, { visualMode, warning, downloaded: assets.length, updatedAt: new Date().toISOString() });
       const result = { imageMediaIds: assets.map(media => media.id), selectedImageIds: selectedIds, visualMode, diagnostics };
-      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, revision: 3 } };
+      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, target, revision: 4 } };
       this.store.patch('researchResults', research.id, { imageMediaIds: result.imageMediaIds, imagePreparation: diagnostics });
       this.store.save();
       return result;

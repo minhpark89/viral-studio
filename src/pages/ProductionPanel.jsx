@@ -5,6 +5,7 @@ import { Badge, Button, Field, Notice } from "../components.jsx";
 import { NewsMcPicker } from "../NewsMcPicker.jsx";
 import { isPageAvatar } from "../../shared/output-media.js";
 import { MAX_NEWS_VIDEOS } from "../../shared/mc-rotation.js";
+import { NewsVideoOptions, useNewsVideoOptions } from '../NewsVideoOptions.jsx';
 
 const statusLabels = {
   pending: "đang chuẩn bị",
@@ -36,6 +37,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
   const [references, setReferences] = useState([]);
   const [feeds, setFeeds] = useState("");
   const [fontStyle, setFontStyle] = useState("news");
+  const [newsOptions, setNewsOptions] = useNewsVideoOptions(project.id);
   const [autoCreateContent, setAutoCreateContent] = useState(true);
   const [busy, setBusy] = useState(false);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
@@ -81,6 +83,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
         feeds: feeds.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
         variationPolicy: "visual-unique",
         fontStyle: mode === "news" ? fontStyle : "news",
+        ...(mode === 'news' ? newsOptions : {}),
       });
       setRequestId(crypto.randomUUID());
       notify(`${batch.items?.length || count} video${Number(count) === 1 ? "" : "s"} đang được chuẩn bị. Nếu LLM hoặc ảnh lỗi, lỗi sẽ hiện ngay trong bản ghi để Retry.`);
@@ -139,7 +142,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
         {mode === "news" && <Field label="Font / style"><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value)}><option value="news">News chuẩn · Barlow Condensed</option><option value="viral">Viral mạnh · Anton + Barlow</option><option value="minimal">Viral sạch · Be Vietnam Pro</option></select></Field>}
       </div>
       {mode === "news" && <Field label="Link bài news (tuỳ chọn)" hint="Dán link bài viết để dùng đúng bài đó; bỏ trống để tự research theo từ khóa."><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://news.example.com/article" /></Field>}
-      {mode === "news" && <NewsMcPicker data={data} projectId={project.id} value={avatarMediaId} onChange={setAvatarMediaId} rotation={mcRotation} onRotationChange={setMcRotation} count={count || 1} notify={notify} />}
+      {mode === "news" && <><NewsVideoOptions value={newsOptions} onChange={setNewsOptions} /><NewsMcPicker data={data} projectId={project.id} value={avatarMediaId} onChange={setAvatarMediaId} rotation={mcRotation} onRotationChange={setMcRotation} count={count || 1} notify={notify} /></>}
       {mode === "product" && <><div className="form-grid"><Field label="Product facts / creative brief"><textarea value={productBrief} maxLength={4000} onChange={(event) => setProductBrief(event.target.value)} placeholder="Verified features and the style you want. No invented offers." rows={3} /></Field><Field label="Product or store link" hint="Leave blank to use the store link from Settings."><input type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder={data.settings?.content?.storeUrl || "https://your-store.com/products/…"} /></Field></div>{images.length > 0 && <Field label="Product reference images" hint="Choose up to 10 images from this project's Library. News/editorial images are hidden."><div className="production-images">{images.map((media) => <label key={media.id}><input type="checkbox" checked={references.includes(media.id)} disabled={!references.includes(media.id) && references.length >= 10} onChange={() => setReferences((current) => current.includes(media.id) ? current.filter((id) => id !== media.id) : [...current, media.id])} /><img src={media.thumbnailUrl || media.url} alt="" /><span>{media.name}</span></label>)}</div></Field>}</>}
       <details className="production-options"><summary>Sources, profile &amp; render rules</summary><div className="form-grid"><Field label="RSS sources (optional)"><textarea rows={2} value={feeds} onChange={(event) => setFeeds(event.target.value)} placeholder="One RSS URL per line. Blank: search current US English news." /></Field><Field label="DreamFace profile" hint="Auto dùng nhiều profile sẵn sàng. Chọn một profile thì các video tạo MC lần lượt trên profile đó."><select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="auto">Auto · daily rotation</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.status}</option>)}</select></Field></div><div className="production-render-rules"><strong>Quy tắc render</strong><span>MC dùng ảnh đã chọn hoặc xoay vòng theo số video mỗi ảnh, độc lập với profile DreamFace.</span><span>Auto luân phiên profile sẵn sàng theo số tác vụ AI đồng thời trong Cài đặt.</span><span>Mỗi video có lời đọc, thứ tự ảnh và chuyển động riêng.</span><span>Xuất video dùng giới hạn “Video render song song”, áp dụng chung cho News và timeline.</span></div></details>
       <label className="toggle-field production-auto-content"><input type="checkbox" checked={autoCreateContent} onChange={(event) => setAutoCreateContent(event.target.checked)} /><span><strong>Tự tạo Content sau khi render</strong><small>{autoCreateContent ? "Sau khi có video, LLM sẽ tạo Content và báo lỗi ngay trong Queue/Content nếu không tạo được." : "Chỉ tạo video. Vào Content để chọn video và tạo bài sau."}</small></span></label>
