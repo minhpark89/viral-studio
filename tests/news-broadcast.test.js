@@ -54,6 +54,7 @@ for (const presenterSize of ["540x720", "1056x792"]) {
   test(`news broadcast uses a narrated presenter (${presenterSize}), animated editorial images and the first-comment CTA`, { timeout: 240000 }, async (t) => {
     const root = path.resolve(".verification", `news-broadcast-${randomUUID()}`);
     const store = new Store(root);
+    store.state.settings.renderAcceleration = 'cpu';
     const project = store.createProject("News broadcast QA");
     const ffmpeg = binary("ffmpeg", store.state.settings);
     const presenterFile = path.join(root, "presenter.mp4");

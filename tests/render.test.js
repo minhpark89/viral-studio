@@ -13,6 +13,7 @@ test(`FFmpeg timeline with ${renderThreads} threads renders trimmed media, Vietn
   const root = path.resolve('.verification', `render-${randomUUID()}`);
   const store = new Store(root);
   store.state.settings.renderThreads = renderThreads;
+  store.state.settings.renderAcceleration = 'cpu';
   const project = store.createProject('Kiểm tra tiếng Việt');
   const ffmpeg = binary('ffmpeg', store.state.settings);
   const source = path.join(root, 'video có âm thanh.mp4');

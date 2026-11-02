@@ -69,7 +69,7 @@ app
     if (!locked) return;
     if (selfTestDirectory) {
       const { runRenderSelfTest } = await import(pathToFileURL(path.join(__dirname, "../server/render-self-test.js")).href);
-      const result = await runRenderSelfTest(selfTestDirectory);
+      const result = await runRenderSelfTest(selfTestDirectory, { gpu: process.argv.includes('--render-self-test-gpu') });
       app.exit(result.passed ? 0 : 1);
       return;
     }

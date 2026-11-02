@@ -7,6 +7,7 @@ import { chromium } from "playwright";
 import { providers } from "../../shared/contracts.js";
 import { StudioError } from "../store.js";
 import { parseCookies } from "./cookies.js";
+import { profileStorage, profileLaunchArgs } from '../profile-storage.js';
 
 async function freePort() {
   const server = net.createServer();
@@ -160,6 +161,7 @@ export class BrowserProfiles {
       "--no-default-browser-check",
       "--window-size=1360,940",
       "--lang=en-US",
+      ...profileLaunchArgs(this.store.state.settings),
     ];
     if (!visible) args.push("--headless=new");
     if (account.proxy) {
@@ -177,7 +179,9 @@ export class BrowserProfiles {
       args.push(`--proxy-server=${proxy.protocol}//${proxy.host}`);
     }
     args.push("about:blank");
-    const child = spawn(this.executable(), args, {
+    const executable = this.executable();
+    const releaseStorage = await profileStorage(this.store).beginSession(profileId);
+    const child = spawn(executable, args, {
       windowsHide: !visible,
       stdio: "ignore",
     });
@@ -210,9 +214,10 @@ export class BrowserProfiles {
       const context = browser.contexts()[0];
       const page = context.pages()[0] || (await context.newPage());
       page.setDefaultTimeout(12000);
-      const session = { browser, context, page, child, visible, profileId };
+      const session = { browser, context, page, child, visible, profileId, releaseStorage };
       this.profiles.set(profileId, session);
       browser.on("disconnected", () => {
+        releaseStorage();
         if (this.profiles.get(profileId) === session) this.profiles.delete(profileId);
         for (const [id, alias] of this.sessions) {
           if (alias.browser !== browser) continue;
@@ -224,6 +229,7 @@ export class BrowserProfiles {
       return session;
     } catch (error) {
       child.kill();
+      releaseStorage();
       throw new StudioError(
         `Không mở được hồ sơ trình duyệt: ${error.message}`,
         "BROWSER_FAILED",
@@ -737,6 +743,7 @@ export class BrowserProfiles {
     }
     await session.browser.close().catch(() => {});
     if (session.child.exitCode === null) session.child.kill();
+    session.releaseStorage?.();
   }
 
   async closeAll() {

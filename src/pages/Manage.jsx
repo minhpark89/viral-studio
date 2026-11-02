@@ -31,6 +31,7 @@ import { jobOutput } from "../../shared/output-media.js";
 import { outputContext, sourceDateLabel, formatDateTime } from "../../shared/source-context.js";
 import { productionPreparations } from '../../shared/queue-preparation.js';
 import { QueuePreparation } from '../QueuePreparation.jsx';
+import { HardwareStorageSettings } from '../HardwareStorageSettings.jsx';
 
 function jobElapsedSeconds(job) {
   if (Number.isFinite(Number(job.durationMs))) return Math.max(0, Number(job.durationMs) / 1000);
@@ -233,6 +234,7 @@ export function QueuePage({ data, project, run, navigate }) {
                     {job.contentAutomation && <small>Content: {({ generated: "Đã tạo", warehouse_ready: "Đã tạo, chờ duyệt", warehouse_error: "Lỗi tạo", published: "Đã đăng website", social_published: "Đã đăng website + Meta", meta_error: "Lỗi Meta", website_error: "Lỗi website", error: "Lỗi tạo bài" }[job.contentAutomation] || job.contentAutomation)}</small>}
                     {(job.type === "news" || job.type === "render") && (job.finishedAt || running) && <small>{running ? "Đã xử lý" : "Thời gian xử lý"}: {formatJobDuration(jobElapsedSeconds(job))}</small>}
                     {output?.duration > 0 && <small>Độ dài clip: {Number(output.duration).toFixed(1)} giây{job.type === 'news' ? ` · ${(output.newsVisualCount ?? job.payload.imageMediaIds?.length) || 0} ảnh minh họa` : ''}</small>}
+                    {(output?.renderDevice || job.renderDevice) && <small>Bộ mã hóa: {(output?.renderDevice || job.renderDevice).encoder} · {(output?.renderDevice || job.renderDevice).gpu ? 'GPU' : 'CPU'}</small>}
                     {job.type === 'news' && !output && job.payload.newsPlan?.newsDuration && <small>Clip tóm tắt: {job.payload.newsPlan.newsDuration === 'auto' ? 'theo tin · khoảng 15–30 giây' : `khoảng ${job.payload.newsPlan.newsDuration} giây`} · {job.payload.imageMediaIds?.length || 0} ảnh đã chọn</small>}
                     {waiting && ['generate', 'news'].includes(job.type) && !available && !job.payload.presenterMediaId && (
                       <button
@@ -609,6 +611,7 @@ export function SettingsPage({ data, project, run, notify }) {
         </Button>
       </div>
       <div className="settings-grid">
+        <HardwareStorageSettings settings={settings} setSettings={setSettings} run={run} notify={notify} />
         <section className="panel">
           <div className="panel-heading">
             <h3>

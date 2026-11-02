@@ -31,6 +31,22 @@ function enqueue(queue, project, prompts, extra = {}) {
   });
 }
 
+test('GPU preflight failure preserves cached assets and never requests a new presenter', async t => {
+  const { store } = fixture();
+  const queue = new JobQueue(store, null, { intervalMs: 0,
+    preflightNews: async () => { throw Object.assign(new Error('GPU missing'), { code: 'GPU_UNAVAILABLE' }); },
+    generateDreamFace: () => { assert.fail('GPU failure must not spend a provider request'); },
+    renderNews: () => { assert.fail('GPU failure must not start a render'); },
+  });
+  t.after(() => queue.close());
+  for (const presenterMediaId of [null, 'cached-presenter']) {
+    const job = { id: randomUUID(), payload: { presenterMediaId, imageMediaIds: ['cached-photo'] } };
+    const before = structuredClone(job);
+    await assert.rejects(queue.executeNews(job, null, new AbortController().signal, () => {}), error => error.code === 'GPU_UNAVAILABLE');
+    assert.deepEqual(job, before);
+  }
+});
+
 async function until(predicate, timeout = 10000) {
   const deadline = Date.now() + timeout;
   while (!predicate()) {

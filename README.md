@@ -2,6 +2,8 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
+This checkout contains **0.7.9-local.1**, a local GPU/profile-storage build based on v0.7.8. Its installer and portable executable are in `release/v0.7.9-local.1`; this build has not been published. See [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md). The public download links below still refer to v0.7.8.
+
 ## Download for Windows
 
 - [Portable v0.7.8](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/Viral.Studio.0.7.8.exe)
@@ -14,7 +16,9 @@ The portable app keeps `Viral Data` beside its EXE. Installed data lives in a si
 
 - News clips summarize the source and direct viewers to the full article in the first comment. Choose automatic pacing (approximately 15–30 seconds) or a 15/20/30-second script target. Actual duration follows the voice; short results hold the closing CTA to reach at least 15 seconds. Queue distinguishes processing time from actual clip duration.
 - Choose up to 6, 8 or 10 illustrations, or let duration determine the target. Source galleries and captions, full-name/context queries, relevance ranking and duplicate checks improve variety. The app reports shortages instead of filling them with unrelated photos. Shot length stays at least about 2.5 seconds; actual image count is saved with the output.
-- Photos render individually, followed by pairwise transitions and final MC composition, limiting simultaneous decoders and filter memory. DreamFace MC image creation waits for page readiness and submission acknowledgement; retry can recover a matching submitted image without generating another one.
+- News with one to five photos can compose directly when free RAM covers the configured workers. Larger stories or lower-memory PCs render photos individually with pairwise transitions; an allocation failure retries that bounded path using the same cached inputs and encoder. DreamFace MC image creation waits for page readiness and submission acknowledgement; retry can recover a matching submitted image without generating another one.
+- News and timeline select a GPU encoder only after a real 1080x1920 encode/decode probe. NVIDIA NVENC, AMD AMF and Intel QSV have separate arguments. GPU-required mode reports driver/hardware problems before requesting a new MC; CPU compatibility mode is an explicit user choice. Settings show the detected GPU, driver guidance and official download links. RTX 3060 NVENC has been tested on this PC; AMD/Intel still need physical-device verification.
+- Profile storage retains login data and small warm caches. Before opening an idle profile, it trims only allowlisted oversized caches and unused local AI models; manual cleanup skips active or unverified browser profiles. HTTP cache is limited to 64 MiB and media cache to 32 MiB. Cookies, local storage, IndexedDB, Service Worker, saved passwords and session data are preserved.
 - Avatar downloads must match the acknowledged task ID and narration/profile receipt. Existing videos with the same title cannot substitute for a new result. Exhausted free usage or insufficient credits reports a quota error; unconfirmed submissions are not automatically sent again.
 
 - News presenter fitting handles landscape, portrait, square, small and non-square-pixel inputs without the crop failure. Eight geometry checks and two full broadcast fixtures cover this release.

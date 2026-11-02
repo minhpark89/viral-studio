@@ -9,6 +9,7 @@ import { renderTimeline, validateTimeline } from "./render.js";
 import { generate } from "./providers/generate.js";
 import { renderNewsBroadcast } from "./news-render.js";
 import { isPageAvatar, isMcImage } from "../shared/output-media.js";
+import { selectRenderEncoder } from './render-hardware.js';
 
 function elapsedMs(job, finishedAt) {
   const started = Date.parse(job.startedAt || job.createdAt || "");
@@ -28,6 +29,7 @@ export class JobQueue {
     this.videoAutomation = options.videoAutomation || null;
     this.render = options.render || renderTimeline;
     this.renderNews = options.renderNews || renderNewsBroadcast;
+    this.preflightNews = options.preflightNews || (options.renderNews ? null : selectRenderEncoder);
     this.now = options.now || Date.now;
     this.running = new Map();
     this.stopping = false;
@@ -386,6 +388,9 @@ export class JobQueue {
   }
 
   async executeNews(job, account, signal, update) {
+    // A missing GPU/driver must be reported before spending a new MC request.
+    if (this.preflightNews) await this.preflightNews(this.store.state.settings);
+    signal.throwIfAborted();
     let presenter = job.payload.presenterMediaId
       ? this.store.require("media", job.payload.presenterMediaId)
       : null;

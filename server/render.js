@@ -4,6 +4,7 @@ import path from "node:path";
 import { timelineSchema, dimensions, durationOf } from "../shared/contracts.js";
 import { binary, importMedia, probe, runProcess } from "./media.js";
 import { StudioError, safeName } from "./store.js";
+import { selectRenderEncoder, videoEncodingArgs, recordRenderDevice } from './render-hardware.js';
 
 export function tempoFilters(speed) {
   const parts = [];
@@ -66,19 +67,15 @@ export async function renderTimeline(store, job, signal, progress) {
   const canvas = dimensions(timeline);
   const duration = durationOf(timeline);
   const tempRoot = path.join(store.root, "temp");
-  const directory = await fs.mkdtemp(path.join(tempRoot, "render-"));
   const ffmpeg = binary("ffmpeg", store.state.settings);
+  const device = await selectRenderEncoder(store.state.settings);
+  signal.throwIfAborted();
+  recordRenderDevice(store, job, device);
+  const directory = await fs.mkdtemp(path.join(tempRoot, "render-"));
   const crf = { draft: 27, standard: 21, high: 17 }[timeline.quality];
   const threads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 2)));
   const encoding = [
-    "-c:v",
-    "libx264",
-    "-preset",
-    timeline.quality === "draft" ? "ultrafast" : "veryfast",
-    "-crf",
-    String(crf),
-    "-pix_fmt",
-    "yuv420p",
+    ...videoEncodingArgs(device.encoder, { quality: crf, intermediate: timeline.quality === 'draft', threads: Number(threads) }),
     "-c:a",
     "aac",
     "-b:a",
@@ -342,13 +339,14 @@ export async function renderTimeline(store, job, signal, progress) {
       );
     }
     progress(99, "Lưu vào thư viện");
-    return await importMedia(store, output, {
+    const media = await importMedia(store, output, {
       projectId: job.projectId,
       name: `${safeName(job.name)}.mp4`,
       move: true,
       generated: true,
       jobId: job.id,
     });
+    return store.patch('media', media.id, { renderDevice: device });
   } finally {
     const resolved = path.resolve(directory);
     if (resolved.startsWith(path.resolve(tempRoot) + path.sep)) {

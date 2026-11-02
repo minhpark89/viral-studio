@@ -4,7 +4,8 @@ import path from "node:path";
 import { binary, importMedia, probe, runProcess } from "./media.js";
 import { StudioError, safeName } from "./store.js";
 import { NEWS_MIN_SECONDS, NEWS_MAX_IMAGES } from '../shared/news-format.js';
-import { renderNewsVisualTrack } from './news-motion.js';
+import { renderNewsVisualTrack, directNewsBudget, directNewsVisualGraph } from './news-motion.js';
+import { selectRenderEncoder, videoEncodingArgs, recordRenderDevice } from './render-hardware.js';
 
 const FPS = 30;
 const WIDTH = 1080;
@@ -117,7 +118,7 @@ export async function createNewsSourceCard(store, research, signal) {
  * The Avatar video remains one continuous foreground track while the editorial
  * background uses animated Ken Burns shots and overlapping xfade transitions.
  */
-export async function renderNewsBroadcast(store, job, presenter, plan, images, signal, update = () => {}) {
+export async function renderNewsBroadcast(store, job, presenter, plan, images, signal, update = () => {}, { allowDirect = true } = {}) {
   if (!presenter?.file || presenter.kind !== "video" || !presenter.hasAudio) {
     throw new StudioError("DreamFace did not return a presenter video with audio.", "NEWS_PRESENTER_AUDIO_REQUIRED", 422);
   }
@@ -132,8 +133,11 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
   if (!fonts) throw new StudioError("The bundled news font is missing.", "NEWS_FONT_MISSING", 500);
   const visualVariant = Math.max(1, Math.min(100, Number(plan?.visualVariant || plan?.variation || 1)));
   const tempRoot = path.join(store.root, "temp");
-  const directory = await fsPromises.mkdtemp(path.join(tempRoot, "news-broadcast-"));
   const ffmpeg = binary("ffmpeg", store.state.settings);
+  const device = await selectRenderEncoder(store.state.settings);
+  signal.throwIfAborted();
+  recordRenderDevice(store, job, device);
+  const directory = await fsPromises.mkdtemp(path.join(tempRoot, "news-broadcast-"));
   const safePlan = {
     headline: clean(plan?.headline || "News update", 100),
     narration: clean(plan?.narration || "", 500),
@@ -167,14 +171,16 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       captionFiles.push(await writeText(directory, `caption-${index}.txt`, wrap(usableCaptionList[index], 31, 2).toUpperCase()));
     }
     const timeout = Math.max(120000, Number(store.state.settings.maxWaitMinutes || 30) * 60000);
-    const visualTrack = await renderNewsVisualTrack({ ffmpeg, directory, images: usable, duration, visualVariant, preset, visualMode: plan.visualMode, signal, timeout, update });
-    const args = ["-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-progress", "pipe:1", "-stats_period", "0.5", '-i', visualTrack, '-i', presenter.file];
-    const presenterInput = 1;
-    const filters = [];
+    const direct = allowDirect && directNewsBudget(usable.length, store.state.settings);
+    const graph = direct ? directNewsVisualGraph({ images: usable, duration, visualVariant, preset, visualMode: plan.visualMode }) : null;
+    const visualTrack = direct ? null : await renderNewsVisualTrack({ ffmpeg, directory, images: usable, duration, visualVariant, preset, visualMode: plan.visualMode, signal, timeout, update, encoder: device.encoder });
+    const args = ["-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-progress", "pipe:1", "-stats_period", "0.5", ...(direct ? graph.inputs : ['-i', visualTrack]), '-i', presenter.file];
+    const presenterInput = direct ? usable.length : 1;
+    const filters = direct ? [...graph.filters] : [];
     const pFilter = presenterFilter(342, 384);
     filters.push(`[${presenterInput}:v]${pFilter},setsar=1,format=rgba,tpad=stop_mode=clone:stop_duration=${padDuration.toFixed(3)}[mc]`);
     filters.push(`[${presenterInput}:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11,apad=pad_dur=${padDuration.toFixed(3)}[voice]`);
-    filters.push(`[0:v]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:expansion=none:fontcolor=white:fontsize=31:x=78:y=62[header]`);
+    filters.push(`[${direct ? graph.output : '0:v'}]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:expansion=none:fontcolor=white:fontsize=31:x=78:y=62[header]`);
     filters.push(`[header]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill,drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58[headerCta]`);
     filters.push(`[headerCta]drawbox=x=48:y=1068:w=390:h=420:color=${preset.dark}@0.96:t=fill[mcframe]`);
     filters.push(`[mcframe][mc]overlay=x=72:y=1092:enable='lt(t,${duration.toFixed(3)})'[presenter]`);
@@ -195,14 +201,21 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
     const ctaStart = Math.max(0, duration - 4.2);
     filters.push(`[${captionVideo}]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill:enable='gte(t,${ctaStart.toFixed(3)})',drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58:enable='gte(t,${ctaStart.toFixed(3)})'[outv]`);
     const renderThreads = String(Math.max(1, Math.min(4, Number(store.state.settings.renderThreads) || 2)));
-    args.push("-filter_complex_threads", renderThreads, "-filter_complex", filters.join(";"), "-map", "[outv]", "-map", "[voice]", "-t", duration.toFixed(3), "-r", String(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", renderThreads, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "output.mp4");
+    args.push("-filter_complex_threads", renderThreads, "-filter_complex", filters.join(";"), "-map", "[outv]", "-map", "[voice]", "-t", duration.toFixed(3), "-r", String(FPS), ...videoEncodingArgs(device.encoder, { quality: 18, threads: Number(renderThreads) }), "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "output.mp4");
     update(46, "Đang ghép MC, lời đọc và đồ họa");
-    await runProcess(ffmpeg, args, {
+    try { await runProcess(ffmpeg, args, {
       signal,
       cwd: directory,
       timeout: Math.max(120000, Number(store.state.settings.maxWaitMinutes || 30) * 60000),
       onLine: (line) => reportFromProgress(line, duration, update, "Rendering broadcast graphics", 46, 48),
-    });
+    }); } catch (error) {
+      signal.throwIfAborted();
+      if (direct && /cannot allocate memory|out of memory|ENOMEM/i.test(error.message)) {
+        update(2, 'RAM không đủ cho ghép trực tiếp; chuyển sang dựng từng nhóm với cùng GPU');
+        return await renderNewsBroadcast(store, job, presenter, plan, images, signal, update, { allowDirect: false });
+      }
+      throw error;
+    }
     signal.throwIfAborted();
     const output = path.join(directory, "output.mp4");
     const metadata = await probe(output, store.state.settings);
@@ -218,7 +231,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       jobId: job.id,
       mediaType: "news-video",
     });
-    return store.patch('media', media.id, { newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto' });
+    return store.patch('media', media.id, { newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
   } finally {
     const resolved = path.resolve(directory);
     if (resolved.startsWith(path.resolve(tempRoot) + path.sep)) await fsPromises.rm(resolved, { recursive: true, force: true }).catch(() => {});

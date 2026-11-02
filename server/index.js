@@ -29,6 +29,8 @@ import { mountProductionRoutes } from "./production.js";
 import { mountContentRoutes } from "./content.js";
 import { mountWebsiteRoutes } from "./website.js";
 import { inspectMcImageSettings } from "./mc-image.js";
+import { inspectRenderHardware, nvidiaDriverRecommendation } from './render-hardware.js';
+import { profileStorage } from './profile-storage.js';
 import { SocialScheduler } from "./social-scheduler.js";
 import {
   createCaptchaClient,
@@ -156,6 +158,13 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   });
   app.get("/api/settings/mc-image", async (req, res) => {
     res.json(await inspectMcImageSettings(store));
+  });
+  app.get('/api/system/render-hardware', async (req, res) => res.json(await inspectRenderHardware(store.state.settings, { force: req.query.refresh === 'true' })));
+  app.get('/api/system/nvidia-driver', async (req, res) => res.json(await nvidiaDriverRecommendation(store.state.settings)));
+  app.get('/api/profiles/storage', async (req, res) => res.json(await profileStorage(store).inspect()));
+  app.post('/api/profiles/storage/clean', async (req, res) => {
+    const options = z.object({ mode: z.enum(['clear', 'trim']).default('clear') }).parse(req.body || {});
+    res.json(await profileStorage(store).clean(options));
   });
   app.get("/api/captcha", (req, res) => {
     res.json({ ...publicCaptchaSettings(store), balance: store.state.settings.captcha?.balance ?? null });
@@ -709,6 +718,8 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
         concurrency: z.number().int().min(1).max(5).optional(),
         renderConcurrency: z.number().int().min(1).max(4).optional(),
         renderThreads: z.number().int().min(1).max(32).optional(),
+        renderAcceleration: z.enum(['gpu', 'cpu']).optional(),
+        profileStorageOptimization: z.boolean().optional(),
         dreamfaceConcurrency: z.number().int().min(1).max(4).optional(),
         queuePaused: z.boolean().optional(),
         pollSeconds: z.number().int().min(3).max(60).optional(),

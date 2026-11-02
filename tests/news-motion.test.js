@@ -4,7 +4,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { binary, runProcess, probe } from '../server/media.js';
-import { renderNewsVisualTrack } from '../server/news-motion.js';
+import { renderNewsVisualTrack, directNewsBudget } from '../server/news-motion.js';
+
+test('direct News requires enough free memory for all configured workers and at most five images', () => {
+  assert.equal(directNewsBudget(5, { renderConcurrency: 4 }, 8 * 1024 ** 3), true);
+  assert.equal(directNewsBudget(5, { renderConcurrency: 4 }, 6 * 1024 ** 3), false);
+  assert.equal(directNewsBudget(5, { renderConcurrency: 1 }, 4 * 1024 ** 3), true);
+  assert.equal(directNewsBudget(10, {}, 64 * 1024 ** 3), false);
+  assert.equal(directNewsBudget(1, {}, 1 * 1024 ** 3), false);
+});
 
 test('ten distinct photos survive bounded pairwise transitions in the correct order and duration', { timeout: 240000 }, async t => {
   const root = path.resolve('.verification', 'ten-news-photos-' + randomUUID());

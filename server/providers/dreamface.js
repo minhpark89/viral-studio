@@ -8,6 +8,7 @@ import { StudioError } from "../store.js";
 import { ensureNewsMcImage } from "../mc-image.js";
 import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
 import { getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
+import { profileStorage, profileLaunchArgs } from '../profile-storage.js';
 import {
   CAPTCHA_BROWSER_HOOK,
   applyCaptchaToken,
@@ -537,6 +538,7 @@ export class DreamFaceProvider {
       let existingBrowser = null;
       try { existingBrowser = existing?.context?.browser?.(); } catch { existingBrowser = null; }
       if (existingBrowser && !existingBrowser.isConnected()) {
+        existing.releaseStorage?.();
         this.sessions.delete(id);
         existing = null;
       }
@@ -553,25 +555,31 @@ export class DreamFaceProvider {
       const directory = this.profileDirectory(account);
       await fs.mkdir(directory, { recursive: true });
       const proxy = validateProxy(getDreamFaceProxy(this.store, account));
-      const context = await this.browserType.launchPersistentContext(directory, {
+      const releaseStorage = await profileStorage(this.store).beginSession(id);
+      let context;
+      try { context = await this.browserType.launchPersistentContext(directory, {
         headless: !visible,
         executablePath: executableFrom(this.store, this.executablePath),
         viewport: { width: 1360, height: 940 },
         locale: "en-US",
+        args: profileLaunchArgs(this.store.state.settings),
         proxy: proxy.server ? {
           server: proxy.server,
           username: proxy.username || undefined,
           password: proxy.password || undefined,
         } : undefined,
-      });
+      }); } catch (error) { releaseStorage(); throw error; }
+      context.on?.('close', releaseStorage);
+      try {
       const page = context.pages()[0] || await context.newPage();
       page.setDefaultTimeout(12000);
       // Remember Turnstile/hCaptcha callbacks on every navigation so a solved
       // token can be handed back to the page without clicking the widget.
       await page.addInitScript(CAPTCHA_BROWSER_HOOK).catch(() => {});
-      const session = { context, browser: context.browser?.(), page, visible, profileId: id };
+      const session = { context, browser: context.browser?.(), page, visible, profileId: id, releaseStorage };
       this.sessions.set(id, session);
       return session;
+      } catch (error) { await context.close().catch(() => {}); releaseStorage(); throw error; }
     });
     this.opening.set(id, pending);
     try {
@@ -1096,6 +1104,7 @@ export class DreamFaceProvider {
     if (!session) return;
     this.sessions.delete(id);
     await session.context.close().catch(() => {});
+    session.releaseStorage?.();
   }
 }
 

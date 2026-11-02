@@ -26,6 +26,7 @@ import { AccountsPage } from "./pages/Accounts.jsx";
 import { LibraryPage } from "./pages/Library.jsx";
 import { RenderPage } from "./pages/Render.jsx";
 import { QueuePage, SettingsPage } from "./pages/Manage.jsx";
+import { GpuStatus } from './HardwareStorageSettings.jsx';
 import { SocialPage } from "./pages/Social.jsx";
 import { ResearchPage } from "./pages/Research.jsx";
 import { PagesPage } from "./pages/Pages.jsx";
@@ -269,6 +270,7 @@ function App() {
             </button>
           </div>
           <div className="topbar-right">
+            {data && <GpuStatus mode={data.settings?.renderAcceleration} onOpen={() => navigate('settings')} />}
             <span className="app-version-pill" aria-label={`App version ${APP_VERSION}`}>
               Viral Studio · v{APP_VERSION}
             </span>

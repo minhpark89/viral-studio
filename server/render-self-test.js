@@ -7,6 +7,7 @@ import { Store } from "./store.js";
 import { binary, importMedia, probe, runProcess } from "./media.js";
 import { presenterFilter, renderNewsBroadcast } from "./news-render.js";
 import { renderTimeline } from "./render.js";
+import { inspectRenderHardware } from './render-hardware.js';
 
 async function hash(file) {
   const digest = createHash("sha256");
@@ -16,7 +17,7 @@ async function hash(file) {
 
 // Called only by the explicit desktop --render-self-test=<empty directory>
 // command. No server, account, scheduler or provider is started by this mode.
-export async function runRenderSelfTest(directory) {
+export async function runRenderSelfTest(directory, { gpu = false } = {}) {
   const root = path.resolve(directory);
   fs.mkdirSync(root, { recursive: true });
   if (fs.readdirSync(root).length) throw new Error("Render test requires a new, empty results directory.");
@@ -25,7 +26,7 @@ export async function runRenderSelfTest(directory) {
     version: JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).version,
     startedAt: new Date().toISOString(), passed: false, finished: false,
     machine: { platform: process.platform, arch: process.arch, osRelease: os.release(), cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, memoryGiB: Math.round(os.totalmem() / 1024 ** 3 * 10) / 10 },
-    settings: { renderConcurrency: 1, renderThreads: 2 },
+    settings: { renderConcurrency: 1, renderThreads: 2, renderAcceleration: gpu ? 'gpu' : 'cpu' },
     tools: [], cases: [], errors: [],
   };
   const save = stage => {
@@ -39,6 +40,8 @@ export async function runRenderSelfTest(directory) {
     const store = new Store(path.join(root, "workspace"));
     store.state.settings.queuePaused = true;
     store.state.settings.renderThreads = 2;
+    store.state.settings.renderAcceleration = gpu ? 'gpu' : 'cpu';
+    store.state.settings.renderConcurrency = 1;
     store.state.settings.content.autoPublishNews = false;
     store.save();
     const project = store.createProject("Offline render compatibility test");
@@ -53,6 +56,10 @@ export async function runRenderSelfTest(directory) {
       report.tools.push({ name, sha256: await hash(file), version: version.stdout.split(/\r?\n/)[0] });
     }
     const ffmpeg = binary("ffmpeg", store.state.settings);
+    if (gpu) {
+      report.hardware = await inspectRenderHardware(store.state.settings, { force: true });
+      assert.ok(report.hardware.gpuAvailable, report.hardware.message);
+    }
     const inputs = [
       { name: "portrait-3-4", width: 540, height: 720 },
       { name: "portrait-9-16", width: 360, height: 640 },
@@ -87,7 +94,8 @@ export async function runRenderSelfTest(directory) {
     }
     fs.unlinkSync(path.join(root, "panel.rgb"));
     const images = [];
-    for (const [index, color] of ["#16324f", "#8d2f3d", "#d99b2b"].entries()) {
+    const colors = ['#dc1e1e','#1ed228','#2828d2','#dcd228','#d228d2','#1ed2d2','#a0641e','#6428a0','#e682aa','#64aae6'];
+    for (const [index, color] of (gpu ? colors : colors.slice(0, 3)).entries()) {
       const file = path.join(root, `editorial-${index}.png`);
       await runProcess(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=${color}:s=900x1400`, "-frames:v", "1", "-threads", "1", "-update", "1", file], { signal, timeout: 30000 });
       images.push(await importMedia(store, file, { projectId: project.id, name: path.basename(file), move: true }));
@@ -96,22 +104,38 @@ export async function runRenderSelfTest(directory) {
       const start = Date.now();
       save(`Rendering full News composition: ${size}`);
       const input = path.join(root, `presenter-${size}.mp4`);
-      await runProcess(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", `testsrc2=s=${size}:r=30:d=13`, "-f", "lavfi", "-i", "sine=frequency=440:duration=13", "-c:v", "libx264", "-preset", "veryfast", "-threads", "2", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", input], { signal, timeout: 120000 });
+      const presenterSeconds = gpu ? 25 : 13;
+      await runProcess(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", `testsrc2=s=${size}:r=30:d=${presenterSeconds}`, "-f", "lavfi", "-i", `sine=frequency=440:duration=${presenterSeconds}`, "-c:v", "libx264", "-preset", "veryfast", "-threads", "2", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", input], { signal, timeout: 120000 });
       const presenter = await importMedia(store, input, { projectId: project.id, name: path.basename(input), move: true });
       const result = await renderNewsBroadcast(store, { id: randomUUID(), name: `Offline ${size}`, projectId: project.id }, presenter, {
         headline: "Viral Studio offline render test", narration: "This synthetic sample checks the same broadcast renderer on each PC. The presenter should stay centered and the audio tone should be audible.", source: "SYNTHETIC TEST", brand: "RENDER TEST",
-      }, images, signal);
+      }, gpu && size === '540x720' ? images.slice(0, 5) : images, signal);
       const output = path.join(root, `NEWS-${size}.mp4`);
       fs.copyFileSync(result.file, output);
       const metadata = await probe(output, store.state.settings);
       assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
       assert.equal(metadata.videoCodec, "h264"); assert.equal(metadata.audioCodec, "aac");
-      assert.ok(Math.abs(metadata.duration - 15) < 0.25);
+      assert.ok(Math.abs(metadata.duration - (gpu ? 25 : 15)) < 0.25);
       await runProcess(ffmpeg, ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"], { signal, timeout: 120000 });
       const volume = await runProcess(ffmpeg, ["-hide_banner", "-i", output, "-vn", "-af", "volumedetect", "-f", "null", "-"], { signal, timeout: 60000 });
       const meanVolumeDb = Number(/mean_volume:\s*([\d.-]+) dB/.exec(volume.stderr)?.[1]);
       assert.ok(Number.isFinite(meanVolumeDb) && meanVolumeDb > -60, "No audible test tone");
-      report.cases.push({ name: size, type: "full-news", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, meanVolumeDb, fullyDecoded: true });
+      let photoOrder;
+      if (gpu) {
+        assert.equal(result.renderDevice?.gpu, true);
+        const expected = colors.slice(0, size === '540x720' ? 5 : 10).map(color => [1,3,5].map(offset => parseInt(color.slice(offset, offset + 2), 16)));
+        const sample = path.join(root, 'photo-order.rgb');
+        await runProcess(ffmpeg, ['-y','-v','error','-i',output,'-vf','fps=2,crop=2:2:540:500,format=rgb24','-threads','1','-c:v','rawvideo','-f','rawvideo',sample], { signal, timeout: 120000 });
+        const pixels = fs.readFileSync(sample); photoOrder = [];
+        for (let offset = 0; offset < pixels.length; offset += 12) {
+          const actual = [...pixels.subarray(offset, offset + 3)];
+          const index = expected.findIndex(color => color.every((channel, j) => Math.abs(channel - actual[j]) <= 12));
+          if (index >= 0 && photoOrder.at(-1) !== index) photoOrder.push(index);
+        }
+        assert.deepEqual(photoOrder, expected.map((_, index) => index), 'Every photo must remain in order');
+        fs.unlinkSync(sample);
+      }
+      report.cases.push({ name: size, type: "full-news", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, meanVolumeDb, fullyDecoded: true, renderDevice: result.renderDevice, renderPipeline: result.renderPipeline, photoOrder });
     }
     save("Rendering timeline with a logo, text and looped music");
     const start = Date.now();
@@ -136,7 +160,8 @@ export async function runRenderSelfTest(directory) {
     assert.equal(metadata.videoCodec, "h264"); assert.equal(metadata.audioCodec, "aac");
     assert.ok(Math.abs(metadata.duration - 5) < 0.15);
     await runProcess(ffmpeg, ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"], { signal, timeout: 60000 });
-    report.cases.push({ name: "logo-and-looped-music", type: "timeline", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, fullyDecoded: true });
+    if (gpu) assert.equal(rendered.renderDevice?.gpu, true);
+    report.cases.push({ name: "logo-and-looped-music", type: "timeline", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, fullyDecoded: true, renderDevice: rendered.renderDevice });
     report.passed = true;
   } catch (error) {
     report.errors.push({ stage: report.stage, code: error.code || "SELF_TEST_FAILED", message: error.message });
