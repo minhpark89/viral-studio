@@ -69,7 +69,7 @@ export async function renderTimeline(store, job, signal, progress) {
   const directory = await fs.mkdtemp(path.join(tempRoot, "render-"));
   const ffmpeg = binary("ffmpeg", store.state.settings);
   const crf = { draft: 27, standard: 21, high: 17 }[timeline.quality];
-  const threads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 4)));
+  const threads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 2)));
   const encoding = [
     "-c:v",
     "libx264",
@@ -112,6 +112,7 @@ export async function renderTimeline(store, job, signal, progress) {
     runProcess(ffmpeg, [...baseArgs, ...args], {
       signal,
       cwd: directory,
+      timeout: Math.max(120000, Number(store.state.settings.maxWaitMinutes || 30) * 60000),
       onLine: (line) => {
         const match = /^out_time_us=(\d+)/.exec(line);
         if (match)
@@ -137,6 +138,8 @@ export async function renderTimeline(store, job, signal, progress) {
           "1",
           "-framerate",
           String(timeline.fps),
+          "-t",
+          String(clip.outSec - clip.inSec),
           "-i",
           media.file,
         );
@@ -154,7 +157,7 @@ export async function renderTimeline(store, job, signal, progress) {
         timeline.originalAudio !== "mute" &&
         media.kind !== "image";
       if (!audible)
-        args.push("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo");
+        args.push("-f", "lavfi", "-t", String(length), "-i", "anullsrc=r=48000:cl=stereo");
       const { width, height } = canvas;
       const fit =
         clip.fit === "cover"
@@ -235,6 +238,8 @@ export async function renderTimeline(store, job, signal, progress) {
         "1",
         "-framerate",
         String(timeline.fps),
+        "-t",
+        String(duration),
         "-i",
         media.file,
       );
@@ -284,9 +289,11 @@ export async function renderTimeline(store, job, signal, progress) {
     if (timeline.music) {
       const music = timeline.music;
       const media = store.require("media", music.mediaId);
-      if (music.loop) args.push("-stream_loop", "-1");
-      args.push("-ss", String(music.offsetSec), "-i", media.file);
       const musicDuration = duration - music.startSec;
+      if (music.loop) args.push("-stream_loop", "-1");
+      // Bound looped inputs too, not just the output: the filter scheduler must
+      // be able to reach EOF with any supported thread count.
+      args.push("-ss", String(music.offsetSec), "-t", String(musicDuration * music.speed), "-i", media.file);
       filters.push(
         `[${inputIndex}:a]asetpts=PTS-STARTPTS,${tempoFilters(music.speed)},volume=${music.volume},apad,atrim=duration=${musicDuration},afade=t=in:st=0:d=${Math.min(music.fadeIn, musicDuration)},afade=t=out:st=${Math.max(0, musicDuration - music.fadeOut)}:d=${Math.min(music.fadeOut, musicDuration)},adelay=${Math.round(music.startSec * 1000)}:all=1[music]`,
       );

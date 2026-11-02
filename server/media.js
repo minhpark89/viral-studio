@@ -30,7 +30,9 @@ const images = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"]);
 export function binary(name, settings = {}) {
   const configured =
     settings[`${name}Path`] || process.env[name.toUpperCase() + "_PATH"];
-  if (configured)
+  // A copied workspace may contain a tool path from a different PC. Prefer
+  // the bundled executable when that absolute path no longer exists.
+  if (configured && (fsSync.existsSync(configured) || (!path.isAbsolute(configured) && !path.win32.isAbsolute(configured))))
     return fsSync.existsSync(configured)
       ? path.resolve(configured)
       : configured;

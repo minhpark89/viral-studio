@@ -785,7 +785,7 @@ export function SettingsPage({ data, project, run, notify }) {
                   type="number"
                   min="1"
                   max="32"
-                  value={settings.renderThreads || 4}
+                  value={settings.renderThreads || 2}
                   onChange={(event) =>
                     setSettings({
                       ...settings,

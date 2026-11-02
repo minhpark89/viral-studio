@@ -3,6 +3,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { activeStatuses, defaultTimeline } from "../shared/contracts.js";
+import { relocateMediaPaths } from "./data-paths.js";
 
 function maskSecret(value) {
   const secret = String(value || "");
@@ -47,7 +48,7 @@ export class Store extends EventEmitter {
       settings: {
         concurrency: 2,
         renderConcurrency: 1,
-        renderThreads: 4,
+        renderThreads: 2,
         dreamfaceConcurrency: 1,
         queuePaused: false,
         pollSeconds: 5,
@@ -111,7 +112,15 @@ export class Store extends EventEmitter {
         throw new Error("Phiên bản dữ liệu chưa được hỗ trợ.");
       }
     }
-    let recovered = false;
+    const relocation = relocateMediaPaths(this.state, this.root);
+    if (relocation.relinked && fs.existsSync(this.file)) {
+      try {
+        fs.copyFileSync(this.file, `${this.file}.before-portability.bak`, fs.constants.COPYFILE_EXCL);
+      } catch (error) {
+        if (error.code !== "EEXIST") throw error;
+      }
+    }
+    let recovered = relocation.changed;
     for (const collection of ["socialPages", "socialPosts", "researchResults", "researchBatches", "productionBatches"]) {
       if (this.state[collection] === undefined) {
         this.state[collection] = [];
@@ -139,7 +148,7 @@ export class Store extends EventEmitter {
     const defaults = {
       concurrency: 2,
       renderConcurrency: 1,
-      renderThreads: 4,
+      renderThreads: 2,
       dreamfaceConcurrency: 1,
       queuePaused: false,
       pollSeconds: 5,

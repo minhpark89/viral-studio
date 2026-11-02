@@ -55,15 +55,11 @@ function sentences(value) {
     .slice(0, 5);
 }
 
-function presenterFilter(width, height) {
-  const target = width / Math.max(1, height);
-  const aspect = width / Math.max(1, height);
-  if (aspect > target) {
-    const crop = Math.round(height * target);
-    return `scale=-2:${height},crop=${crop}:${height}`;
-  }
-  const crop = Math.round(width / target);
-  return `scale=${width}:-2,crop=${width}:${crop}`;
+export function presenterFilter(width, height) {
+  // Fit the decoded frame's display aspect ratio before cropping. DreamFace
+  // can return landscape or square video as well as portrait video. Normalize
+  // non-square pixels while scaling so the presenter keeps their proportions.
+  return `scale=${width}:${height}:force_original_aspect_ratio=increase:force_divisible_by=2:reset_sar=1,crop=${width}:${height}`;
 }
 
 async function writeText(directory, name, value) {
@@ -205,7 +201,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       editorialDuration += segment - TRANSITION;
     }
     const pFilter = presenterFilter(342, 384);
-    filters.push(`[${presenterInput}:v]${pFilter},scale=342:384,setsar=1,format=rgba[mc]`);
+    filters.push(`[${presenterInput}:v]${pFilter},setsar=1,format=rgba[mc]`);
     filters.push(`[${presenterInput}:a]aresample=48000,loudnorm=I=-16:TP=-1.5:LRA=11[voice]`);
     filters.push(`[${background}]drawbox=x=0:y=0:w=iw:h=ih:color=${preset.dark}@0.30:t=fill[dim]`);
     filters.push(`[dim]drawbox=x=48:y=42:w=984:h=74:color=${preset.accent}:t=fill,drawtext=fontfile=news-label.ttf:textfile=brand.txt:expansion=none:fontcolor=white:fontsize=31:x=78:y=62[header]`);
@@ -233,7 +229,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
     }
     const ctaStart = Math.max(0, duration - 4.2);
     filters.push(`[${captionVideo}]drawbox=x=700:y=42:w=332:h=74:color=${preset.cta}:t=fill:enable='gte(t,${ctaStart.toFixed(3)})',drawtext=fontfile=news-label.ttf:textfile=cta.txt:expansion=none:fontcolor=${preset.dark}:fontsize=22:line_spacing=0:x=725:y=58:enable='gte(t,${ctaStart.toFixed(3)})'[outv]`);
-    const renderThreads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 4)));
+    const renderThreads = String(Math.max(1, Math.min(32, Number(store.state.settings.renderThreads) || 2)));
     args.push("-filter_complex_threads", renderThreads, "-filter_complex", filters.join(";"), "-map", "[outv]", "-map", "[voice]", "-t", duration.toFixed(3), "-r", String(FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", "-threads", renderThreads, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "output.mp4");
     update(8, "Building smooth news transitions");
     await runProcess(ffmpeg, args, {

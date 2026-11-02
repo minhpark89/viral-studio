@@ -238,7 +238,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
   const [renderOptions, setRenderOptions] = useState({
     concurrency: Number(data.settings?.concurrency) || 2,
     renderConcurrency: Number(data.settings?.renderConcurrency) || 1,
-    threads: Number(data.settings?.renderThreads) || 4,
+    threads: Number(data.settings?.renderThreads) || 2,
   });
   const [savingRenderOptions, setSavingRenderOptions] = useState(false);
   const dreamfaceAccounts = useMemo(
@@ -249,7 +249,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
   useEffect(() => setRenderOptions({
     concurrency: Number(data.settings?.concurrency) || 2,
     renderConcurrency: Number(data.settings?.renderConcurrency) || 1,
-    threads: Number(data.settings?.renderThreads) || 4,
+    threads: Number(data.settings?.renderThreads) || 2,
   }), [data.settings?.concurrency, data.settings?.renderConcurrency, data.settings?.renderThreads]);
   const researchBatches = (data.researchBatches || []).filter(batch => batch.projectId === project.id);
   const projectResults = useMemo(() => results.filter((result) => result.projectId === project.id).sort((left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0)), [results, project.id]);

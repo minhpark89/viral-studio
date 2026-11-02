@@ -4,19 +4,23 @@ Viral Studio is a Windows desktop app for research, AI video production, timelin
 
 ## Download for Windows
 
-- [Portable v0.7.6](https://github.com/minhpark89/viral-studio/releases/download/v0.7.6/Viral.Studio.0.7.6.exe)
-- [Installer v0.7.6](https://github.com/minhpark89/viral-studio/releases/download/v0.7.6/Viral.Studio.Setup.0.7.6.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.6/SHA256SUMS.txt)
+- [Portable v0.7.7](https://github.com/minhpark89/viral-studio/releases/download/v0.7.7/Viral.Studio.0.7.7.exe)
+- [Installer v0.7.7](https://github.com/minhpark89/viral-studio/releases/download/v0.7.7/Viral.Studio.Setup.0.7.7.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.7/SHA256SUMS.txt)
 
 The desktop app starts with a version/loading screen, uses the Viral Studio icon, and stores user data in `Viral Data`; an installed upgrade can read legacy `Dropship Data` automatically.
 
 ## Included features
 
+- News presenter fitting handles landscape, portrait, square, small and non-square-pixel inputs without the crop failure. Eight geometry checks and two full broadcast fixtures cover this release.
+- Portable owns its adjacent data/profile. Copied media paths are relinked with a snapshot backup; missing old-PC FFmpeg paths fall back to the bundled tools. New workspaces default to one export and two render threads.
+- Run [the offline Windows render check](scripts/Test-Render-Windows.ps1) against the actual EXE on each PC. It produces synthetic sample videos, binary hashes, timings and a PASS/FAIL report without provider accounts.
+
 - Queue preparation cards show creation and last-activity dates and identify errors saved before today. Date filtering and ordering follow actual activity, including retries; opening the app preserves historical timestamps.
 - Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
 - News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
 
-For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.6.md). For future debugging, start with the [v0.7.6 checkpoint](CHECKPOINT_2026-11-02_v0.7.6.md).
+For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.7.md). For future debugging, start with the [v0.7.7 checkpoint](CHECKPOINT_2026-11-02_v0.7.7.md).
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
 - Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
@@ -47,7 +51,7 @@ For a separate test workspace on another PC (or this PC), see [Windows test guid
 
 ## Run from source
 
-Requires Node.js 22 and FFmpeg/ffprobe from `bin/` or `PATH`.
+Requires Node.js >=22.12.0 (release build: 24.22.2, pinned in `.node-version`) and FFmpeg/ffprobe from `bin/` or `PATH`. Packaged Windows users do not need Node.js.
 
 ```powershell
 npm ci
@@ -68,6 +72,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.7.6. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-02_v0.7.6.md` for implementation and verification details.
+This repository is the dedicated Viral Studio project. The current release is v0.7.7. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-02_v0.7.7.md` for implementation and verification details.
 
 

@@ -10,6 +10,7 @@ import { StudioError } from "./store.js";
 // silently attaches to a stale backend with different runtime behavior.
 const BUILD_ID = createHash("sha256")
   .update(fs.readFileSync(fileURLToPath(import.meta.url)))
+  .update(fs.readFileSync(new URL("../package.json", import.meta.url)))
   .digest("hex")
   .slice(0, 16);
 

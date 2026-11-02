@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
+const { dataDirectory } = require("./data-directory.cjs");
 const { pathToFileURL } = require("node:url");
 
 // Windows display drivers can present a black GPU surface before Chromium's
@@ -42,7 +43,18 @@ async function openDataFolder() {
   return { opened: true };
 }
 
-const locked = app.requestSingleInstanceLock();
+const selfTestDirectory = process.argv.find(argument => argument.startsWith("--render-self-test="))?.slice("--render-self-test=".length);
+const directory = dataDirectory({
+  isPackaged: app.isPackaged,
+  executable: app.getPath("exe"),
+  sourceRoot: path.resolve(__dirname, ".."),
+});
+if (!selfTestDirectory && process.env.PORTABLE_EXECUTABLE_DIR && !app.commandLine.hasSwitch("user-data-dir")) {
+  const profile = path.join(directory, ".desktop");
+  fs.mkdirSync(profile, { recursive: true });
+  app.setPath("userData", profile);
+}
+const locked = selfTestDirectory ? true : app.requestSingleInstanceLock();
 if (!locked) app.quit();
 
 app.on("second-instance", () => {
@@ -55,6 +67,12 @@ app
   .whenReady()
   .then(async () => {
     if (!locked) return;
+    if (selfTestDirectory) {
+      const { runRenderSelfTest } = await import(pathToFileURL(path.join(__dirname, "../server/render-self-test.js")).href);
+      const result = await runRenderSelfTest(selfTestDirectory);
+      app.exit(result.passed ? 0 : 1);
+      return;
+    }
     app.setAppUserModelId("local.viral.studio");
     await createSplash();
     setSplashStatus("Đang chuẩn bị dữ liệu…");
@@ -64,33 +82,6 @@ app
     const { findInstance } = await import(
       pathToFileURL(path.join(__dirname, "../server/instance.js")).href
     );
-    const packagedRoot = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath("exe"));
-    const preferredData = path.join(packagedRoot, "Viral Data");
-    const legacyData = path.join(packagedRoot, "Dropship Data");
-    const installedLegacyData = path.join(path.dirname(packagedRoot), "Dropship Studio", "Dropship Data");
-    // A portable build is often launched from the repository's release folder
-    // while the installed Dropship/Viral build still owns the user's data.
-    // Reuse that existing store so an upgrade does not appear to lose projects,
-    // research results, accounts or the new Research render action.
-    const commonInstalledLegacyData = process.env.LOCALAPPDATA
-      ? path.join(process.env.LOCALAPPDATA, "Programs", "Dropship Studio", "Dropship Data")
-      : "";
-    const commonInstalledViralData = process.env.LOCALAPPDATA
-      ? path.join(process.env.LOCALAPPDATA, "Programs", "Viral Studio", "Viral Data")
-      : "";
-    const directory = process.env.STUDIO_DATA_DIR || (app.isPackaged
-      ? (fs.existsSync(preferredData)
-        ? preferredData
-        : fs.existsSync(legacyData)
-          ? legacyData
-          : fs.existsSync(installedLegacyData)
-            ? installedLegacyData
-            : fs.existsSync(commonInstalledLegacyData)
-              ? commonInstalledLegacyData
-              : fs.existsSync(commonInstalledViralData)
-                ? commonInstalledViralData
-                : preferredData)
-      : path.join(__dirname, "../.studio"));
     setSplashStatus("Đang kiểm tra kết nối…");
     let existing = await findInstance(directory);
     if (!existing) {
@@ -212,6 +203,11 @@ app
     await window.loadURL(studio.address);
   })
   .catch((error) => {
+    if (selfTestDirectory) {
+      console.error(error);
+      app.exit(1);
+      return;
+    }
     closeSplash();
     dialog.showErrorBox("Không mở được Viral Studio", error.message);
     app.exit(1);

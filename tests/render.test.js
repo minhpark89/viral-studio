@@ -8,9 +8,11 @@ import { binary, runProcess, importMedia, probe } from '../server/media.js';
 import { renderTimeline, validateTimeline } from '../server/render.js';
 import { defaultTimeline } from '../shared/contracts.js';
 
-test('FFmpeg renders trimmed mixed media, Vietnamese text, image overlay and music at the expected dimensions/duration', { timeout: 150000 }, async () => {
+for (const renderThreads of [1, 2, 4]) {
+test(`FFmpeg timeline with ${renderThreads} threads renders trimmed media, Vietnamese text, logo and looped music`, { timeout: 150000 }, async (t) => {
   const root = path.resolve('.verification', `render-${randomUUID()}`);
   const store = new Store(root);
+  store.state.settings.renderThreads = renderThreads;
   const project = store.createProject('Kiểm tra tiếng Việt');
   const ffmpeg = binary('ffmpeg', store.state.settings);
   const source = path.join(root, 'video có âm thanh.mp4');
@@ -35,7 +37,7 @@ test('FFmpeg renders trimmed mixed media, Vietnamese text, image overlay and mus
   timeline.images = [{ id: randomUUID(), mediaId: media[2].id, startSec: 0, endSec: 5, x: 0.8, y: 0.1, scale: 0.15, opacity: 0.6 }];
   timeline.music = { mediaId: media[3].id, volume: 0.3, offsetSec: 0.1, startSec: 0.2, speed: 1.25, loop: true, fadeIn: 0.3, fadeOut: 0.4 };
   const progress = [];
-  const result = await renderTimeline(store, { id: randomUUID(), name: 'Bản kiểm tra', projectId: project.id, payload: { timeline } }, new AbortController().signal, (value) => progress.push(value));
+  const result = await renderTimeline(store, { id: randomUUID(), name: 'Bản kiểm tra', projectId: project.id, payload: { timeline } }, t.signal, (value) => progress.push(value));
   const output = await probe(result.file, store.state.settings);
   assert.equal(output.width, 480);
   assert.equal(output.height, 854);
@@ -57,3 +59,5 @@ test('FFmpeg renders trimmed mixed media, Vietnamese text, image overlay and mus
   await assert.rejects(renderTimeline(store, { id: randomUUID(), name: 'Cancel', projectId: project.id, payload: { timeline } }, controller.signal, () => {}));
   assert.equal((await fs.readdir(path.join(root, 'temp'))).length, 0);
 });
+
+}
