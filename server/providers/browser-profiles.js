@@ -8,6 +8,7 @@ import { providers } from "../../shared/contracts.js";
 import { StudioError } from "../store.js";
 import { parseCookies } from "./cookies.js";
 import { profileStorage, profileLaunchArgs } from '../profile-storage.js';
+import { resolveBrowserExecutable } from '../browser-runtime.js';
 
 async function freePort() {
   const server = net.createServer();
@@ -31,29 +32,7 @@ export class BrowserProfiles {
   }
 
   executable() {
-    const candidates = [
-      this.store.state.settings.chromePath,
-      path.join(
-        process.env.PROGRAMFILES || "",
-        "Google/Chrome/Application/chrome.exe",
-      ),
-      path.join(
-        process.env["PROGRAMFILES(X86)"] || "",
-        "Microsoft/Edge/Application/msedge.exe",
-      ),
-      path.join(
-        process.env.LOCALAPPDATA || "",
-        "Google/Chrome/Application/chrome.exe",
-      ),
-      chromium.executablePath(),
-    ];
-    const executable = candidates.find((file) => file && fs.existsSync(file));
-    if (!executable)
-      throw new StudioError(
-        "Chưa tìm thấy Chrome/Edge. Chọn đường dẫn trình duyệt trong Cài đặt.",
-        "BROWSER_MISSING",
-      );
-    return executable;
+    return resolveBrowserExecutable(this.store.state.settings);
   }
 
   profileId(account) {

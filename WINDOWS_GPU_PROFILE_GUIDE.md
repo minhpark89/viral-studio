@@ -1,10 +1,10 @@
-# Viral Studio 0.7.9-local.1 — GPU và profile
+# Viral Studio 0.8.0 — GPU và profile
 
-Bản cục bộ dựa trên 0.7.8, chưa phát hành lên GitHub. Bộ cài và Portable nằm trong `release/v0.7.9-local.1`. Khi đưa sang PC khác, dùng đúng bản mới này để có tính năng GPU/profile; link public 0.7.8 chưa chứa các thay đổi này.
+Bộ cài và Portable v0.8.0 có trên [GitHub Release](https://github.com/minhpark89/viral-studio/releases/tag/v0.8.0), cùng script kiểm tra và checksum. Khi đưa sang PC khác, dùng đúng bản mới này để có tính năng GPU/profile.
 
 ## Dùng trên máy khác
 
-1. Sao lưu dữ liệu rồi đóng app và profile trước khi cài. Máy này đã giữ backup riêng; không chép thư mục backup có tài khoản sang nơi công khai.
+1. Cài Chrome hoặc Edge trên máy đích. DreamFace và trình quản lý profile dùng chung cách tìm trình duyệt: đường dẫn đã chọn còn hợp lệ, Chrome/Edge đã cài, rồi mới tới Chromium của Playwright. Không cần tải Chromium riêng nếu có Chrome/Edge. Sao lưu dữ liệu rồi đóng app và profile trước khi cài. Máy này đã giữ backup riêng; không chép thư mục backup có tài khoản sang nơi công khai.
 2. Chạy Installer hoặc Portable. Portable có thư mục dữ liệu riêng cạnh EXE; đừng chạy nhầm bản riêng rồi tưởng mất tài khoản. Muốn chuyển dữ liệu, chép toàn bộ workspace khi các trình duyệt đã đóng; đường dẫn media được kiểm tra và chuyển lại trên máy đích. Phiên đăng nhập mã hóa bởi Windows/Chrome có thể cần đăng nhập lại trên PC khác.
 3. Mở **Cài đặt → GPU & bộ mã hóa** hoặc bấm trạng thái GPU trên thanh đầu. App nhận lại GPU trên chính máy đang chạy, thử mã hóa/giải mã file 1080×1920 rồi chọn NVENC, AMF hoặc QSV hoạt động.
 4. NVIDIA: bấm **Tìm bản NVIDIA phù hợp**. Chỉ hiển thị phiên bản cụ thể khi dữ liệu chính thức của NVIDIA liệt kê đúng model và Windows; nếu chưa khớp, dùng trang chọn driver của hãng. AMD/Intel có liên kết driver chính thức khi encoder chưa hoạt động. Việc hỗ trợ encode còn tùy GPU, driver và bộ FFmpeg.
@@ -16,7 +16,7 @@ Máy RTX 3060 hiện tại đã kiểm tra thực tế với driver WHQL 621.01.
 
 ## Giữ profile gọn
 
-**Tối ưu dung lượng profile** bật mặc định và có hiệu lực từ lần mở profile tiếp theo:
+**Tối ưu dung lượng profile** bật mặc định cho cả profile đã có và profile tạo thêm sau này, có hiệu lực ngay từ lần mở đầu tiên. Tạo nhiều slot chỉ tạo thông tin tài khoản; thư mục trình duyệt được khởi tạo riêng khi mở, không sao chép cache hoặc phiên đăng nhập từ profile cũ:
 
 - Giới hạn HTTP cache 64 MiB, media cache 32 MiB; dọn Code Cache vượt 32 MiB và các shader cache được liệt kê vượt 16 MiB trước khi mở.
 - Hạn chế mô hình AI cục bộ của Chrome tải nền; dọn các thư mục mô hình có thể tái tạo đã tồn tại.
@@ -30,7 +30,7 @@ Nút **Dọn cache profile đang đóng** dọn toàn bộ cache trong danh sác
 Chạy PowerShell từ thư mục có script:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-Render-Windows.ps1 -AppPath '.\Viral.Studio.0.7.9-local.1.exe' -Gpu
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-Render-Windows.ps1 -AppPath '.\Viral.Studio.0.8.0.exe' -Gpu
 ```
 
 `-Gpu` yêu cầu GPU thật, kiểm tra hình học MC, News 5/10 ảnh đúng thứ tự, âm thanh, giải mã toàn bộ đầu ra và timeline. Không có tham số này thì chạy chẩn đoán CPU tương thích. Kết quả trong `Render Test Results`, gồm `report.json`, `RESULT.txt` và video mẫu. Không gọi tài khoản/provider và không dùng credit. Với máy yếu, giữ mặc định 1 lượt render/2 threads rồi tăng dần sau khi đo.

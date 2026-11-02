@@ -47,7 +47,9 @@ async function treeSize(file) {
   if (stat.isFile()) return { bytes: stat.size, files: 1, exists: true, unsafe: false };
   if (!stat.isDirectory()) return { bytes: 0, files: 0, exists: true, unsafe: true };
   const result = { bytes: 0, files: 0, exists: true, unsafe: false };
-  for (const name of await fs.readdir(file)) {
+  // An open browser can evict its own cache while the settings page measures it.
+  const names = await fs.readdir(file).catch(error => { if (error.code === 'ENOENT') return []; throw error; });
+  for (const name of names) {
     const next = await treeSize(path.join(file, name));
     result.bytes += next.bytes; result.files += next.files; result.unsafe ||= next.unsafe;
   }

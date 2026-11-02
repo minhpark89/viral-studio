@@ -2,13 +2,13 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-This checkout contains **0.7.9-local.1**, a local GPU/profile-storage build based on v0.7.8. Its installer and portable executable are in `release/v0.7.9-local.1`; this build has not been published. See [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md). The public download links below still refer to v0.7.8.
+**Version 0.8.0** adds verified GPU rendering and safe profile storage limits, including newly created profiles. DreamFace and the profile manager share Chrome/Edge discovery so a fresh PC does not need a separate Playwright browser download. See [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and [release notes](RELEASE_NOTES_v0.8.0.md).
 
 ## Download for Windows
 
-- [Portable v0.7.8](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/Viral.Studio.0.7.8.exe)
-- [Installer v0.7.8](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/Viral.Studio.Setup.0.7.8.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.7.8/SHA256SUMS.txt)
+- [Portable v0.8.0](https://github.com/minhpark89/viral-studio/releases/download/v0.8.0/Viral.Studio.0.8.0.exe)
+- [Installer v0.8.0](https://github.com/minhpark89/viral-studio/releases/download/v0.8.0/Viral.Studio.Setup.0.8.0.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.0/SHA256SUMS.txt)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 

@@ -9,6 +9,7 @@ import { ensureNewsMcImage } from "../mc-image.js";
 import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
 import { getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
 import { profileStorage, profileLaunchArgs } from '../profile-storage.js';
+import { resolveBrowserExecutable } from '../browser-runtime.js';
 import {
   CAPTCHA_BROWSER_HOOK,
   applyCaptchaToken,
@@ -503,8 +504,7 @@ function accountId(account) {
 }
 
 function executableFrom(store, explicit) {
-  const candidate = explicit || store?.state?.settings?.chromePath || chromium.executablePath();
-  return candidate || undefined;
+  return resolveBrowserExecutable(store?.state?.settings, explicit);
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "viral-studio",
-  "version": "0.7.9-local.1",
+  "version": "0.8.0",
   "private": true,
   "license": "UNLICENSED",
   "author": "Viral Studio",
@@ -82,6 +82,7 @@
       "artifactName": "Viral.Studio.Setup.${version}.${ext}"
     },
     "portable": {
+      "unpackDirName": true,
       "artifactName": "Viral.Studio.${version}.${ext}"
     }
   },
