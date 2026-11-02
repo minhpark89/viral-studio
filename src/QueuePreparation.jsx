@@ -1,5 +1,6 @@
 import { Button, Badge } from './components.jsx';
 import { api } from './api.js';
+import { formatDateTime } from '../shared/source-context.js';
 
 export function QueuePreparation({ items, data, run, navigate }) {
   const batches = [...new Set(items.map(item => item.batchId))];
@@ -8,9 +9,12 @@ export function QueuePreparation({ items, data, run, navigate }) {
     const current = entries.find(item => item.status === 'preparing') || entries.find(item => item.status === 'pending') || entries[0];
     const failed = entries.filter(item => ['failed', 'interrupted'].includes(item.status));
     const active = entries.some(item => ['pending', 'preparing'].includes(item.status));
+    const historical = !active && Date.parse(current.activityAt) < new Date().setHours(0, 0, 0, 0);
     const avatar = data.media.find(media => media.id === current.avatarMediaId);
     return <article className="panel preparation-card" key={batchId} data-preparation-batch-id={batchId}>
       <div className="preparation-heading"><div><small>CHUẨN BỊ {current.contentType === 'news' ? 'NEWS' : 'PRODUCT'} · {batchId.slice(0, 8)}</small><h3>{current.name}</h3></div><Badge status={active ? 'preparing' : 'failed'} /></div>
+      <p className="muted small preparation-dates">Lượt tạo: {formatDateTime(current.createdAt)} · Cập nhật: {formatDateTime(current.activityAt)}</p>
+      {historical && <p className="muted small preparation-history">Lỗi đã lưu từ trước hôm nay. Bấm thử lại để kiểm tra bằng cấu hình hiện tại.</p>}
       <p>{active ? current.stage : 'Không thể chuẩn bị video'} · Video {current.index + 1}/{current.total}</p>
       <p className="muted small">{entries.length} video chưa vào bước tạo MC/xuất video{avatar ? ` · MC: ${avatar.name}` : ''}</p>
       {failed.length > 0 && <p className="danger-text">{failed.length} video cần xử lý: {failed[0].error || 'Bước chuẩn bị bị gián đoạn.'}</p>}

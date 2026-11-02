@@ -8,8 +8,9 @@ export function productionPreparations(data, projectId) {
       id: `${batch.id}:${item.index}`, batchId: batch.id, index: item.index, total: batch.items.length,
       name: item.title || research.get(item.researchId || batch.request?.researchId)?.headline || batch.request?.topic || batch.request?.productName || 'Chuẩn bị video',
       contentType: batch.request?.contentType || 'news', status: item.status, createdAt: batch.createdAt,
+      activityAt: item.updatedAt || item.stageUpdatedAt || item.preparationFinishedAt || item.preparationStartedAt || item.retryRequestedAt || batch.updatedAt || batch.createdAt,
       stage: item.stage || (item.status === 'pending' ? (batch.status === 'preparing' ? batch.stage || 'Đang chờ tới lượt chuẩn bị' : 'Đang chờ tới lượt chuẩn bị') : 'Đang chuẩn bị nội dung và ảnh'),
       error: item.error || batch.error || '', researchId: item.researchId || batch.request?.researchId || null,
       avatarMediaId: item.avatarMediaId || batch.request?.avatarMediaId || null,
-    }))).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.index - b.index);
+    }))).sort((a, b) => Date.parse(b.activityAt) - Date.parse(a.activityAt) || a.index - b.index);
 }

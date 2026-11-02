@@ -39,6 +39,13 @@ function preparationMessage(error, fallback) {
   return message ? message.slice(0, 800) : fallback;
 }
 
+function touchPreparation(batch, item) {
+  const at = new Date().toISOString();
+  batch.updatedAt = at;
+  if (item) item.updatedAt = at;
+  return at;
+}
+
 function decodeHtml(value) {
   return String(value || "")
     .replace(/&nbsp;/gi, " ")
@@ -169,6 +176,7 @@ export class ProductionService {
         const nextCode = ["failed", "interrupted"].includes(nextStatus) ? job.errorCode || "JOB_FAILED" : null;
         if (item.jobId !== job.id || item.status !== nextStatus || item.error !== nextError || item.errorCode !== nextCode) {
           Object.assign(item, { jobId: job.id, status: nextStatus, error: nextError, errorCode: nextCode });
+          touchPreparation(batch, item);
           changed = true;
         }
         interrupted ||= nextStatus === "interrupted";
@@ -226,14 +234,19 @@ export class ProductionService {
 
   retry(id) {
     const batch = this.store.require("productionBatches", id);
+    let requested = false;
     for (const item of batch.items) {
       if (!item.jobId && ["failed", "interrupted"].includes(item.status)) {
         item.status = "pending";
         item.stage = 'Đang chờ chuẩn bị lại';
         item.error = null;
         item.errorCode = null;
+        item.retryRequestedAt = touchPreparation(batch, item);
+        item.preparationFinishedAt = null;
+        requested = true;
       }
     }
+    if (!requested) return batch;
     batch.error = null;
     batch.errorCode = null;
     if (batch.items.some(item => item.status === "pending")) batch.status = "pending";
@@ -254,6 +267,7 @@ export class ProductionService {
       const request = batch.request;
       batch.status = "preparing";
       batch.stage = 'Đang chuẩn bị nguồn tin';
+      batch.preparationStartedAt = touchPreparation(batch);
       this.store.save();
       try {
         if (request.researchIds?.length && !batch.sources.length) {
@@ -283,6 +297,7 @@ export class ProductionService {
             item.stage = 'Đang chuẩn bị nội dung';
             item.error = null;
             item.errorCode = null;
+            item.preparationStartedAt = touchPreparation(batch, item);
             this.store.save();
             try { await this.prepareItem(batch, item); }
             catch (error) {
@@ -290,6 +305,7 @@ export class ProductionService {
               item.errorCode = error?.code || "PREPARATION_FAILED";
               item.error = preparationMessage(error, "Could not prepare this video. Check the sources and LLM, then retry.");
             }
+            item.preparationFinishedAt = touchPreparation(batch, item);
             this.store.save();
           }
         };
@@ -303,18 +319,20 @@ export class ProductionService {
           item.status = this.controller.signal.aborted ? "interrupted" : "failed";
           item.errorCode = error?.code || "RESEARCH_FAILED";
           item.error = preparationMessage(error, "Research failed. Check the source feed and try again.");
+          item.preparationFinishedAt = touchPreparation(batch, item);
         }
         batch.errorCode = error?.code || "RESEARCH_FAILED";
         batch.error = preparationMessage(error, "Research failed. Check the source feed and try again.");
       }
       batch.status = this.controller.signal.aborted ? "interrupted" : batch.items.every(item => item.jobId) ? "queued" : batch.items.some(item => item.jobId) ? "partial" : "failed";
+      touchPreparation(batch);
       this.store.save();
     }
   }
 
   async prepareItem(batch, item) {
     const request = batch.request;
-    const stage = message => { item.stage = message; item.stageUpdatedAt = new Date().toISOString(); this.store.save(); };
+    const stage = message => { item.stage = message; item.stageUpdatedAt = touchPreparation(batch, item); this.store.save(); };
     if (item.avatarMediaId === undefined) item.avatarMediaId = mcForVideo(request, item.index);
     let research = item.researchId
       ? this.store.require("researchResults", item.researchId)

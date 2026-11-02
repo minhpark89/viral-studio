@@ -23,6 +23,8 @@ const batch = store.add('productionBatches', {
   ],
 });
 store.add('productionBatches', { projectId: other.id, status: 'preparing', request: { topic: 'Hidden other project', contentType: 'news' }, items: [{ index: 0, status: 'preparing' }] });
+const history = store.add('productionBatches', { projectId: project.id, status: 'failed', request: { topic: 'Old provider outage', contentType: 'news' }, items: [{ index: 0, status: 'failed', error: 'LLM returned HTTP 503.' }] });
+history.createdAt = history.updatedAt = '2026-10-27T16:59:03.000Z';
 store.save();
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
@@ -47,6 +49,17 @@ try {
   report.checks.push('Preparation stage updates live over SSE');
 
   await queueTab('Có lỗi').click();
+  const oldCard = page.locator(`[data-preparation-batch-id="${history.id}"]`);
+  await oldCard.locator('.preparation-history').waitFor();
+  assert.match(await oldCard.locator('.preparation-dates').innerText(), /27\/10\/26/);
+  await page.getByLabel('Thời gian render').selectOption('today');
+  await oldCard.waitFor({ state: 'detached' });
+  history.items[0].updatedAt = new Date().toISOString(); store.save();
+  await oldCard.waitFor();
+  assert.equal(await oldCard.locator('.preparation-history').count(), 0);
+  history.items[0].status = 'completed'; store.save();
+  await oldCard.waitFor({ state: 'detached' });
+  report.checks.push('Historical error shows its original date; today filter uses actual latest attempt and updates over SSE');
   await card.getByText(/Image service offline QA/).waitFor();
   let retried = false;
   await page.route(`**/api/production/batches/${batch.id}/retry`, async route => {

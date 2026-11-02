@@ -58,7 +58,7 @@ export function QueuePage({ data, project, run, navigate }) {
   const allPreparations = productionPreparations(data, project.id);
   const preparations = allPreparations.filter(item => (typeFilter === 'all' || item.contentType === typeFilter)
     && (!search.trim() || `${item.name} ${item.batchId}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
-    && (period === 'all' || Date.parse(item.createdAt) >= (period === 'today' ? new Date().setHours(0, 0, 0, 0) : Date.now() - 7 * 86400000))
+    && (period === 'all' || Date.parse(item.activityAt) >= (period === 'today' ? new Date().setHours(0, 0, 0, 0) : Date.now() - 7 * 86400000))
     && (filter === 'all' || filter === 'active' && ['pending', 'preparing'].includes(item.status) || filter === 'failed' && ['failed', 'interrupted'].includes(item.status)));
   const projectJobs = data.jobs.filter(job => job.projectId === project.id);
   const contentType = (job) => job.type === "news" || job.production?.contentType === "news"
