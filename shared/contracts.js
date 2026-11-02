@@ -56,6 +56,7 @@ export const statusLabels = {
 
 export const activeStatuses = [
   "preparing",
+  "generating_mc_image",
   "submitting",
   "rendering",
   "downloading",

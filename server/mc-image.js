@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { importMedia } from "./media.js";
 import { StudioError } from "./store.js";
+import { requestDreamFaceMcImage } from "./dreamface-image.js";
 
 export const DEFAULT_MC_IMAGE_PROMPT =
   "Original fictional US television news presenter, professional woman in her 30s, navy blazer over a white shirt, seated at a modern newsroom desk, medium portrait shot from the waist up, clean blue and red broadcast studio background, warm key light, direct eye contact, neutral confident expression, hands below frame, realistic editorial photography, no logos, no text, no watermark, not resembling a real person.";
@@ -188,46 +189,19 @@ async function importGeneratedImage(store, job, account, output, label) {
 }
 
 async function dreamFaceImageStill(store, session, job, account, plan, signal, update) {
-  const page = session.page;
-  await page.goto("https://www.dreamfaceapp.com/image", { waitUntil: "domcontentloaded", timeout: 45000 });
-  const prompt = page.getByPlaceholder("Type or paste text here");
-  await prompt.waitFor({ state: "visible", timeout: 30000 });
-  const before = new Set(await page.locator("img").evaluateAll((nodes) => nodes.map((node) => node.currentSrc || node.src).filter((url) => /dreamfaceapp\.com\/server\/common\/work/i.test(url))).catch(() => []));
-  const body = await page.locator("body").innerText().catch(() => "");
-  if (/no free|0\s+free\s+daily|insufficient credits|not enough credits/i.test(body)) {
-    throw new StudioError("DreamFace Image has no free generation available on this profile today.", "MC_IMAGE_QUOTA", 402);
-  }
-  await prompt.fill(String(plan?.mcImagePrompt || DEFAULT_MC_IMAGE_PROMPT).slice(0, 1500));
-  const create = page.getByRole("button", { name: "Create", exact: true }).first();
-  if (!await create.isVisible().catch(() => false)) throw new StudioError("DreamFace Image is unavailable.", "MC_IMAGE_NOT_READY", 422);
-  if (await create.isDisabled().catch(() => true)) throw new StudioError("DreamFace Image is not ready.", "MC_IMAGE_NOT_READY", 422);
-  update({ status: "generating_mc_image", provider: "dreamface-image", progress: 2 });
-  await create.click();
-  const deadline = Date.now() + 120000;
-  while (Date.now() < deadline) {
-    signal.throwIfAborted();
-    const currentBody = await page.locator("body").innerText().catch(() => "");
-    if (/insufficient credits|not enough credits|daily free.*limit|failed to generate/i.test(currentBody)) {
-      throw new StudioError("DreamFace Image has no available generation credit on this profile.", "MC_IMAGE_QUOTA", 402);
-    }
-    const urls = await page.locator("img").evaluateAll((nodes) => nodes.map((node) => node.currentSrc || node.src).filter((url) => /dreamfaceapp\.com\/server\/common\/work/i.test(url))).catch(() => []);
-    const fresh = urls.find((url) => !before.has(url));
-    if (fresh) {
-      const response = await session.context.request.get(fresh, { timeout: 60000, headers: { Referer: page.url() } });
-      if (response.ok()) {
-        const contentType = String(response.headers()["content-type"] || "").toLowerCase();
-        const extension = contentType.includes("jpeg") ? ".jpg" : ".png";
-        const bytes = await response.body();
-        await response.dispose();
-        if (bytes.length > 1000) return importGeneratedImage(store, job, account, { extension, bytes }, "DreamFace AI MC");
-      } else await response.dispose();
-    }
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, 2500);
-      signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason || new Error("aborted")); }, { once: true });
-    });
-  }
-  throw new StudioError("Timed out waiting for DreamFace Image.", "MC_IMAGE_TIMEOUT", 408);
+  const output = await requestDreamFaceMcImage({
+    session,
+    prompt: plan?.mcImagePrompt || DEFAULT_MC_IMAGE_PROMPT,
+    signal,
+    previousRequest: job.payload.mcImageRequest,
+    onRequest: request => {
+      job.payload = { ...job.payload, mcImageRequest: request };
+      store.patch("jobs", job.id, { payload: job.payload });
+    },
+    update,
+    timeoutMs: Math.max(2, Math.min(60, Number(store.state.settings.maxWaitMinutes) || 30)) * 60000,
+  });
+  return importGeneratedImage(store, job, account, output, "DreamFace AI MC");
 }
 
 export async function ensureNewsMcImage(store, session, job, account, plan, signal, update = () => {}) {
@@ -247,6 +221,7 @@ export async function ensureNewsMcImage(store, session, job, account, plan, sign
 
   const config = await resolveMcImageConfig(store);
   const failures = [];
+  let lastError;
   if (config.source !== "unconfigured" && config.source !== "disabled") {
     try {
       update({ status: "generating_mc_image", provider: "highlight-endpoint", progress: 1 });
@@ -255,6 +230,8 @@ export async function ensureNewsMcImage(store, session, job, account, plan, sign
       store.log(job, `AI MC still generated with ${config.source === "highlight-config" ? "Highlight" : "the configured image endpoint"}.`);
       return media;
     } catch (error) {
+      signal.throwIfAborted();
+      lastError = error;
       failures.push(`Highlight image: ${safeErrorMessage(error)}`);
       store.log(job, failures.at(-1));
     }
@@ -265,11 +242,13 @@ export async function ensureNewsMcImage(store, session, job, account, plan, sign
       store.log(job, "AI MC still generated with DreamFace Image fallback.");
       return media;
     } catch (error) {
+      signal.throwIfAborted();
+      lastError = error;
       failures.push(`DreamFace Image: ${safeErrorMessage(error)}`);
       store.log(job, failures.at(-1));
     }
   }
-  throw new StudioError(`Could not create an AI MC still. ${failures.join(" ")}`, "MC_IMAGE_REQUIRED", 422);
+  throw new StudioError(`Chưa tạo được ảnh MC. ${failures.join(" ")}`, lastError?.code || "MC_IMAGE_REQUIRED", lastError?.status || 422);
 }
 
 export async function inspectMcImageSettings(store) {
