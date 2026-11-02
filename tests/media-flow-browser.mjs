@@ -107,9 +107,13 @@ try{
   report.checks.push('Research individual story sends the selected MC and requested three videos, separate from the provider profile');
 
   await nav('Research & News').click();
-  await page.getByLabel('Ảnh MC cho cả lô',{exact:true}).selectOption(selectedMc);
-  await page.getByLabel('Số video mỗi tin',{exact:true}).fill('2');
-  assert.equal(await page.getByLabel('Ảnh MC cho cả lô',{exact:true}).inputValue(),selectedMc,'Fast selection must survive initial Research mount');
+  // Navigation refreshes state asynchronously; Render has the same MC label.
+  // Target Research so a fast test action cannot select the departing page's MC.
+  const researchPage=page.locator('.research-page');
+  const batchMc=researchPage.getByLabel('Ảnh MC cho cả lô',{exact:true});
+  await batchMc.selectOption(selectedMc);
+  await researchPage.getByLabel('Số video mỗi tin',{exact:true}).fill('2');
+  assert.equal(await batchMc.inputValue(),selectedMc,'Fast selection must survive initial Research mount');
   await page.getByRole('button',{name:'Render 1 tin chưa có video · 2 video',exact:true}).click();
   await page.locator('.render-hub').waitFor();
   assert.equal(report.requests.at(-1).avatarMediaId,selectedMc);
