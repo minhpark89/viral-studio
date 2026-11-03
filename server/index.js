@@ -63,6 +63,14 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   store.state.settings.captcha = publicCaptchaSettings(store);
   const browsers = new BrowserProfiles(store);
   const dreamface = createDreamFaceProvider({ store });
+  // A profile confirmed ready is usable even if an older hidden run left the
+  // email badge on "verification"/"failed". Normalize those stale rows once so
+  // the Accounts list does not report an error next to a working profile.
+  for (const account of store.state.accounts) {
+    if (account.provider !== "dreamface" || account.status !== "ready") continue;
+    if (["ready", "created"].includes(account.gmailStatus)) continue;
+    store.patch("accounts", account.id, { gmailStatus: "ready", gmailAuthStep: "ready" });
+  }
   const dreamfaceSetup = new DreamFaceSetupQueue({ store, dreamface });
   const queue = new JobQueue(store, browsers, {
     generateDreamFace: (currentStore, job, account, signal, update) =>
@@ -599,11 +607,30 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     if (["busy", "checking"].includes(account.status))
       throw new StudioError("Profile đang được sử dụng. Chờ tác vụ hiện tại kết thúc.", "PROFILE_BUSY", 409);
     store.patch("accounts", account.id, {
+      status: "checking",
+      gmailStatus: "verification",
       gmailAuthStep: "captcha",
-      message: "Đang giải CAPTCHA DreamFace bằng 2Captcha...",
+      message: "Đang tự điền email/mật khẩu và giải CAPTCHA ẩn bằng 2Captcha...",
     });
     try {
-      const result = await dreamface.solveAccountCaptcha(account);
+      const result = await dreamface.solveAccountCaptcha(account, {
+        onProgress: (progress) => {
+          if (progress?.status === "submitted")
+            store.patch("accounts", account.id, {
+              message: progress.kind === "grid"
+                ? "Đã gửi ảnh lưới CAPTCHA tới 2Captcha. Đang chờ kết quả…"
+                : "Đã gửi CAPTCHA ẩn tới 2Captcha. Đang chờ mã giải…",
+            });
+          else if (progress?.status === "processing")
+            store.patch("accounts", account.id, {
+              message: progress.kind === "grid"
+                ? "2Captcha đang đọc lưới CAPTCHA trong profile…"
+                : "2Captcha đang giải CAPTCHA ẩn…",
+            });
+          else if (progress?.message)
+            store.patch("accounts", account.id, { message: progress.message });
+        },
+      });
       const updated = store.patch("accounts", account.id, {
         status: ["ready", "verification", "needs_login"].includes(result.status) ? result.status : account.status,
         gmailStatus: result.status,
@@ -614,6 +641,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       res.json({ ...result, account: updated });
     } catch (error) {
       store.patch("accounts", account.id, {
+        status: "needs_login",
         gmailStatus: "verification",
         gmailAuthStep: "captcha",
         message: error.message,

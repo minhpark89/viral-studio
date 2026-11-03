@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startServer } from '../server/index.js';
+import { SecretStore } from '../server/secret-store.js';
 
 const root = path.resolve('.verification', `ui-${randomUUID()}`);
 const output = path.resolve('.verification/ui');
@@ -106,12 +107,29 @@ try {
   report.checks.push('Storyboard creates prompts; AI jobs wait for login without sending; cancellation works');
   await nav('Tài khoản');
   await page.getByRole('button', { name: 'Thêm tài khoản', exact: true }).click();
+  await page.getByLabel('Số profile DreamFace').fill('2');
+  await page.getByLabel('Tiền tố tên profile').fill('QA DreamFace');
+  await page.getByLabel('Đăng nhập ẩn ngay (không mở cửa sổ)').uncheck();
+  await page.getByRole('dialog').getByRole('button', { name: 'Tạo 2 profile', exact: true }).click();
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  const slots = studio.store.state.accounts.filter((account) => account.name.startsWith('QA DreamFace'));
+  assert.deepEqual(slots.map((account) => account.name), ['QA DreamFace 01', 'QA DreamFace 02']);
+  const secrets = new SecretStore(studio.store.root);
+  for (const slot of slots) {
+    assert.equal(slot.hasCredentials, true);
+    assert.equal(slot.status, 'needs_login');
+    const saved = secrets.get(`dreamface-${slot.id}`);
+    assert.equal(saved?.email, slot.email);
+    assert.ok(saved?.password);
+  }
+  await page.getByRole('button', { name: 'Thêm tài khoản', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('Nhà cung cấp').selectOption('dola');
   await page.getByLabel('Cách đăng nhập').selectOption('cookie');
   await page.getByLabel('Tên dễ nhớ').fill('QA chưa đăng nhập');
   await page.getByRole('dialog').getByLabel('Cookie', { exact: true }).fill('not-a-cookie');
   await page.getByRole('dialog').getByRole('button', { name: 'Hủy', exact: true }).click();
   await page.getByRole('dialog').waitFor({ state: 'hidden' });
-  assert.equal(studio.store.state.accounts.length, 0);
+  assert.equal(studio.store.state.accounts.length, 2);
   await page.screenshot({ path: path.join(output, 'accounts.png'), fullPage: true });
   await nav('Cài đặt');
   await page.getByText('Chrome / Edge', { exact: true }).waitFor();

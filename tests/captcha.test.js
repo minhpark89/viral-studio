@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   buildCaptchaTask,
+  buildGridTask,
+  captchaSolutionClicks,
   captchaSolutionToken,
   captchaTimeoutMs,
   captchaTokenFields,
@@ -14,6 +16,7 @@ import {
   readCaptchaSettings,
   saveCaptchaSettings,
 } from "../server/captcha.js";
+import { cleanRecaptchaGridInstruction } from "../server/providers/dreamface.js";
 import { StudioError } from "../server/store.js";
 
 const DREAMFACE_KEY = "6LcSw6QrAAAAABE8GKINfipAs_cs2ZdWFBMZLv0G";
@@ -37,6 +40,14 @@ test("buildCaptchaTask builds a proxyless reCAPTCHA v2 task", () => {
   assert.equal(invisible.isInvisible, true);
   assert.equal(invisible.recaptchaDataSValue, "s-value");
   assert.equal(invisible.userAgent, "UA");
+
+  const enterprise = buildCaptchaTask({
+    type: "recaptcha-v2",
+    pageUrl: PAGE,
+    sitekey: DREAMFACE_KEY,
+    enterprise: true,
+  });
+  assert.equal(enterprise.type, "RecaptchaV2EnterpriseTaskProxyless");
 });
 
 test("buildCaptchaTask covers turnstile, v3 and hcaptcha", () => {
@@ -167,9 +178,74 @@ test("detectCaptchaSource falls back to reCAPTCHA v3 render script", () => {
   assert.equal(detected.sitekey, DREAMFACE_KEY);
 });
 
+test("detectCaptchaSource ignores api.js render=explicit before the v2 widget renders", () => {
+  assert.equal(detectCaptchaSource({
+    url: PAGE,
+    scripts: ["https://www.google.com/recaptcha/api.js?render=explicit"],
+  }), null);
+  assert.equal(detectCaptchaSource({
+    url: PAGE,
+    scripts: ["https://www.google.com/recaptcha/api.js?onload=onLoad&render=explicit"],
+  }), null);
+});
+
+test("detectCaptchaSource ignores a reset/hidden CAPTCHA frame", () => {
+  const hidden = detectCaptchaSource({
+    url: PAGE,
+    frames: [{ src: `https://www.google.com/recaptcha/api2/anchor?k=${DREAMFACE_KEY}&size=normal`, visible: false }],
+  });
+  assert.equal(hidden, null);
+  const visible = detectCaptchaSource({
+    url: PAGE,
+    frames: [{ src: `https://www.google.com/recaptcha/api2/anchor?k=${DREAMFACE_KEY}&size=normal`, visible: true }],
+  });
+  assert.equal(visible.type, "recaptcha-v2");
+  assert.equal(visible.sitekey, DREAMFACE_KEY);
+});
+
 test("detectCaptchaSource returns null without captcha markup", () => {
   assert.equal(detectCaptchaSource({ url: PAGE }), null);
   assert.equal(detectCaptchaSource({}), null);
+});
+
+test("buildGridTask builds a reCAPTCHA GridTask and validates its image", () => {
+  const task = buildGridTask({
+    body: `data:image/png;base64,${"A".repeat(64)}`,
+    comment: "  Select all images with  fire hydrants \n",
+    rows: "3",
+    columns: 3,
+    previousId: 123,
+  });
+  assert.deepEqual(task, {
+    type: "GridTask",
+    body: "A".repeat(64),
+    comment: "Select all images with fire hydrants",
+    rows: 3,
+    columns: 3,
+    previousId: "123",
+  });
+  assert.throws(() => buildGridTask({ comment: "x" }), /CAPTCHA_GRID_IMAGE_MISSING|Chưa có ảnh/);
+  assert.throws(() => buildGridTask({ body: "a".repeat(820001), comment: "x" }), /CAPTCHA_GRID_IMAGE_TOO_LARGE|quá lớn/);
+  assert.throws(() => buildGridTask({ body: "AAAA" }), /CAPTCHA_GRID_COMMENT_MISSING|Không đọc được/);
+});
+
+test("captchaSolutionClicks converts 1-based tile numbers to DOM indices", () => {
+  assert.deepEqual(captchaSolutionClicks({ click: [4, 8, 12, 16] }), [3, 7, 11, 15]);
+  assert.deepEqual(captchaSolutionClicks({ click: [2, 2, 1, 0, -1, "3", 1.5, null] }), [0, 1, 2]);
+  assert.deepEqual(captchaSolutionClicks({}), []);
+  assert.deepEqual(captchaSolutionClicks(null), []);
+});
+
+test("cleanRecaptchaGridInstruction drops reCAPTCHA hint sentences", () => {
+  assert.equal(
+    cleanRecaptchaGridInstruction("Select all images with crosswalks. Click verify once there are none left."),
+    "Select all images with crosswalks.",
+  );
+  assert.equal(
+    cleanRecaptchaGridInstruction("Select all squares with traffic lights If there are none, click skip"),
+    "Select all squares with traffic lights",
+  );
+  assert.equal(cleanRecaptchaGridInstruction(""), "Select all matching images");
 });
 
 test("captchaSolutionToken and token fields match 2Captcha responses", () => {
@@ -268,6 +344,21 @@ test("createCaptchaClient surfaces 2Captcha API errors", async () => {
     fetchImpl: async () => new Response("<html>", { status: 502 }),
   });
   await assert.rejects(() => garbage.createTask({}), (error) => error.code === "CAPTCHA_BAD_RESPONSE");
+});
+
+test("createCaptchaClient retries transient 2Captcha network failures", async () => {
+  let calls = 0;
+  const client = createCaptchaClient({
+    apiKey: "i".repeat(32),
+    sleepImpl: async () => {},
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls < 3) throw new Error("fetch failed");
+      return jsonResponse({ errorId: 0, taskId: 77 });
+    },
+  });
+  assert.equal(await client.createTask({ type: "GridTask" }), 77);
+  assert.equal(calls, 3);
 });
 
 test("createCaptchaClient returns the account balance", async () => {

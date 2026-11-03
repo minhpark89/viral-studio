@@ -63,7 +63,7 @@ export function buildCaptchaTask(input = {}) {
 
   const proxy = input.proxy?.server ? parseProxyServer(input.proxy.server, input.proxy) : null;
   const proxySuffix = proxy ? "" : "Proxyless";
-  const task = { type: `${taskTypeName(type, proxySuffix)}`, websiteURL, websiteKey };
+  const task = { type: `${taskTypeName(type, proxySuffix, Boolean(input.enterprise))}`, websiteURL, websiteKey };
 
   if (type === "turnstile") {
     if (input.action) task.action = String(input.action);
@@ -94,7 +94,8 @@ export function buildCaptchaTask(input = {}) {
   return task;
 }
 
-function taskTypeName(type, suffix) {
+function taskTypeName(type, suffix, enterprise = false) {
+  if (type === "recaptcha-v2" && enterprise) return `RecaptchaV2EnterpriseTask${suffix}`;
   const base = {
     turnstile: "TurnstileTask",
     "recaptcha-v2": "RecaptchaV2Task",
@@ -131,6 +132,41 @@ export function captchaSolutionToken(solution) {
   ).trim();
 }
 
+/**
+ * Build a 2Captcha GridTask from a reCAPTCHA image grid. The worker returns
+ * tile numbers starting at 1 (verified against the live API), while the
+ * reCAPTCHA DOM uses 0-based cells — see captchaSolutionClicks().
+ */
+export function buildGridTask(input = {}) {
+  const body = String(input.body || "").replace(/^data:image\/[a-z+]+;base64,/i, "").trim();
+  if (!body)
+    throw new StudioError("Chưa có ảnh lưới CAPTCHA để gửi 2Captcha.", "CAPTCHA_GRID_IMAGE_MISSING");
+  // The API caps grid images at 600 kB; base64 is ~4/3 of the binary size.
+  if (body.length > 820000)
+    throw new StudioError("Ảnh lưới CAPTCHA quá lớn để gửi 2Captcha.", "CAPTCHA_GRID_IMAGE_TOO_LARGE");
+  const comment = String(input.comment || "").replace(/\s+/g, " ").trim();
+  if (!comment)
+    throw new StudioError("Không đọc được yêu cầu của lưới CAPTCHA.", "CAPTCHA_GRID_COMMENT_MISSING");
+  const task = { type: "GridTask", body, comment };
+  const rows = Math.trunc(Number(input.rows));
+  const columns = Math.trunc(Number(input.columns));
+  if (Number.isFinite(rows) && rows > 0) task.rows = rows;
+  if (Number.isFinite(columns) && columns > 0) task.columns = columns;
+  if (input.imgType) task.imgType = String(input.imgType);
+  if (input.previousId) task.previousId = String(input.previousId);
+  return task;
+}
+
+export function captchaSolutionClicks(solution) {
+  const list = Array.isArray(solution?.click) ? solution.click : [];
+  return [...new Set(
+    list
+      .map(Number)
+      .filter((value) => Number.isInteger(value) && value > 0)
+      .map((value) => value - 1),
+  )].sort((a, b) => a - b);
+}
+
 /** Hidden fields a page uses to receive the solved token. */
 export function captchaTokenFields(type) {
   if (type === "turnstile") return ["cf-turnstile-response", "g-recaptcha-response"];
@@ -149,7 +185,13 @@ export function captchaTimeoutMs(input = {}) {
  */
 export function detectCaptchaSource({ elements = [], frames = [], scripts = [], url = "" } = {}) {
   const elementList = Array.isArray(elements) ? elements : [];
-  const frameList = (Array.isArray(frames) ? frames : []).filter(Boolean);
+  // Frames without visibility info are treated as visible for backward
+  // compatibility; the browser probe marks reset/hidden widgets as false so a
+  // solved CAPTCHA is not solved a second time.
+  const frameList = (Array.isArray(frames) ? frames : [])
+    .filter((frame) => frame && (typeof frame === "string" || frame.visible !== false))
+    .map((frame) => (typeof frame === "string" ? frame : String(frame.src || "")))
+    .filter(Boolean);
   const scriptList = (Array.isArray(scripts) ? scripts : []).filter(Boolean);
   const findElement = (pattern) => elementList.find((el) => pattern.test(`${el.className || ""} ${el.id || ""}`));
   const findFrame = (pattern) => frameList.find((src) => pattern.test(src));
@@ -180,10 +222,11 @@ export function detectCaptchaSource({ elements = [], frames = [], scripts = [], 
       pageUrl: url,
     };
   }
-  if (recaptchaScript && /[?&]render=/i.test(recaptchaScript)) {
+  const renderSitekey = recaptchaScript ? sitekeyFromFrame(recaptchaScript, "render") : "";
+  if (/^6[0-9A-Za-z_-]{20,}$/.test(renderSitekey)) {
     return {
       type: "recaptcha-v3",
-      sitekey: sitekeyFromFrame(recaptchaScript, "render"),
+      sitekey: renderSitekey,
       action: String(recaptchaElement?.action || ""),
       enterprise: /enterprise\.js/i.test(recaptchaScript),
       pageUrl: url,
@@ -226,7 +269,18 @@ export async function detectCaptcha(page) {
       sitekey: el.getAttribute("data-sitekey") || "",
       action: el.getAttribute("data-action") || "",
     })),
-    frames: [...document.querySelectorAll("iframe")].map((frame) => frame.src || ""),
+    frames: [...document.querySelectorAll("iframe")].map((frame) => {
+      const rect = frame.getBoundingClientRect();
+      const style = window.getComputedStyle(frame);
+      const width = window.innerWidth || document.documentElement.clientWidth;
+      const height = window.innerHeight || document.documentElement.clientHeight;
+      return {
+        src: frame.src || "",
+        visible: rect.width > 0 && rect.height > 0
+          && style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0"
+          && rect.bottom > 0 && rect.right > 0 && rect.top < height && rect.left < width,
+      };
+    }),
     scripts: [...document.querySelectorAll("script[src]")].map((script) => script.src || ""),
   })).catch(() => null);
   return source ? detectCaptchaSource(source) : null;
@@ -267,7 +321,9 @@ export async function applyCaptchaToken(page, { type, token }) {
       seen.add(node);
       for (const [key, value] of Object.entries(node)) {
         if (typeof value === "function") {
-          if (/callback/i.test(key)) {
+          // Sites also register expired/error callbacks next to the success
+          // callback; firing those would hide the widget and show an error.
+          if (/callback/i.test(key) && !/expired|error|fail|timeout|cancel|closed/i.test(key)) {
             try {
               value(token);
               called.push(`${path}.${key}`);
@@ -339,16 +395,28 @@ export function createCaptchaClient({
   const key = String(apiKey).trim();
 
   async function post(method, payload) {
+    // 2Captcha calls sometimes drop a connection mid-flight; retrying keeps an
+    // in-progress in-page solve from dying after several paid grid rounds.
     let response;
-    try {
-      response = await fetchImpl(`${baseUrl}/${method}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(40000),
-      });
-    } catch (error) {
-      throw new StudioError(`Không kết nối được 2Captcha: ${error.message}`, "CAPTCHA_NETWORK", 502);
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        response = await fetchImpl(`${baseUrl}/${method}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(40000),
+        });
+        break;
+      } catch (error) {
+        const code = String(error?.cause?.code || error?.code || "");
+        const transient = /fetch failed|network|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|socket hang up/i
+          .test(`${error?.message || ""} ${code}`) || error?.name === "TimeoutError" || error?.name === "AbortError";
+        if (attempt < 3 && transient) {
+          await sleepImpl(1500 * attempt);
+          continue;
+        }
+        throw new StudioError(`Không kết nối được 2Captcha: ${error.message}`, "CAPTCHA_NETWORK", 502);
+      }
     }
     const text = await response.text().catch(() => "");
     let data = null;
@@ -406,6 +474,26 @@ export function createCaptchaClient({
         onProgress?.({ status: "processing", taskId });
       }
       throw new StudioError("Hết thời gian chờ 2Captcha giải CAPTCHA.", "CAPTCHA_TIMEOUT", 408);
+    },
+
+    async solveGrid(task) {
+      const taskId = await this.createTask(task);
+      onProgress?.({ status: "submitted", taskId, kind: "grid" });
+      const deadline = now() + timeoutMs;
+      while (now() < deadline) {
+        await sleepImpl(pollIntervalMs);
+        const result = await this.getTaskResult(taskId);
+        if (result?.status === "ready") {
+          return {
+            clicks: captchaSolutionClicks(result.solution),
+            taskId,
+            cost: result.cost || "",
+            solveCount: result.solveCount,
+          };
+        }
+        onProgress?.({ status: "processing", taskId, kind: "grid" });
+      }
+      throw new StudioError("Hết thời gian chờ 2Captcha giải lưới CAPTCHA.", "CAPTCHA_TIMEOUT", 408);
     },
   };
 }

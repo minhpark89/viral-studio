@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { ensureDreamFaceCredentials } from "./dreamface-accounts.js";
+import { ensureDreamFaceCredentials, getDreamFaceCredentials } from "./dreamface-accounts.js";
+import { DREAMFACE_CAPTCHA_REJECT_MESSAGE } from "./providers/dreamface.js";
 
 const MANUAL_WAIT_MS = 3 * 60 * 1000;
 const POLL_MS = 2000;
@@ -117,6 +118,17 @@ export class DreamFaceSetupQueue {
     return `Đang đăng nhập ẩn ${position}/${total}: ${account.name}…`;
   }
 
+  async markReady(account, message) {
+    await this.dreamface.close(account).catch(() => {});
+    return this.patch(account.id, {
+      status: "ready",
+      gmailStatus: "ready",
+      gmailAuthStep: "ready",
+      gmailCheckedAt: new Date().toISOString(),
+      message: message || "DreamFace đã sẵn sàng.",
+    });
+  }
+
   async setupAccount(id) {
     const account = this.store.require("accounts", id);
     const settings = this.dreamface.captchaSettings();
@@ -133,7 +145,25 @@ export class DreamFaceSetupQueue {
 
     let result;
     try {
-      result = await this.dreamface.login(account, credentials, { visible: false });
+      result = await this.dreamface.login(account, credentials, {
+        visible: false,
+        onProgress: (progress) => {
+          if (progress?.status === "submitted")
+            this.patch(id, {
+              message: progress.kind === "grid"
+                ? "Đã gửi ảnh lưới CAPTCHA tới 2Captcha. Đang chờ kết quả…"
+                : "Đã gửi CAPTCHA ẩn tới 2Captcha. Đang chờ mã giải…",
+            });
+          else if (progress?.status === "processing")
+            this.patch(id, {
+              message: progress.kind === "grid"
+                ? "2Captcha đang đọc lưới CAPTCHA trong profile…"
+                : "2Captcha đang giải CAPTCHA ẩn…",
+            });
+          else if (progress?.message)
+            this.patch(id, { message: progress.message });
+        },
+      });
     } catch (error) {
       await this.dreamface.close(account).catch(() => {});
       this.patch(id, {
@@ -146,14 +176,7 @@ export class DreamFaceSetupQueue {
     }
 
     if (result.status === "ready") {
-      await this.dreamface.close(account).catch(() => {});
-      this.patch(id, {
-        status: "ready",
-        gmailStatus: "ready",
-        gmailAuthStep: "ready",
-        gmailCheckedAt: new Date().toISOString(),
-        message: result.message || "DreamFace đã sẵn sàng.",
-      });
+      await this.markReady(account, result.message);
       return;
     }
 
@@ -162,49 +185,112 @@ export class DreamFaceSetupQueue {
 
   async waitForReady(account, initial, canAutoSolve) {
     const id = account.id;
-    const deadline = Date.now() + this.manualWaitMs;
+    let deadline = Date.now() + this.manualWaitMs;
     this.patch(id, {
       status: "checking",
       gmailStatus: initial.status,
       gmailAuthStep: initial.authStep || "identity",
-      message: "Đang chờ DreamFace xác minh trong nền. Cửa sổ không mở ra; app tự chuyển sang profile kế tiếp khi profile sẵn sàng.",
+      message: canAutoSolve
+        ? "Đang chờ DreamFace trong nền. App tự điền đăng nhập và giải CAPTCHA ẩn bằng 2Captcha khi trang hiển thị mã."
+        : "Đang chờ DreamFace xác minh trong nền. Cửa sổ không mở ra; lưu API key 2Captcha để app tự giải CAPTCHA.",
     });
-    while (Date.now() < deadline && !this.stopped) {
-      await delay(this.pollMs);
+    while (!this.stopped) {
       const session = this.dreamface.sessions.get(id);
-      if (!session || session.page.isClosed()) break;
+      if (!session || !session.page || session.page.isClosed?.()) break;
       let state;
       try {
         state = await this.dreamface.inspect(account, session);
       } catch {
-        continue;
+        state = null;
       }
-      if (state.status === "ready") {
+      if (state?.status === "ready") {
+        await this.markReady(account, state.message);
+        return;
+      }
+
+      let recovered = null;
+      if (canAutoSolve && typeof this.dreamface.recoverCaptcha === "function") {
+        try {
+          recovered = await this.dreamface.recoverCaptcha(account, session, {
+            credentials: getDreamFaceCredentials(this.store, account),
+            onProgress: (progress) => {
+              if (progress?.status === "submitted")
+                this.patch(id, {
+                  message: progress.kind === "grid"
+                    ? "Đã gửi ảnh lưới CAPTCHA tới 2Captcha. Đang chờ kết quả…"
+                    : "Đã gửi CAPTCHA ẩn tới 2Captcha. Đang chờ mã giải…",
+                });
+              else if (progress?.status === "processing")
+                this.patch(id, {
+                  message: progress.kind === "grid"
+                    ? "2Captcha đang đọc lưới CAPTCHA trong profile…"
+                    : "2Captcha đang giải CAPTCHA ẩn…",
+                });
+              else if (progress?.message)
+                this.patch(id, { message: progress.message });
+            },
+          });
+        } catch {
+          recovered = null;
+        }
+      }
+      if (recovered?.reason === "rejected" || session.captchaState?.rejectedAt) {
+        // DreamFace answered the solved token with THS12140000001. Solving
+        // again only buys another rejected token, so stop the paid attempts.
+        // Re-check first: a rejected extra login must not flag a profile whose
+        // existing session is still usable.
+        try { state = await this.dreamface.inspect(account, session); } catch {}
+        if (state?.status === "ready") {
+          await this.markReady(account, state.message);
+          return;
+        }
         await this.dreamface.close(account).catch(() => {});
         this.patch(id, {
-          status: "ready",
-          gmailStatus: "ready",
-          gmailAuthStep: "ready",
+          status: "needs_login",
+          gmailStatus: "verification",
+          gmailAuthStep: "captcha",
           gmailCheckedAt: new Date().toISOString(),
-          message: state.message || "DreamFace đã sẵn sàng.",
+          message: DREAMFACE_CAPTCHA_REJECT_MESSAGE,
         });
         return;
       }
+      if (recovered?.solved) {
+        // A solve can consume most of the original wait. Give the provider a
+        // fresh minute to finish the authenticated session.
+        deadline = Math.max(deadline, Date.now() + 60000);
+        try {
+          state = await this.dreamface.inspect(account, session);
+        } catch {}
+        if (state?.status === "ready") {
+          await this.markReady(account, state.message);
+          return;
+        }
+      }
+      if (recovered?.reason === "limit") break;
+      if (Date.now() >= deadline) break;
+
       const seconds = Math.max(0, Math.round((deadline - Date.now()) / 1000));
       this.patch(id, {
         status: "checking",
-        gmailStatus: state.status,
-        gmailAuthStep: state.authStep || "identity",
-        message: `Đang chờ DreamFace sẵn sàng trong nền (còn ${seconds}s)…`,
+        gmailStatus: state?.status || initial.status,
+        gmailAuthStep: state?.authStep || "identity",
+        message: recovered?.solved
+          ? `Đã giải CAPTCHA; đang chờ DreamFace xác nhận (còn ${seconds}s)…`
+          : `Đang chờ DreamFace sẵn sàng trong nền (còn ${seconds}s)${canAutoSolve ? " · tự giải CAPTCHA bằng 2Captcha" : ""}…`,
       });
+      await delay(this.pollMs);
     }
+    const session = this.dreamface.sessions.get(id);
+    const solves = Number(session?.captchaState?.solves) || 0;
     await this.dreamface.close(account).catch(() => {});
     this.patch(id, {
       status: "needs_login",
       gmailStatus: "verification",
       gmailAuthStep: "captcha",
       message: canAutoSolve
-        ? "2Captcha chưa hoàn tất profile này nên app đóng cửa sổ ẩn và đi tiếp. Bấm Giải CAPTCHA hoặc Đăng nhập để thử lại."
+        ? solves > 0
+          ? "2Captcha đã giải CAPTCHA nhưng DreamFace chưa xác nhận phiên này. Kiểm tra proxy/IP hoặc mở profile để xử lý, rồi thử lại."
+          : "DreamFace chưa chấp nhận đăng nhập ẩn hoặc chưa hiển thị CAPTCHA trong thời gian chờ. Bấm Giải CAPTCHA để thử lại ẩn."
         : "DreamFace cần xác minh nhưng chưa có API key 2Captcha. Lưu key trong Cài đặt để app tự giải ẩn, rồi bấm Giải CAPTCHA.",
     });
   }

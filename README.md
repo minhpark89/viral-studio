@@ -2,13 +2,13 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-**Version 0.8.0** adds verified GPU rendering and safe profile storage limits, including newly created profiles. DreamFace and the profile manager share Chrome/Edge discovery so a fresh PC does not need a separate Playwright browser download. See [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and [release notes](RELEASE_NOTES_v0.8.0.md).
+**Version 0.8.6** adds automatic hidden DreamFace login: the app fills saved credentials, solves reCAPTCHA with 2Captcha inside the profile's own browser and confirms the session without opening a window. It also restores count-based profile creation with generated credentials. See [release notes](RELEASE_NOTES_v0.8.6.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [verification checkpoint](CHECKPOINT_2026-11-03_v0.8.6.md).
 
 ## Download for Windows
 
-- [Portable v0.8.0](https://github.com/minhpark89/viral-studio/releases/download/v0.8.0/Viral.Studio.0.8.0.exe)
-- [Installer v0.8.0](https://github.com/minhpark89/viral-studio/releases/download/v0.8.0/Viral.Studio.Setup.0.8.0.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.0/SHA256SUMS.txt)
+- [Portable v0.8.6](https://github.com/minhpark89/viral-studio/releases/download/v0.8.6/Viral.Studio.0.8.6.exe)
+- [Installer v0.8.6](https://github.com/minhpark89/viral-studio/releases/download/v0.8.6/Viral.Studio.Setup.0.8.6.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.6/SHA256SUMS.txt)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 

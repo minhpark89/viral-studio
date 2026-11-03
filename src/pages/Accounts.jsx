@@ -123,9 +123,14 @@ export function AccountsPage({ data, run, notify }) {
   const dreamfaceAccounts = data.accounts.filter((account) => account.provider === "dreamface");
   const dreamfaceReady = dreamfaceAccounts.filter((account) => account.status === "ready").length;
   const dreamfaceNeedsLogin = dreamfaceAccounts.filter((account) => account.status === "needs_login").length;
-  const captchaConfigured = Boolean(data.settings?.captcha?.hasKey) && data.settings?.captcha?.enabled !== false;
+  const captchaConfigured = Boolean(data.settings?.captcha?.hasKey) &&
+    data.settings?.captcha?.enabled !== false &&
+    data.settings?.captcha?.autoSolveDreamFace !== false;
   const dreamfaceVerification = dreamfaceAccounts.filter((account) =>
     account.status === "verification" || account.gmailStatus === "verification").length;
+  const dreamfaceRecoverable = dreamfaceAccounts.filter((account) =>
+    (account.hasCredentials || account.loginMethod === "credentials") &&
+    !["ready", "busy", "checking"].includes(account.status));
   const sameProfile = (left, right) =>
     (left.profileId || left.id) === (right.profileId || right.id);
   const sharedProfile = (account) =>
@@ -177,6 +182,21 @@ export function AccountsPage({ data, run, notify }) {
     setGmailPrefix("DreamFace Gmail");
     setGmailProxy("");
   };
+  const openAddAccount = () => {
+    setForm({
+      name: "",
+      provider: "dreamface",
+      loginMethod: "credentials",
+      email: "",
+      proxy: "",
+    });
+    setSlotCount(1);
+    setSlotPrefix("DreamFace profile");
+    setSlotProxies("");
+    setSlotConcurrency(Number(data.settings?.dreamfaceConcurrency) || 1);
+    setConnectNewProfiles(true);
+    setModal({ type: "add" });
+  };
   const action = async (id, type, body = {}) => {
     setBusy(`${id}:${type}`);
     const result = await run(() => api(`/accounts/${id}/${type}`, body));
@@ -209,30 +229,34 @@ export function AccountsPage({ data, run, notify }) {
     return result;
   };
   const solveAllCaptcha = async () => {
-    const targets = dreamfaceAccounts.filter((account) =>
-      account.status === "verification" || account.gmailStatus === "verification");
+    const targets = dreamfaceRecoverable;
     if (!targets.length || busy) return;
     setBusy("captcha-all");
-    for (const account of targets) {
-      await run(() => api(`/accounts/${account.id}/captcha`, {}));
-    }
+    const queued = await run(() => api("/accounts/bulk-login", {
+      ids: targets.map((account) => account.id),
+      concurrency: Number(data.settings?.dreamfaceConcurrency) || 1,
+    }));
     setBusy("");
-    notify(`Đã gửi CAPTCHA của ${targets.length} profile DreamFace tới 2Captcha.`);
+    if (queued)
+      notify(`Đang tự điền đăng nhập và giải CAPTCHA ẩn cho ${queued.queued} profile. Không mở cửa sổ Chrome nào.`);
   };
   const solveSelectedCaptcha = async () => {
     const targets = selectedAccounts.filter((account) =>
       account.provider === "dreamface" &&
-      (account.status === "verification" || account.gmailStatus === "verification"));
+      (account.hasCredentials || account.loginMethod === "credentials") &&
+      !["ready", "busy", "checking"].includes(account.status));
     if (!targets.length) {
-      notify("Trong lựa chọn không có profile nào đang chờ CAPTCHA.", "error");
+      notify("Trong lựa chọn không có profile DreamFace nào cần đăng nhập hoặc giải CAPTCHA.", "error");
       return;
     }
     setBusy("bulk-captcha");
-    for (const account of targets) {
-      await run(() => api(`/accounts/${account.id}/captcha`, {}));
-    }
+    const queued = await run(() => api("/accounts/bulk-login", {
+      ids: targets.map((account) => account.id),
+      concurrency: Number(data.settings?.dreamfaceConcurrency) || 1,
+    }));
     setBusy("");
-    notify(`Đã gửi CAPTCHA của ${targets.length} profile tới 2Captcha.`);
+    if (queued)
+      notify(`Đang tự điền đăng nhập và giải CAPTCHA ẩn cho ${queued.queued} profile. Không mở cửa sổ Chrome nào.`);
   };
   const bulkLogin = async () => {
     const targets = selectedAccounts.filter((account) => account.provider === "dreamface");
@@ -365,7 +389,7 @@ export function AccountsPage({ data, run, notify }) {
     const result = await run(() => api("/accounts/bulk-slots", {
       provider: "dreamface",
       count: Number(slotCount),
-      namePrefix: slotPrefix,
+      namePrefix: slotPrefix.trim(),
       proxies,
     }));
     if (result) {
@@ -386,6 +410,14 @@ export function AccountsPage({ data, run, notify }) {
     }
     setBusy("");
   };
+  const submitAdd = async (event) => {
+    event.preventDefault();
+    if (form.provider === "dreamface") {
+      await createSlots(event);
+      return;
+    }
+    await submit(event);
+  };
   return (
     <div className="page">
       <div className="page-heading">
@@ -396,16 +428,7 @@ export function AccountsPage({ data, run, notify }) {
         </div>
         <div className="account-heading-actions"><Button onClick={() => { setSlotCount(5); setSlotPrefix("DreamFace profile"); setSlotProxies(""); setSlotConcurrency(Number(data.settings?.dreamfaceConcurrency) || 1); setModal({ type: "bulk-slots" }); }}><Plus size={16} /> Tạo profile xoay vòng</Button><Button onClick={() => { setGmailPrefix("DreamFace Gmail"); setGmailProxy(""); setModal({ type: "gmail-create" }); }}><MailPlus size={16} /> Tạo Gmail & đăng nhập</Button><Button
           variant="primary"
-          onClick={() => {
-            setForm({
-              name: "",
-              provider: "dola",
-              loginMethod: "google",
-              email: "",
-              proxy: "",
-            });
-            setModal({ type: "add" });
-          }}
+          onClick={openAddAccount}
         >
           <Plus size={17} />
           Thêm tài khoản
@@ -424,7 +447,7 @@ export function AccountsPage({ data, run, notify }) {
         </div>
         <div className="dreamface-pool-actions">
           <Button disabled={!dreamfaceAccounts.length || Boolean(busy)} busy={busy === "bulk-check"} onClick={checkDreamfaceAll}><RefreshCw size={14} /> Kiểm tra tất cả</Button>
-          <Button disabled={!captchaConfigured || !dreamfaceVerification || Boolean(busy)} busy={busy === "captcha-all"} onClick={solveAllCaptcha}><ShieldCheck size={14} /> Giải CAPTCHA</Button>
+          <Button disabled={!captchaConfigured || !dreamfaceRecoverable.length || Boolean(busy)} busy={busy === "captcha-all"} onClick={solveAllCaptcha} title="Tự điền đăng nhập và giải CAPTCHA trong cửa sổ ẩn"><ShieldCheck size={14} /> Giải CAPTCHA</Button>
         </div>
       </section>
       <div className="account-explainer">
@@ -677,9 +700,16 @@ export function AccountsPage({ data, run, notify }) {
                           {account.gmailStatus === "ready" || account.gmailStatus === "created" ? "Mở DreamFace" : account.gmailStatus === "verification" || account.gmailStatus === "pending" || account.gmailStatus === "opening" ? "Kiểm tra DreamFace" : "Tạo Gmail & điền"}
                         </button>
                       )}
-                      {account.provider === "dreamface" && (account.status === "verification" || account.gmailStatus === "verification") && (
-                        <button type="button" disabled={!canOperate} onClick={() => solveCaptcha(account)}>
-                          <ShieldCheck size={13} /> Giải CAPTCHA tự động
+                      {account.provider === "dreamface" &&
+                        (account.hasCredentials || account.loginMethod === "credentials") &&
+                        !["ready", "busy", "checking"].includes(account.status) && (
+                        <button
+                          type="button"
+                          disabled={!canOperate || !captchaConfigured}
+                          title={captchaConfigured ? "Tự điền đăng nhập và giải CAPTCHA trong cửa sổ ẩn" : "Lưu API key 2Captcha trong Cài đặt trước"}
+                          onClick={() => solveCaptcha(account)}
+                        >
+                          <ShieldCheck size={13} /> Đăng nhập & giải CAPTCHA ẩn
                         </button>
                       )}
                       {account.provider === "dreamface" && account.proxy && (
@@ -787,117 +817,203 @@ export function AccountsPage({ data, run, notify }) {
       )}
       {modal?.type === "add" && (
         <Modal title="Thêm tài khoản" onClose={close}>
-          <form onSubmit={submit}>
-            <div className="form-grid">
-              <Field label="Nhà cung cấp">
-                <select
-                  value={form.provider}
-                  onChange={(event) =>
-                    setForm({
-                      ...form,
-                      provider: event.target.value,
-                      loginMethod: event.target.value === "dreamface" ? "credentials" : "google",
-                    })
+          <form onSubmit={submitAdd}>
+            <Field label="Nhà cung cấp">
+              <select
+                value={form.provider}
+                onChange={(event) => {
+                  const provider = event.target.value;
+                  setForm({
+                    ...form,
+                    provider,
+                    loginMethod: provider === "dreamface" ? "credentials" : "google",
+                  });
+                  if (provider === "dreamface") {
+                    setSlotCount(Number(slotCount) || 1);
+                    setSlotPrefix(slotPrefix.trim() || "DreamFace profile");
+                    setConnectNewProfiles(true);
                   }
-                >
-                  <option value="dola">Dola · Seedance</option>
-                  <option value="flow">Google Flow · Veo</option>
-                  <option value="dreamface">DreamFace</option>
-                </select>
-              </Field>
-              <Field label="Cách đăng nhập">
-                <select
-                  value={form.loginMethod}
-                  onChange={(event) =>
-                    setForm({ ...form, loginMethod: event.target.value })
-                  }
-                >
-                  <option value="google">Google / Gmail</option>
-                  {form.provider === "dola" && (
-                    <option value="apple">Apple / iCloud</option>
-                  )}
-                  {form.provider === "dreamface" && <option value="credentials">DreamFace email + password</option>}
-                  <option value="cookie">Nhập cookie</option>
-                </select>
-              </Field>
-            </div>
-            <Field label="Tên dễ nhớ">
-              <input
-                autoFocus
-                required
-                value={form.name}
-                maxLength={120}
-                onChange={(event) =>
-                  setForm({ ...form, name: event.target.value })
-                }
-                placeholder="Tài khoản làm việc"
-              />
+                }}
+              >
+                <option value="dreamface">DreamFace</option>
+                <option value="dola">Dola · Seedance</option>
+                <option value="flow">Google Flow · Veo</option>
+              </select>
             </Field>
-            <Field label="Email (không bắt buộc)">
-              <input
-                type="email"
-                value={form.email}
-                autoComplete="off"
-                onChange={(event) =>
-                  setForm({ ...form, email: event.target.value })
-                }
-                placeholder={
-                  form.loginMethod === "apple"
-                    ? "tenban@icloud.com"
-                    : "tenban@gmail.com"
-                }
-              />
-            </Field>
-            {form.loginMethod === "cookie" ? (
-              <CookieInput
-                cookies={cookies}
-                setCookies={setCookies}
-                notify={notify}
-              />
+            {form.provider === "dreamface" ? (
+              <>
+                <Notice>
+                  App tự sinh email Gmail dạng mẫu và mật khẩu riêng cho từng profile, lưu mã hóa trên máy. Không cần nhập email/mật khẩu và app không tạo hộp thư Google thật. Khi bật <strong>Đăng nhập ẩn ngay</strong>, app tự điền và giải CAPTCHA bằng 2Captcha trong cửa sổ ẩn.
+                </Notice>
+                <div className="form-grid">
+                  <Field label="Số profile DreamFace">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      required
+                      value={slotCount}
+                      onChange={(event) => setSlotCount(event.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    label="Tiền tố tên profile"
+                    hint={`Tên tự động theo thứ tự: ${slotPrefix.trim() || "DreamFace profile"} ${String(dreamfaceAccounts.length + 1).padStart(2, "0")}…`}
+                  >
+                    <input
+                      required
+                      maxLength="80"
+                      value={slotPrefix}
+                      onChange={(event) => setSlotPrefix(event.target.value)}
+                    />
+                  </Field>
+                </div>
+                <details className="advanced">
+                  <summary>
+                    <Globe2 size={14} />
+                    Proxy cho profile (tùy chọn)
+                  </summary>
+                  <Field
+                    label="Danh sách proxy"
+                    hint="Một dòng dùng chung cho tất cả profile; nhiều dòng phải đúng bằng số profile."
+                  >
+                    <textarea
+                      rows="3"
+                      value={slotProxies}
+                      onChange={(event) => setSlotProxies(event.target.value)}
+                      placeholder={"http://127.0.0.1:8080\nhttp://127.0.0.1:8081"}
+                    />
+                  </Field>
+                </details>
+                <label className="check-field">
+                  <input
+                    type="checkbox"
+                    checked={connectNewProfiles}
+                    onChange={(event) => setConnectNewProfiles(event.target.checked)}
+                  />
+                  Đăng nhập ẩn ngay (không mở cửa sổ)
+                </label>
+                {connectNewProfiles && (
+                  <Field
+                    label="Số luồng Chrome chạy cùng lúc"
+                    hint="1 = lần lượt từng profile. Tăng lên để nhanh hơn nhưng tốn thêm RAM/CPU; Chrome vẫn chạy ẩn."
+                  >
+                    <input
+                      type="number"
+                      min="1"
+                      max="4"
+                      value={slotConcurrency}
+                      onChange={(event) => setSlotConcurrency(event.target.value)}
+                    />
+                  </Field>
+                )}
+              </>
             ) : (
               <>
-                <Field
-                  label={form.provider === "dreamface" ? "DreamFace password (saved for reuse)" : "Mật khẩu (tùy chọn, chỉ dùng lần này)"}
-                  hint={form.provider === "dreamface" ? "Saved on this PC for future connections." : "Bạn có thể để trống và đăng nhập trực tiếp trong cửa sổ Google/Apple."}
-                >
+                <Field label="Cách đăng nhập">
+                  <select
+                    value={form.loginMethod}
+                    onChange={(event) =>
+                      setForm({ ...form, loginMethod: event.target.value })
+                    }
+                  >
+                    <option value="google">Google / Gmail</option>
+                    {form.provider === "dola" && (
+                      <option value="apple">Apple / iCloud</option>
+                    )}
+                    <option value="cookie">Nhập cookie</option>
+                  </select>
+                </Field>
+                <Field label="Tên dễ nhớ">
                   <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    autoFocus
+                    required
+                    value={form.name}
+                    maxLength={120}
+                    onChange={(event) =>
+                      setForm({ ...form, name: event.target.value })
+                    }
+                    placeholder="Tài khoản làm việc"
                   />
                 </Field>
-                <Notice>
-                  {form.provider === "dola"
-                    ? "Dola sẽ mở cửa sổ Google/Apple. Đăng nhập, bấm Tiếp tục nếu được hỏi và chờ quay về Dola. Không cần đăng ký mật khẩu Dola riêng."
-                    : "Đăng nhập Google rồi mở không gian làm việc của Flow. App sẽ kiểm tra phiên sau đó."}
-                </Notice>
+                <Field label="Email (không bắt buộc)">
+                  <input
+                    type="email"
+                    value={form.email}
+                    autoComplete="off"
+                    onChange={(event) =>
+                      setForm({ ...form, email: event.target.value })
+                    }
+                    placeholder={
+                      form.loginMethod === "apple"
+                        ? "tenban@icloud.com"
+                        : "tenban@gmail.com"
+                    }
+                  />
+                </Field>
+                {form.loginMethod === "cookie" ? (
+                  <CookieInput
+                    cookies={cookies}
+                    setCookies={setCookies}
+                    notify={notify}
+                  />
+                ) : (
+                  <>
+                    <Field
+                      label="Mật khẩu (tùy chọn, chỉ dùng lần này)"
+                      hint="Bạn có thể để trống và đăng nhập trực tiếp trong cửa sổ Google/Apple."
+                    >
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                      />
+                    </Field>
+                    <Notice>
+                      {form.provider === "dola"
+                        ? "Dola sẽ mở cửa sổ Google/Apple. Đăng nhập, bấm Tiếp tục nếu được hỏi và chờ quay về Dola. Không cần đăng ký mật khẩu Dola riêng."
+                        : "Đăng nhập Google rồi mở không gian làm việc của Flow. App sẽ kiểm tra phiên sau đó."}
+                    </Notice>
+                  </>
+                )}
+                <details className="advanced">
+                  <summary>
+                    <Globe2 size={14} />
+                    Proxy riêng (tùy chọn)
+                  </summary>
+                  <Field label="Địa chỉ proxy">
+                    <input
+                      value={form.proxy}
+                      onChange={(event) =>
+                        setForm({ ...form, proxy: event.target.value })
+                      }
+                      placeholder="http://127.0.0.1:8080"
+                    />
+                  </Field>
+                </details>
               </>
             )}
-            <details className="advanced">
-              <summary>
-                <Globe2 size={14} />
-                Proxy riêng (tùy chọn)
-              </summary>
-              <Field label="Địa chỉ proxy">
-                <input
-                  value={form.proxy}
-                  onChange={(event) =>
-                    setForm({ ...form, proxy: event.target.value })
-                  }
-                  placeholder="http://127.0.0.1:8080"
-                />
-              </Field>
-            </details>
             <div className="modal-actions">
               <Button type="button" onClick={close}>
                 Hủy
               </Button>
-              <Button variant="primary" busy={Boolean(busy)}>
+              <Button
+                variant="primary"
+                busy={busy === "bulk-slots" || busy === "save"}
+                disabled={form.provider === "dreamface" && (
+                  !Number(slotCount) ||
+                  Number(slotCount) < 1 ||
+                  Number(slotCount) > 100 ||
+                  !slotPrefix.trim()
+                )}
+              >
                 <Plus size={16} />
-                {form.loginMethod === "cookie"
-                  ? "Thêm & nhập cookie"
-                  : "Thêm & đăng nhập"}
+                {form.provider === "dreamface"
+                  ? `Tạo ${Number(slotCount) || 0} profile`
+                  : form.loginMethod === "cookie"
+                    ? "Thêm & nhập cookie"
+                    : "Thêm & đăng nhập"}
               </Button>
             </div>
           </form>

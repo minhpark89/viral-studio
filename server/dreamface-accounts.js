@@ -126,13 +126,19 @@ export function createDreamFaceSlots(store,{count,namePrefix,proxy="",proxies=[]
     const parsedProxy = proxyForSlot({proxy,proxies},index,count);
     const account=store.add("accounts",{
       name:`${namePrefix} ${String(offset+index+1).padStart(2,"0")}`,provider:"dreamface",loginMethod:"credentials",email:credentials.email,proxy:parsedProxy.server,proxyAuth:Boolean(parsedProxy.username),
-      status:"needs_login",hasCredentials:true,gmailStatus:"idle",message:"Email mẫu và mật khẩu đã lưu an toàn. Bấm Tạo Gmail & điền để mở DreamFace.",
+      status:"needs_login",hasCredentials:true,gmailStatus:"idle",message:"Email mẫu và mật khẩu đã lưu an toàn. Bấm Đăng nhập & giải CAPTCHA ẩn khi cần.",
       rotationIndex:offset+index+1,rotationEnabled:true,rotationMode:"daily",rotationDay:"",
     });
     secrets.set(`dreamface-${account.id}`,credentials);
     if (parsedProxy.username || parsedProxy.password) secrets.set(proxySecretId(account.id), parsedProxy);
     return account;
   });
+}
+
+export function getDreamFaceCredentials(store, account) {
+  const saved = new SecretStore(store.root).get(`dreamface-${account.id}`);
+  if (!saved?.email || !saved?.password) return null;
+  return { email: saved.email, password: saved.password };
 }
 
 export function ensureDreamFaceCredentials(store, account) {
