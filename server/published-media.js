@@ -17,6 +17,7 @@ export function publishedMediaLineage(store, mediaId, previous = {}) {
   return {
     jobIds,
     presenterMediaIds: unique([...(previous.presenterMediaIds || []), media?.newsPresenterMediaId, ...jobs.map(job => job.payload?.presenterMediaId)]),
+    editorialMediaIds: unique([...(previous.editorialMediaIds || []), ...(media?.newsImageMediaIds || []), ...jobs.flatMap(job => job.payload?.imageMediaIds || [])]),
     supersededMediaIds: unique(previous.supersededMediaIds || []).filter(id => id !== mediaId),
   };
 }
@@ -48,7 +49,8 @@ function directlyReferenced(store, mediaId, postId, lineage) {
     || store.state.socialPosts.some(post => post.id !== postId && references(post.mediaIds, mediaId))
     || store.state.jobs.some(job => job.status !== 'completed' && references(job.payload, mediaId) && !retryWasPublished(store, job, retired))
     || (store.state.productionBatches || []).some(batch => !['completed', 'cancelled'].includes(batch.status) && references(batch.request, mediaId))
-    || store.state.accounts.some(account => account.avatarMediaId === mediaId);
+    || store.state.accounts.some(account => account.avatarMediaId === mediaId)
+    || (store.state.settings.meta?.pages || []).some(page => page.avatarMediaId === mediaId);
 }
 
 function presenterReferenced(store, mediaId, postId, lineage, omitted = new Set()) {
@@ -57,7 +59,20 @@ function presenterReferenced(store, mediaId, postId, lineage, omitted = new Set(
   if (dependants.some(job => job.status !== 'completed' ? !retryWasPublished(store, job, retired) : !retired.jobs.has(job.id) && !retired.outputs.has(job.mediaId))) return true;
   const dependantIds = new Set(dependants.map(job => job.id));
   return store.state.media.some(media => media.id !== mediaId && !omitted.has(media.id)
-    && media.kind === 'video' && (media.newsPresenterMediaId === mediaId || dependantIds.has(media.jobId)));
+    && media.kind === 'video' && (media.newsPresenterMediaId === mediaId || media.newsImageMediaIds?.includes(mediaId) || dependantIds.has(media.jobId)));
+}
+
+function editorialResearchReferenced(store, mediaId, lineage) {
+  const researchIds = (store.state.researchResults || []).filter(row => row.imageMediaIds?.includes(mediaId)).map(row => row.id);
+  const retired = retirement(store, lineage);
+  return researchIds.some(id => store.state.socialPosts.some(post => references(post.researchId, id))
+    || store.state.jobs.some(job => job.status !== 'completed' && !retryWasPublished(store, job, retired) && (references(job.production, id) || references(job.payload, id)))
+    || (store.state.productionBatches || []).some(batch => !['completed', 'cancelled'].includes(batch.status) && (references(batch.request, id) || (batch.items || []).some(item => !['completed', 'cancelled'].includes(item.status) && references(item, id)))));
+}
+
+function forgetMedia(store, id) {
+  store.state.media = store.state.media.filter(media => media.id !== id);
+  for (const research of store.state.researchResults || []) if (research.imageMediaIds?.includes(id)) research.imageMediaIds = research.imageMediaIds.filter(value => value !== id);
 }
 
 // Check the complete file set before deleting anything. Use a synchronous final
@@ -106,7 +121,10 @@ function inspectItem(store, mediaId, postId, role, lineage, omitted = new Set(),
   if (!media) return { ...result, reason: 'media_not_found' };
   if (role === 'presenter' && !(media.generated && media.kind === 'video' && media.mediaType === 'news-presenter')) return { ...result, reason: 'not_generated_presenter' };
   if (role === 'superseded' && !(media.generated && media.kind === 'video' && media.mediaType === 'news-video')) return { ...result, reason: 'not_generated_output' };
-  if (directlyReferenced(store, mediaId, postId, lineage) || role === 'presenter' && presenterReferenced(store, mediaId, postId, lineage, omitted)) return { ...result, reason: 'media_still_referenced' };
+  if (role === 'editorial' && !(media.kind === 'image' && media.mediaType === 'news-editorial')) return { ...result, reason: 'not_editorial_image' };
+  if (directlyReferenced(store, mediaId, postId, lineage)
+    || ['presenter', 'editorial'].includes(role) && presenterReferenced(store, mediaId, postId, lineage, omitted)
+    || role === 'editorial' && editorialResearchReferenced(store, mediaId, lineage)) return { ...result, reason: 'media_still_referenced' };
   try {
     const checked = safeFiles(store, media, context);
     if (checked.reason) return { ...result, reason: checked.reason };
@@ -118,6 +136,7 @@ const candidates = (mediaId, lineage) => [
   { mediaId, role: 'output' },
   ...lineage.supersededMediaIds.map(mediaId => ({ mediaId, role: 'superseded' })),
   ...lineage.presenterMediaIds.map(mediaId => ({ mediaId, role: 'presenter' })),
+  ...(lineage.editorialMediaIds || []).map(mediaId => ({ mediaId, role: 'editorial' })),
 ].filter((item, index, all) => item.mediaId && all.findIndex(other => other.mediaId === item.mediaId) === index);
 
 export function previewPublishedMedia(store, record, context = {}) {
@@ -147,7 +166,7 @@ export async function cleanupPublishedMedia(store, mediaId, postId, previous = {
     if (removable) {
       try {
         for (const file of files) { fs.unlinkSync(file.file); freedBytes += file.bytes; }
-        store.state.media = store.state.media.filter(item => item.id !== candidate.mediaId);
+        forgetMedia(store, candidate.mediaId);
         result.removed = true;
       } catch { result.reason = 'media_cleanup_failed'; }
     }
@@ -158,7 +177,7 @@ export async function cleanupPublishedMedia(store, mediaId, postId, previous = {
     results.push(result);
   }
   const output = results[0] || { mediaId, removed: false, reason: 'media_not_found' };
-  const result = { ...output, version: 2, lineage, related: results.slice(1), freedBytes: (previous.freedBytes || 0) + freedBytes };
+  const result = { ...output, version: 3, lineage, related: results.slice(1), freedBytes: (previous.freedBytes || 0) + freedBytes };
   result.complete = candidates(mediaId, lineage).every(item => !store.state.media.some(media => media.id === item.mediaId));
   return result;
 }
@@ -185,7 +204,7 @@ export class PublishedMediaCleanup {
         if (this.stopping) break;
         if (!isConfirmedPublication(record)) continue;
         const previous = record.mediaCleanup || {}, before = new Set(this.store.state.media.map(media => media.id));
-        if (previous.version === 2 && previous.complete && candidates(record.mediaIds?.[0], previous.lineage).every(item => !before.has(item.mediaId))) continue;
+        if (previous.version === 3 && previous.complete && candidates(record.mediaIds?.[0], previous.lineage).every(item => !before.has(item.mediaId))) continue;
         const result = await cleanupPublishedMedia(this.store, record.mediaIds?.[0], record.postId, previous);
         freedBytes += result.freedBytes - (previous.freedBytes || 0);
         removed.push(...[...before].filter(id => !this.store.state.media.some(media => media.id === id)));
@@ -199,4 +218,27 @@ export class PublishedMediaCleanup {
     return this.pending;
   }
   async close() { this.stopping = true; clearInterval(this.timer); await this.pending; }
+}
+
+// Manual library deletion uses the same path guards and rechecks each ID at the
+// moment of deletion. Completed research image lists are detached, not deleted.
+export async function deleteLibraryMedia(store, ids, { preview = false } = {}) {
+  const results = []; let context = {};
+  for (const mediaId of unique(ids)) {
+    const media = store.state.media.find(item => item.id === mediaId);
+    const item = inspectItem(store, mediaId, '', 'manual', {}, new Set(), context);
+    if (item.removable && media?.kind === 'image' && editorialResearchReferenced(store, mediaId, {})) { item.removable = false; item.reason = 'media_still_referenced'; }
+    // Raw MC still needed by an unposted output must survive bulk deletion.
+    if (item.removable && media?.mediaType === 'news-presenter' && presenterReferenced(store, mediaId, '', {})) { item.removable = false; item.reason = 'media_still_referenced'; }
+    const { files, ...result } = item;
+    if (!preview && item.removable) {
+      try { for (const file of files) fs.unlinkSync(file.file); forgetMedia(store, mediaId); result.removed = true; }
+      catch { result.removed = false; result.reason = 'media_cleanup_failed'; }
+    }
+    results.push(result);
+    if (results.length % 20 === 0) { await new Promise(resolve => setImmediate(resolve)); context = {}; }
+  }
+  const removed = results.filter(item => item.removed);
+  if (removed.length) store.save();
+  return { results, removedIds: removed.map(item => item.mediaId), removedCount: removed.length, freedBytes: removed.reduce((sum, item) => sum + item.bytes, 0), removableCount: results.filter(item => item.removable).length, blockedCount: results.filter(item => preview ? !item.removable : !item.removed).length };
 }

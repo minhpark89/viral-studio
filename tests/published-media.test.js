@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Store } from '../server/store.js';
-import { cleanupPublishedMedia, publishedMediaLineage, PublishedMediaCleanup } from '../server/published-media.js';
+import { cleanupPublishedMedia, publishedMediaLineage, PublishedMediaCleanup, deleteLibraryMedia } from '../server/published-media.js';
 
 async function fixture(t) {
   const base = path.resolve('.verification'), root = path.join(base, 'published-media-' + randomUUID());
@@ -153,4 +153,46 @@ test('published cleanup HTTP preview is read-only and cleanup preserves publicat
   const preview = await fetch(studio.address + '/api/storage/published-media').then(r => r.json()); assert.equal(preview.candidates, 1); assert.equal(await exists(file), true);
   const cleaned = await fetch(studio.address + '/api/storage/published-media/clean', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(r => r.json());
   assert.equal(cleaned.removedCount, 1); assert.equal(await exists(file), false); assert.equal(studio.store.state.settings.meta.publications.length, 2);
+});
+
+test('published editorial images are cleaned with their output while reusable MC images survive', async t => {
+  const f=await fixture(t), editorial=await f.media('news-editorial'), avatar=await f.media('news-mc');editorial.kind='image';avatar.kind='image';
+  f.job.payload.imageMediaIds=[editorial.id,avatar.id];f.output.newsImageMediaIds=[editorial.id];
+  f.store.state.researchResults.push({id:'story',imageMediaIds:[editorial.id,avatar.id],headline:'Keep source text'});
+  const result=await f.service.run();assert.equal(result.removedCount,3);assert.equal(await exists(editorial.file),false);assert.equal(await exists(avatar.file),true);
+  assert.deepEqual(f.publication.mediaCleanup.lineage.editorialMediaIds,[editorial.id,avatar.id]);assert.deepEqual(f.store.state.researchResults[0].imageMediaIds,[avatar.id]);assert.equal(f.store.state.researchResults[0].headline,'Keep source text');
+});
+
+test('shared editorial images stay until every output is published and no draft or preparation still needs the story', async t => {
+  const f=await fixture(t), image=await f.media('news-editorial'), second=await f.media('news-video');image.kind='image';f.job.payload.imageMediaIds=[image.id];
+  second.newsImageMediaIds=[image.id];const other=f.store.add('jobs',{type:'news',status:'completed',mediaId:second.id,payload:{imageMediaIds:[image.id]}});second.jobId=other.id;
+  f.store.state.researchResults.push({id:'story',imageMediaIds:[image.id]});
+  await f.service.run();assert.equal(await exists(image.file),true);
+  f.store.state.settings.meta.publications.push({postId:'second-post',mediaIds:[second.id],status:'published',firstCommentStatus:'published',externalPostId:'second-remote'});
+  f.store.state.socialPosts.push({id:'draft',researchId:'story',mediaIds:[]});await f.service.run();assert.equal(await exists(image.file),true);
+  f.store.state.socialPosts=[];await f.service.run();assert.equal(await exists(image.file),false);
+});
+
+test('version-two completed cleanup recovers editorial lineage after final output removal', async t => {
+  const f=await fixture(t), image=await f.media('news-editorial');image.kind='image';f.job.payload.imageMediaIds=[image.id];
+  for(const item of [f.output,f.presenter]){await fs.unlink(item.file);await fs.unlink(item.thumbnail);}f.store.state.media=f.store.state.media.filter(item=>![f.output.id,f.presenter.id].includes(item.id));
+  f.publication.mediaCleanup={version:2,complete:true,removed:true,lineage:{jobIds:[f.job.id],presenterMediaIds:[f.presenter.id],supersededMediaIds:[]}};
+  const result=await f.service.run();assert.equal(result.removedCount,1);assert.equal(f.publication.mediaCleanup.version,3);assert.equal(await exists(image.file),false);
+});
+
+test('bulk library deletion previews without deleting, preserves avatars and rechecks a new draft before confirmation', async t => {
+  const f=await fixture(t), removable=await f.media('general'), accountImage=await f.media('news-mc'), pageImage=await f.media('page-avatar');accountImage.kind=pageImage.kind='image';
+  f.store.state.accounts.push({id:'account',avatarMediaId:accountImage.id});f.store.state.settings.meta.pages.push({id:'123',avatarMediaId:pageImage.id});
+  const ids=[removable.id,accountImage.id,pageImage.id];const preview=await deleteLibraryMedia(f.store,ids,{preview:true});assert.equal(preview.removableCount,1);assert.equal(preview.blockedCount,2);assert.equal(await exists(removable.file),true);
+  f.store.state.socialPosts.push({id:'new-draft',mediaIds:[removable.id]});const changed=await deleteLibraryMedia(f.store,ids);assert.equal(changed.removedCount,0);assert.equal(changed.blockedCount,3);
+  f.store.state.socialPosts=[];const result=await deleteLibraryMedia(f.store,ids);assert.equal(result.removedCount,1);assert.equal(result.blockedCount,2);assert.equal(await exists(accountImage.file),true);assert.equal(await exists(pageImage.file),true);
+});
+
+test('bulk delete detaches finished research images but refuses aliases and files outside the workspace', async t => {
+  const f=await fixture(t), image=await f.media('news-editorial'), alias=await f.media('general');image.kind='image';
+  f.store.state.researchResults.push({id:'old-story',imageMediaIds:[image.id]});
+  const old=alias.file;alias.file=image.file;assert.equal((await deleteLibraryMedia(f.store,[image.id])).removedCount,0);alias.file=old;
+  const outside=path.join(path.dirname(f.root),'outside-'+randomUUID()+'.mp4');await fs.writeFile(outside,'keep outside');t.after(()=>fs.unlink(outside));
+  const prior=alias.file;alias.file=outside;assert.equal((await deleteLibraryMedia(f.store,[alias.id])).removedCount,0);assert.equal(await exists(outside),true);alias.file=prior;
+  assert.equal((await deleteLibraryMedia(f.store,[image.id])).removedCount,1);assert.deepEqual(f.store.state.researchResults[0].imageMediaIds,[]);
 });

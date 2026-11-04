@@ -21,6 +21,7 @@ import { licenseStatus, removeLicenseToken, saveLicenseToken } from "./license.j
 import { mountSocialRoutes } from "./social.js";
 import { mountResearchRoutes } from "./research.js";
 import { mountMetaRoutes } from "./meta.js";
+import { mountMetaInsightsRoutes } from './meta-insights.js';
 import { createDreamFaceProvider } from "./providers/dreamface.js";
 import { DreamFaceSetupQueue } from "./dreamface-setup.js";
 import { createDreamFaceSlots, ensureDreamFaceCredentials, parseProxy, proxySecretId, saveDreamFaceProxy, saveDreamFaceCredentials } from "./dreamface-accounts.js";
@@ -33,7 +34,7 @@ import { inspectRenderHardware, nvidiaDriverRecommendation } from './render-hard
 import { profileStorage } from './profile-storage.js';
 import { SocialScheduler } from "./social-scheduler.js";
 import { AccountHealthService } from './account-health.js';
-import { PublishedMediaCleanup } from './published-media.js';
+import { PublishedMediaCleanup, deleteLibraryMedia } from './published-media.js';
 import {
   createCaptchaClient,
   publicCaptchaSettings,
@@ -180,6 +181,10 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   });
   app.get('/api/storage/published-media', (req, res) => res.json(publishedMediaCleanup.preview()));
   app.post('/api/storage/published-media/clean', async (req, res) => res.json(await publishedMediaCleanup.run()));
+  app.post('/api/media/delete-bulk', async (req, res) => {
+    const input = z.object({ ids: z.array(z.string().min(1).max(100)).min(1).max(10000), preview: z.boolean().default(false) }).parse(req.body);
+    res.json(await deleteLibraryMedia(store, input.ids, { preview: input.preview }));
+  });
   app.get("/api/captcha", (req, res) => {
     res.json({ ...publicCaptchaSettings(store), balance: store.state.settings.captcha?.balance ?? null });
   });
@@ -218,6 +223,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     websitePublisher: (postId, input) => websiteService.publish(postId, input),
   });
   const metaService = mountMetaRoutes(app, store);
+  const metaInsights = mountMetaInsightsRoutes(app, store);
   queue.setNewsAutomation(async ({ job, media }) => {
     const existing = store.state.socialPosts.find(post => post.mediaIds?.includes(media.id));
     const post = await contentService.createContentFromMedia(media.id, {
@@ -384,33 +390,10 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     const file = fs.realpathSync(media.file);
     res.json({ file, directory: path.dirname(file), name: media.name });
   });
-  app.delete("/api/media/:id", (req, res) => {
+  app.delete("/api/media/:id", async (req, res) => {
     const media = store.require("media", req.params.id);
-    const inTimeline = store.state.projects.some(
-      (project) =>
-        project.timeline.clips.some((clip) => clip.mediaId === media.id) ||
-        project.timeline.images.some((image) => image.mediaId === media.id) ||
-        project.timeline.music?.mediaId === media.id,
-    );
-    const inJob = store.state.jobs.some(
-      (job) =>
-        [...activeStatuses, "queued", "scheduled"].includes(job.status) &&
-        JSON.stringify(job.payload).includes(media.id),
-    );
-    const inSocialPost = store.state.socialPosts.some((post) =>
-      post.mediaIds?.includes(media.id),
-    );
-    if (inTimeline || inJob || inSocialPost)
-      throw new StudioError(
-        "Tệp đang được dùng trong timeline, bài đăng hoặc tác vụ đang chờ. Gỡ khỏi đó trước khi xóa.",
-      );
-    fs.rmSync(media.file, { force: true });
-    if (media.thumbnail) fs.rmSync(media.thumbnail, { force: true });
-    if (media.previewFile) fs.rmSync(media.previewFile, { force: true });
-    store.state.media = store.state.media.filter(
-      (item) => item.id !== media.id,
-    );
-    store.save();
+    const result = await deleteLibraryMedia(store, [media.id]);
+    if (!result.removedCount) throw new StudioError('Tệp còn được bài đăng, ảnh đại diện, timeline hoặc tác vụ sử dụng; hoặc đường dẫn chưa an toàn để xóa.', 'MEDIA_DELETE_PROTECTED', 409);
     res.json({ ok: true });
   });
 
@@ -835,6 +818,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       listening.once("error", reject);
     });
   } catch (error) {
+    await metaInsights.close();
     await publishedMediaCleanup.close();
     await accountHealth.close();
     await researchBatches.close();
@@ -850,6 +834,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     try {
       for (const stream of streams) stream.end();
       clearTimeout(changeTimer);
+      await metaInsights.close();
       await publishedMediaCleanup.close();
       await accountHealth.close();
       await socialScheduler.close();
@@ -869,7 +854,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       instance.release();
     }
   };
-  return { app, server, store, browsers, queue, socialScheduler, accountHealth, publishedMediaCleanup, address, close };
+  return { app, server, store, browsers, queue, socialScheduler, accountHealth, publishedMediaCleanup, metaInsights, address, close };
 }
 
 if (

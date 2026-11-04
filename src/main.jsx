@@ -18,6 +18,7 @@ import {
   CircleCheck,
   CircleAlert,
   PanelLeftClose,
+  LayoutDashboard,
 } from "lucide-react";
 import { api } from "./api.js";
 import { Button, Modal, Field, Notice } from "./components.jsx";
@@ -32,6 +33,7 @@ import { ResearchPage } from "./pages/Research.jsx";
 import { PagesPage } from "./pages/Pages.jsx";
 import { ContentPage } from "./pages/Content.jsx";
 import { ProductPage } from "./pages/Product.jsx";
+import { OverviewPage } from './pages/Overview.jsx';
 import packageInfo from "../package.json";
 import "./style.css";
 import "./pages/workspace.css";
@@ -42,6 +44,7 @@ const navGroups = [
   {
     label: "BẮT ĐẦU",
     tabs: [
+      ["overview", "Tổng quan Meta", LayoutDashboard],
       ["create", "Tạo bằng AI", Sparkles],
       ["research", "Research & News", Search],
       ["product", "Product Studio", ShoppingBag],
@@ -76,6 +79,7 @@ const navGroups = [
   },
 ];
 const pages = {
+  overview: OverviewPage,
   research: ResearchPage,
   product: ProductPage,
   content: ContentPage,

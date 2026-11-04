@@ -12,7 +12,8 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { api, bytes, timecode, clipFrom } from "../api.js";
-import { Button, Empty, Field, MediaThumb, Uploader } from "../components.jsx";
+import { Button, Empty, Field, MediaThumb, Uploader, Modal } from "../components.jsx";
+import './library.css';
 import { mediaOutputType as classifyMediaOutput, mediaLibraryGroup, isPageAvatar, isNewsPresenterMedia } from "../../shared/output-media.js";
 import { outputContext, formatDateTime, sourceDateLabel } from "../../shared/source-context.js";
 import { MediaPreview } from "../MediaPreview.jsx";
@@ -24,7 +25,14 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
   const [selected, setSelected] = useState([]);
   const [group, setGroup] = useState('finished');
   const [period, setPeriod] = useState('all');
-  useEffect(() => setSelected([]), [group, filter, search, project.id, period]);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState(null);
+  const [cleanup, setCleanup] = useState(null);
+  const [lastDelete, setLastDelete] = useState(null);
+  useEffect(() => { setSelected([]); setPageNumber(1); }, [group, filter, search, project.id, period]);
+  useEffect(() => { let live = true; api('/storage/published-media').then(value => { if (live) setCleanup(value); }).catch(() => {}); return () => { live = false; }; }, [data.media.length]);
+  useEffect(() => setSelected(current => current.filter(id => data.media.some(item => item.id === id))), [data.media]);
   const projectMedia = data.media.filter(item => item.projectId === project.id || !item.projectId);
   const media = data.media
     .filter(
@@ -72,19 +80,30 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
     );
     navigate("content");
   };
-  const deleteSelected = async () => {
-    const items = selected
-      .map((id) => data.media.find((item) => item.id === id))
-      .filter(Boolean);
-    if (!items.length || !confirm(`Xóa ${items.length} tệp đã chọn khỏi thư viện?`)) return;
-    const results = await Promise.all(
-      items.map((item) => run(() => api(`/media/${item.id}`, {}, "DELETE"))),
-    );
-    const deleted = results.filter(Boolean).length;
-    if (deleted) {
-      setSelected([]);
-      notify(`Đã xóa ${deleted} tệp khỏi thư viện.`);
-    }
+  const pageCount = Math.max(1, Math.ceil(media.length / 48));
+  const currentPage = Math.min(pageNumber, pageCount);
+  const visibleMedia = media.slice((currentPage - 1) * 48, currentPage * 48);
+  const selectedSet = new Set(selected);
+  const allSelected = media.length > 0 && media.every(item => selectedSet.has(item.id));
+  const reviewDelete = async ids => {
+    if (!ids.length || busy) return;
+    setBusy(true);
+    const result = await run(() => api('/media/delete-bulk', { ids, preview: true }));
+    if (result) setReview({ ...result, ids });
+    setBusy(false);
+  };
+  const confirmDelete = async () => {
+    if (busy || !review) return;
+    setBusy(true);
+    const result = await run(() => api('/media/delete-bulk', { ids: review.ids }));
+    if (result) { setLastDelete(result); setSelected(current => current.filter(id => !result.removedIds.includes(id))); setReview(null); notify(`Đã xóa ${result.removedCount} tệp · giải phóng ${bytes(result.freedBytes)}${result.blockedCount ? ` · giữ ${result.blockedCount} tệp còn được dùng hoặc chưa xóa được` : ''}.`); }
+    setBusy(false);
+  };
+  const cleanPublished = async () => {
+    setBusy(true);
+    const result = await run(() => api('/storage/published-media/clean', {}));
+    if (result) { notify(`Đã dọn ${result.removedCount} tệp đã đăng · ${bytes(result.freedBytes)}.`); const next = await run(() => api('/storage/published-media')); if (next) setCleanup(next); }
+    setBusy(false);
   };
   return (
     <div className="page library-page">
@@ -96,7 +115,8 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
         </div>
         <Uploader compact projectId={project.id} notify={notify} />
       </div>
-      <div className="segmented library-groups" aria-label="Nhóm kho media">{[['finished','Video hoàn tất'],['assets','Tư liệu'],['mc-image','Ảnh MC'],['presenter','Video MC thô'],['page-avatar','Avatar Page'],['all','Tất cả media']].map(([value,label]) => <button key={value} className={group === value ? 'selected' : ''} aria-pressed={group === value} onClick={() => { setGroup(value); setFilter('all'); }}>{label} <b>{projectMedia.filter(item => value === 'all' || mediaLibraryGroup(item, data) === value).length}</b></button>)}</div>
+      <div className="library-retention"><div><strong>Tự dọn sau khi đăng thành công</strong><p>Video cuối, MC thô do app tạo và ảnh minh họa News được dọn sau khi video + bình luận đầu tiên thành công. Kiểm tra lại khi mở app và mỗi 5 phút. Tệp còn dùng cho bài khác, ảnh MC và avatar dùng lại được giữ.</p><small>{projectMedia.length} tệp trong dự án · {bytes(projectMedia.reduce((sum, item) => sum + Number(item.bytes || 0), 0))}{cleanup ? ` · ${cleanup.candidates} tệp đã đăng có thể dọn trong toàn bộ workspace` : ''}</small></div><Button busy={busy} disabled={!cleanup?.candidates} onClick={cleanPublished}>Dọn tệp đã đăng{cleanup?.candidates ? ` (${cleanup.candidates})` : ''}</Button></div>
+      <div className="segmented library-groups" aria-label="Nhóm kho media">{[['finished','Video hoàn tất'],['assets','Tư liệu'],['mc-image','Ảnh MC'],['presenter','Video MC thô'],['page-avatar','Avatar Page'],['all','Tất cả media']].map(([value,label]) => { const items = projectMedia.filter(item => value === 'all' || mediaLibraryGroup(item, data) === value); return <button key={value} className={group === value ? 'selected' : ''} aria-pressed={group === value} onClick={() => { setGroup(value); setFilter('all'); }}>{label} <b>{items.length}</b><small>{bytes(items.reduce((sum,item) => sum + Number(item.bytes || 0), 0))}</small></button>; })}</div>
       <div className="toolbar">
         <div className="segmented">
           {[
@@ -128,6 +148,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
         </div>
       </div>
       <div className="output-filters"><Field label="Ngày tạo video / media"><select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">Tất cả · mới nhất trước</option><option value="today">Hôm nay</option><option value="7d">7 ngày qua</option></select></Field><span className="muted small">{media.length} tệp trong nhóm đang chọn</span></div>
+      <div className="library-select-all"><label><input type="checkbox" aria-label="Chọn tất cả tệp theo bộ lọc" ref={node => { if (node) node.indeterminate = selected.length > 0 && !allSelected; }} checked={allSelected} disabled={!media.length || busy} onChange={event => setSelected(event.target.checked ? media.map(item => item.id) : [])} /> Chọn tất cả {media.length} tệp theo bộ lọc</label><span>Áp dụng cả các trang sau trong dự án này.</span></div>
       {selected.length > 0 && (
         <div className="selection-toolbar">
           <span>Đã chọn {selected.length} tệp</span>
@@ -147,7 +168,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
             <Scissors size={15} />
             Thêm vào timeline
           </Button>
-          <Button className="danger-text" onClick={deleteSelected}>
+          <Button className="danger-text" busy={busy} onClick={() => reviewDelete(selected)}>
             <Trash2 size={15} />
             Xóa đã chọn
           </Button>
@@ -155,7 +176,7 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
       )}
       {media.length ? (
         <div className="media-grid">
-          {media.map((item) => (
+          {visibleMedia.map((item) => (
             <article
               key={item.id}
               className={`media-card ${selected.includes(item.id) ? "selected" : ""}`}
@@ -261,16 +282,8 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
                     <button
                       className="icon-button danger-text"
                       aria-label={`Xóa tệp ${item.name}`}
-                      onClick={async () => {
-                        if (!confirm(`Xóa tệp ${item.name} khỏi thư viện?`))
-                          return;
-                        const result = await run(
-                          () => api(`/media/${item.id}`, {}, "DELETE"),
-                          "Đã xóa tệp.",
-                        );
-                        if (result)
-                          setSelected(selected.filter((id) => id !== item.id));
-                      }}
+                      disabled={busy}
+                      onClick={() => reviewDelete([item.id])}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -291,6 +304,9 @@ export function LibraryPage({ data, project, run, notify, navigate }) {
           Nhập video, ảnh và âm thanh từ máy hoặc tạo nội dung mới bằng AI.
         </Empty>
       )}
+      {media.length > 0 && <div className="library-pager"><Button disabled={currentPage <= 1} onClick={() => setPageNumber(currentPage - 1)}>Trang trước</Button><span>Trang {currentPage}/{pageCount} · {visibleMedia.length}/{media.length} tệp</span><Button disabled={currentPage >= pageCount} onClick={() => setPageNumber(currentPage + 1)}>Trang sau</Button></div>}
+      {lastDelete && <p role="status" className="library-delete-result">Lần xóa gần nhất: {lastDelete.removedCount} tệp · {bytes(lastDelete.freedBytes)}. {lastDelete.blockedCount > 0 && `Giữ lại ${lastDelete.blockedCount} tệp còn được dùng hoặc đường dẫn chưa an toàn.`}</p>}
+      {review && <Modal title="Xác nhận xóa tệp đã chọn" onClose={() => { if (!busy) setReview(null); }}><p>Sẽ xóa vĩnh viễn {review.removableCount} / {review.ids.length} tệp đã chọn cùng thumbnail, giải phóng khoảng {bytes(review.results.filter(item => item.removable).reduce((sum,item) => sum + item.bytes, 0))}.</p>{review.blockedCount > 0 && <div className="library-delete-blocked"><strong>Giữ lại {review.blockedCount} tệp đang dùng hoặc chưa xóa được</strong><ul>{review.results.filter(item => !item.removable).slice(0,8).map(item => <li key={item.mediaId}>{item.name || 'Tệp đã thay đổi'} — {item.reason === 'media_still_referenced' ? 'còn được bài đăng, timeline, ảnh đại diện hoặc tác vụ sử dụng' : item.reason === 'media_not_found' ? 'đã được xóa' : 'cần kiểm tra đường dẫn tệp'}</li>)}</ul>{review.blockedCount > 8 && <small>Và {review.blockedCount - 8} tệp khác.</small>}</div>}<p className="muted small">Để chọn toàn bộ thư viện dự án, chọn nhóm “Tất cả media”, bỏ bộ lọc rồi tick “Chọn tất cả”. Tệp sẽ được kiểm tra lại trước khi xóa.</p><div className="modal-actions"><Button disabled={busy} onClick={() => setReview(null)}>Hủy</Button><Button className="danger-text" busy={busy} disabled={!review.removableCount} onClick={confirmDelete}>Xóa {review.removableCount} tệp</Button></div></Modal>}
       <div className="library-drop">
         <Uploader projectId={project.id} notify={notify} />
       </div>

@@ -1,0 +1,8 @@
+.library-retention{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;margin-bottom:16px;border:1px solid var(--border);border-radius:12px;background:rgba(24,45,65,.65)}
+.library-retention p{font-size:13px;color:var(--muted);line-height:1.6;margin:6px 0;max-width:850px}.library-retention small{color:#9fd3bb}.library-retention>.button{flex-shrink:0}
+.library-groups button{flex-wrap:wrap}.library-groups button small{display:block;flex-basis:100%;font-size:11px;font-weight:400;color:var(--muted)}
+.library-select-all{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 0}.library-select-all label{display:flex;align-items:center;gap:9px;font-weight:600}.library-select-all input{width:17px;height:17px;accent-color:#f4ad76}.library-select-all>span{color:var(--muted);font-size:12px}
+.library-page .selection-toolbar{position:sticky;top:0;z-index:4;background:#182840;border:1px solid #44566e;border-radius:10px;padding:12px;flex-wrap:wrap}
+.library-pager{display:flex;justify-content:center;align-items:center;gap:20px;margin-top:20px}.library-pager span,.library-delete-result{font-size:13px;color:var(--muted)}
+.library-delete-blocked{padding:12px;border:1px solid #635139;background:#2b2630;border-radius:8px}.library-delete-blocked ul{font-size:13px;line-height:1.7;padding-left:22px}.library-delete-blocked li{overflow-wrap:anywhere}
+@media(max-width:800px){.library-retention{align-items:flex-start;flex-direction:column}.library-retention>.button{width:100%}.library-pager{gap:10px}.library-pager span{font-size:12px}}

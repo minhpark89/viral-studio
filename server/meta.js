@@ -401,7 +401,7 @@ function normalizeTokenStrategy(value, fallback = "round_robin") {
   return tokenStrategies.has(candidate) ? candidate : fallback;
 }
 
-function usableTokenBinding(meta, page, tokenId) {
+export function usableTokenBinding(meta, page, tokenId) {
   const token = meta.tokens.find((item) => item.id === tokenId);
   const binding = page?.tokenBindings?.[tokenId];
   return Boolean(token?.status === "ACTIVE" && token.token && binding?.status === "VERIFIED" && binding.pageToken && String(binding.verifiedPageId || page.id) === String(page.id) && binding.credentialFingerprint === fingerprint(token.token));
