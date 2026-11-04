@@ -2,13 +2,13 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-**Version 0.8.7** fixes post-manager scrolling and bulk account checks, adds error/quota filters and automatic DreamFace quota recovery, identifies the Page associated with returned posts, and improves source-grounded news image variety. It also preserves posting cadence across retries and restarts. See [release notes](RELEASE_NOTES_v0.8.7.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [verification checkpoint](CHECKPOINT_v0.8.7.md).
+**Version 0.8.8** automatically cleans confirmed published videos and their generated raw news MC, retries cleanup on startup/every five minutes, and protects media still needed by unfinished work. It includes the account, Page, scrolling and image improvements from v0.8.7. See [release notes](RELEASE_NOTES_v0.8.8.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [continuation checkpoint](CHECKPOINT_v0.8.8.md).
 
 ## Download for Windows
 
-- [Portable v0.8.7](https://github.com/minhpark89/viral-studio/releases/download/v0.8.7/Viral.Studio.0.8.7.exe)
-- [Installer v0.8.7](https://github.com/minhpark89/viral-studio/releases/download/v0.8.7/Viral.Studio.Setup.0.8.7.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.7/SHA256SUMS.txt)
+- [Portable v0.8.8](https://github.com/minhpark89/viral-studio/releases/download/v0.8.8/Viral.Studio.0.8.8.exe)
+- [Installer v0.8.8](https://github.com/minhpark89/viral-studio/releases/download/v0.8.8/Viral.Studio.Setup.0.8.8.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.8/SHA256SUMS.txt)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 
@@ -33,7 +33,7 @@ The portable app keeps `Viral Data` beside its EXE. Installed data lives in a si
 - Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
 - News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
 
-For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.8.md). For future debugging, start with the [v0.7.8 checkpoint](CHECKPOINT_2026-11-02_v0.7.8.md).
+For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.8.md). For future debugging, start with the [v0.8.8 checkpoint](CHECKPOINT_v0.8.8.md).
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
 - Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
@@ -42,7 +42,7 @@ For a separate test workspace on another PC (or this PC), see [Windows test guid
 - Page and post managers include filters, pagination, selection across all matching results, bulk previews and CSV export. Page review groups, notes, reminders, read-only checks, token/CSV/JSON imports and recoverable trash support large collections.
 - Posts that cannot be retried safely return to the Content warehouse with their video and content intact. Reassign a Page to reuse them. A returned or edited draft stays on hold until explicitly approved or scheduled.
 - Select multiple posts and use **Sửa … bài đã chọn** to edit each post or apply one field to all selected posts. Details can navigate the selection; stale and busy rows are skipped with reasons.
-- Successful Reel and first-comment publication removes the draft from the queue and cleans its unreferenced local video. Publication history and the Facebook link remain under **Lịch sử đã đăng** to prevent duplicates. A comment-only failure reuses the existing Reel.
+- Successful Reel and first-comment publication removes the draft from the queue and cleans its unreferenced local video plus generated raw news MC. Cleanup resumes at startup and every five minutes; media needed by other work stays available. Publication history and the Facebook link remain under **Lịch sử đã đăng** to prevent duplicates. A comment-only failure reuses the existing Reel.
 - The desktop splash and main window remain hidden until their content is painted; the main interface waits for initial data before appearing.
 - Batch production: choose News or Product, research a niche or supply a product, and create 1–100 News videos or 1–50 Product videos. Each video keeps its source context for Content.
 - Content uses the saved LLM to write complete English news articles, or short product first comments with the configured store link. News articles are included as `article.md` in handoff exports; drafts can be saved before assigning a Page.
@@ -64,7 +64,7 @@ For a separate test workspace on another PC (or this PC), see [Windows test guid
 
 ## Run from source
 
-Requires Node.js >=22.12.0 (release build: 24.22.2, pinned in `.node-version`) and FFmpeg/ffprobe from `bin/` or `PATH`. Packaged Windows users do not need Node.js.
+Requires Node.js >=22.12.0 and FFmpeg/ffprobe from `bin/` or `PATH`. `.node-version` pins 24.22.2; v0.8.8 release validation used Node.js 26.13.0. Packaged Windows users do not need Node.js.
 
 ```powershell
 npm ci
@@ -76,8 +76,8 @@ npm run desktop
 
 ```powershell
 npm ci
-npm test
 npm run build
+npm test
 npm run pack:release
 ```
 
@@ -85,6 +85,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.7.8. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_2026-11-02_v0.7.8.md` for implementation and verification details.
+This repository is the dedicated Viral Studio project. The current release is v0.8.8. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_v0.8.8.md` for implementation, verification and recovery details.
 
 
