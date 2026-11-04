@@ -2,17 +2,20 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-**Version 0.8.8** automatically cleans confirmed published videos and their generated raw news MC, retries cleanup on startup/every five minutes, and protects media still needed by unfinished work. It includes the account, Page, scrolling and image improvements from v0.8.7. See [release notes](RELEASE_NOTES_v0.8.8.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [continuation checkpoint](CHECKPOINT_v0.8.8.md).
+**Version 0.9.0** adds a cached real Meta overview with 7/28-day metrics, safe library selection and bulk deletion across pages, and automatic cleanup of unused news illustrations after confirmed publication. It includes previous video/MC cleanup, account, Page, scrolling and image improvements. See [release notes](RELEASE_NOTES_v0.9.0.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [continuation checkpoint](CHECKPOINT_v0.9.0.md).
 
 ## Download for Windows
 
-- [Portable v0.8.8](https://github.com/minhpark89/viral-studio/releases/download/v0.8.8/Viral.Studio.0.8.8.exe)
-- [Installer v0.8.8](https://github.com/minhpark89/viral-studio/releases/download/v0.8.8/Viral.Studio.Setup.0.8.8.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.8/SHA256SUMS.txt)
+- [Portable v0.9.0](https://github.com/minhpark89/viral-studio/releases/download/v0.9.0/Viral.Studio.0.9.0.exe)
+- [Installer v0.9.0](https://github.com/minhpark89/viral-studio/releases/download/v0.9.0/Viral.Studio.Setup.0.9.0.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.9.0/SHA256SUMS.txt)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 
 ## Included features
+
+- **Tổng quan Meta** reads real verified Page bindings, displays current followers plus views/engagement over 7/28 completed Meta reporting days, and offers charts, search, groups, status filters and pagination. Missing and stale data remain distinct from real zeros. Refreshes use a bounded separate cache, coalesced work, three workers and one Page per token lane.
+- **Thư viện** selects all filtered media across pages within the current project, previews bulk deletion and reports protected items. Confirmed publication also removes unused editorial illustrations; reusable MC images and unfinished work remain protected.
 
 - Accounts distinguishes completed checks from render readiness. Bulk checking reports progress and per-profile failures; **Bị lỗi** and **Hết hạn mức** filters include accurate quota state. DreamFace quota-blocked profiles are rechecked every 30 minutes while the app is open, with overdue checks resumed on startup. Readiness returns only after confirmed usable allowance; a calendar date change alone is insufficient. Login and verification steps still require attention.
 - Post management scrolls at normal and compact window sizes. Returned posts retain the historical Page name, ID and link in the table, details, search/filter and CSV export without silently assigning them for publication. Unfinished drafts and published history remain separate views.
@@ -33,7 +36,7 @@ The portable app keeps `Viral Data` beside its EXE. Installed data lives in a si
 - Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
 - News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
 
-For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.8.md). For future debugging, start with the [v0.8.8 checkpoint](CHECKPOINT_v0.8.8.md).
+For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.8.md). For future debugging, start with the [v0.9.0 checkpoint](CHECKPOINT_v0.9.0.md).
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
 - Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
@@ -64,7 +67,7 @@ For a separate test workspace on another PC (or this PC), see [Windows test guid
 
 ## Run from source
 
-Requires Node.js >=22.12.0 and FFmpeg/ffprobe from `bin/` or `PATH`. `.node-version` pins 24.22.2; v0.8.8 release validation used Node.js 26.13.0. Packaged Windows users do not need Node.js.
+Requires Node.js >=22.12.0 and FFmpeg/ffprobe from `bin/` or `PATH`. `.node-version` pins 24.22.2; v0.9.0 release validation used Node.js 26.13.0. Packaged Windows users do not need Node.js.
 
 ```powershell
 npm ci
@@ -85,6 +88,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.8.8. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_v0.8.8.md` for implementation, verification and recovery details.
+This repository is the dedicated Viral Studio project. The current release is v0.9.0. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_v0.9.0.md` for implementation, verification and recovery details.
 
 

@@ -1,3 +1,5 @@
+Published as v0.9.0: use [the release checkpoint](CHECKPOINT_v0.9.0.md) for current build/continuation instructions. The implementation record below describes its earlier local validation.
+
 # Library cleanup and Meta overview — local 0.8.9-local.1
 
 This local change builds on public v0.8.8. No new GitHub release was requested for this work.
