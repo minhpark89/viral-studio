@@ -301,6 +301,9 @@ test("Meta Reel publish is explicit and idempotent after preflight", async () =>
   const mediaFile = path.join(root, "sample.mp4");
   await fs.writeFile(mediaFile, Buffer.from("video-bytes"));
   const media = store.add("media", { projectId: project.id, name: "sample.mp4", kind: "video", file: mediaFile, thumbnail: null, previewFile: null, bytes: 11, width: 720, height: 1280, duration: 5, generated: false });
+  const presenterFile = path.join(root, 'presenter.mp4'); await fs.writeFile(presenterFile, 'raw-presenter');
+  const presenter = store.add('media', { projectId: project.id, name: 'MC', kind: 'video', generated: true, mediaType: 'news-presenter', file: presenterFile });
+  const producer = store.add('jobs', { type: 'news', status: 'completed', mediaId: media.id, payload: { presenterMediaId: presenter.id } }); media.jobId = producer.id;
   const post = store.add("socialPosts", { projectId: project.id, pageId: page.id, title: "Reel", caption: "Caption", firstComment: "Read the full article: https://news.example/story", mediaIds: [media.id], scheduledAt: null, status: "ready", notes: "", revision: 1 });
   const calls = [];
   const app = express();
@@ -311,7 +314,11 @@ test("Meta Reel publish is explicit and idempotent after preflight", async () =>
     startReel: async (input) => { calls.push(["start", input.pageId, input.fileSize]); return { video_id: "video-1", upload_url: "https://upload.test/chunk" }; },
     uploadChunk: async () => { calls.push(["upload"]); return {}; },
     finishReel: async () => { calls.push(["finish"]); return { id: "post-1" }; },
-    comment: async (input) => { calls.push(["comment", input.objectId, input.message]); return { id: "comment-1" }; },
+    comment: async (input) => {
+      assert.deepEqual(store.state.settings.meta.publications.at(-1).mediaCleanup.lineage.presenterMediaIds, [presenter.id]);
+      assert.equal(await fs.access(presenterFile).then(() => true, () => false), true, 'MC is retained until comment succeeds');
+      calls.push(["comment", input.objectId, input.message]); return { id: "comment-1" };
+    },
   } });
   app.use((error, req, res, next) => res.status(error.status || 400).json({ code: error.code || "INVALID_REQUEST", error: error.message }));
   const server = await new Promise((resolve) => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
@@ -328,6 +335,8 @@ test("Meta Reel publish is explicit and idempotent after preflight", async () =>
     assert.equal(firstBody.firstCommentStatus, "published");
     assert.equal(firstBody.removedFromQueue, true);
     assert.equal(firstBody.mediaCleanup.removed, true);
+    assert.equal(firstBody.mediaCleanup.related.find(item => item.mediaId === presenter.id).removed, true);
+    assert.equal(await fs.access(presenterFile).then(() => true, () => false), false);
     assert.equal(firstBody.title, post.title);
     assert.equal(firstBody.projectId, project.id);
     assert.equal(store.state.socialPosts.some((item) => item.id === post.id), false);

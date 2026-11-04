@@ -231,7 +231,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       jobId: job.id,
       mediaType: "news-video",
     });
-    return store.patch('media', media.id, { newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
+    return store.patch('media', media.id, { newsPresenterMediaId: presenter.id, newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
   } finally {
     const resolved = path.resolve(directory);
     if (resolved.startsWith(path.resolve(tempRoot) + path.sep)) await fsPromises.rm(resolved, { recursive: true, force: true }).catch(() => {});

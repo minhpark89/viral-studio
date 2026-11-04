@@ -9,7 +9,7 @@ import { requestJsonContent } from "./llm.js";
 import { autoScheduleWarehousePosts, normalizeScheduleConfig } from "./social.js";
 import { classifyMetaFailure, metaResponseDetails } from "./meta-errors.js";
 import { mountManagementRoutes } from "./management.js";
-import { cleanupPublishedMedia, publishedVideo, returnPostToWarehouse } from "./post-lifecycle.js";
+import { cleanupPublishedMedia, publishedMediaLineage, publishedVideo, returnPostToWarehouse } from "./post-lifecycle.js";
 import { managedPageUnavailable } from "../shared/management.js";
 
 const GRAPH_VERSION = "v26.0";
@@ -1141,7 +1141,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
         store.save();
         return { ...retryRecord, post: { ...post } };
       }
-      const mediaCleanup = await cleanupPublishedMedia(store, post.mediaIds?.[0], post.id);
+      const mediaCleanup = await cleanupPublishedMedia(store, post.mediaIds?.[0], post.id, existing.mediaCleanup);
       const recovered = { ...existing, postId: existing.postId || post.id, projectId: existing.projectId || post.projectId, title: existing.title || post.title, contentType: existing.contentType || post.contentType, status: "published", firstCommentStatus: "published", removedFromQueue: true, mediaCleanup };
       delete recovered.firstCommentError;
       delete recovered.firstCommentErrorDetails;
@@ -1166,7 +1166,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     const externalPostId = String(finish.id || videoId);
     // Persist the published video before checking readiness or sending a comment.
     // A processing delay or process exit must never cause another video upload.
-    const pendingRecord = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, status: "published_comment_error", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus: "error", firstCommentError: "Đang chờ Meta xử lý video trước khi gửi bình luận.", removedFromQueue: false, publishedAt: new Date().toISOString() };
+    const pendingRecord = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, status: "published_comment_error", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus: "error", firstCommentError: "Đang chờ Meta xử lý video trước khi gửi bình luận.", removedFromQueue: false, mediaCleanup: { version: 2, removed: false, lineage: publishedMediaLineage(store, media.id) }, publishedAt: new Date().toISOString() };
     meta.publications = meta.publications.filter(item => item.idempotencyKey !== parsedKey).concat(pendingRecord);
     store.save();
     let firstCommentStatus = "published";
@@ -1180,8 +1180,8 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
       firstCommentErrorDetails = classifyMetaFailure(error);
     }
     const mediaCleanup = firstCommentError
-      ? { removed: false, reason: "first_comment_failed" }
-      : await cleanupPublishedMedia(store, post.mediaIds?.[0], post.id);
+      ? { ...pendingRecord.mediaCleanup, removed: false, reason: "first_comment_failed" }
+      : await cleanupPublishedMedia(store, post.mediaIds?.[0], post.id, pendingRecord.mediaCleanup);
     const record = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, status: firstCommentError ? "published_comment_error" : "published", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus, ...(firstCommentError ? { firstCommentError, firstCommentErrorDetails } : {}), removedFromQueue: !firstCommentError, mediaCleanup, publishedAt: new Date().toISOString() };
     meta.publications = meta.publications.filter((item) => item.idempotencyKey !== parsedKey).concat(record);
     if (firstCommentError) {

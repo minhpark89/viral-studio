@@ -33,6 +33,7 @@ import { inspectRenderHardware, nvidiaDriverRecommendation } from './render-hard
 import { profileStorage } from './profile-storage.js';
 import { SocialScheduler } from "./social-scheduler.js";
 import { AccountHealthService } from './account-health.js';
+import { PublishedMediaCleanup } from './published-media.js';
 import {
   createCaptchaClient,
   publicCaptchaSettings,
@@ -74,6 +75,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   }
   const dreamfaceSetup = new DreamFaceSetupQueue({ store, dreamface });
   const accountHealth = new AccountHealthService(store,{dreamface,browsers});
+  const publishedMediaCleanup = new PublishedMediaCleanup(store);
   const queue = new JobQueue(store, browsers, {
     generateDreamFace: (currentStore, job, account, signal, update) =>
       job.payload.workflow === "avatar-news"
@@ -176,6 +178,8 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     const options = z.object({ mode: z.enum(['clear', 'trim']).default('clear') }).parse(req.body || {});
     res.json(await profileStorage(store).clean(options));
   });
+  app.get('/api/storage/published-media', (req, res) => res.json(publishedMediaCleanup.preview()));
+  app.post('/api/storage/published-media/clean', async (req, res) => res.json(await publishedMediaCleanup.run()));
   app.get("/api/captcha", (req, res) => {
     res.json({ ...publicCaptchaSettings(store), balance: store.state.settings.captcha?.balance ?? null });
   });
@@ -831,6 +835,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       listening.once("error", reject);
     });
   } catch (error) {
+    await publishedMediaCleanup.close();
     await accountHealth.close();
     await researchBatches.close();
     await socialScheduler.close();
@@ -840,10 +845,12 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   const address = `http://${host}:${server.address().port}`;
   instance.setAddress(address);
   accountHealth.tick();
+  publishedMediaCleanup.run().catch(() => {});
   const close = async () => {
     try {
       for (const stream of streams) stream.end();
       clearTimeout(changeTimer);
+      await publishedMediaCleanup.close();
       await accountHealth.close();
       await socialScheduler.close();
       await metaService.close();
@@ -862,7 +869,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       instance.release();
     }
   };
-  return { app, server, store, browsers, queue, socialScheduler, accountHealth, address, close };
+  return { app, server, store, browsers, queue, socialScheduler, accountHealth, publishedMediaCleanup, address, close };
 }
 
 if (
