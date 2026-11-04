@@ -40,13 +40,13 @@ test('image ranking uses bounded groups, ignores foreign IDs and retains verifie
   let calls = 0; const warnings = [];
   const result = await rankNewsImages({}, { headline: 'Named subject report', script: 'Named subject confirmed the development.', articles: [] }, candidates, { maxImages: 8, onWarning: warning => warnings.push(warning), llm: async (_store, _prompt, input) => {
     calls++;
-    assert.ok(input.candidates.length <= 12);
-    assert.ok(input.candidates.every(image => image.description.length <= 240));
+    assert.ok(input.candidates.length <= 6);
+    assert.ok(input.candidates.every(image => image.description.length <= 350));
     if (calls === 1) throw new Error('Gateway timeout');
     return { selectedImageIds: ['not-a-candidate', ...input.candidates.slice(0, 4).map(image => image.id)] };
   } });
-  assert.equal(calls, 3);
-  assert.deepEqual(result.map(image => image.id), ['image-12','image-13','image-14','image-15','image-24']);
+  assert.equal(calls, 4);
+  assert.deepEqual(result.map(image => image.id), Array.from({length:8},(_,i)=>`image-${i}`));
   assert.equal(warnings.length, 1);
 });
 

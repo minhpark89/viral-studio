@@ -137,6 +137,30 @@ test("restart preserves terminal production item and batch status from linked jo
   assert.equal(recovered.status, "partial");
 });
 
+test("production follows a retry through active and completed states, including restart", async t => {
+  const { store, project, service, root } = await fixture(t);
+  const batch = store.add("productionBatches", {
+    projectId: project.id, request: { requestId: randomUUID(), projectId: project.id, contentType: "news", count: 1 },
+    status: "failed", items: [{ index: 0, status: "failed", error: "old selector failure" }],
+  });
+  const failed = store.add("jobs", { type: "news", projectId: project.id, production: { batchId: batch.id, itemIndex: 0 }, payload: {}, status: "failed", error: "old selector failure" });
+  const retry = store.add("jobs", { type: "news", projectId: project.id, production: failed.production, retryOf: failed.id, payload: {}, status: "rendering", error: null });
+  service.syncLinkedJobs();
+  assert.equal(batch.items[0].jobId, retry.id);
+  assert.equal(batch.items[0].status, "queued");
+  assert.equal(batch.items[0].error, null);
+  store.patch("jobs", retry.id, { status: "completed" });
+  service.syncLinkedJobs();
+  assert.equal(batch.status, "completed");
+  const reopened = new Store(root);
+  const reopenedQueue = new JobQueue(reopened, {}, { intervalMs: 0 });
+  const reopenedService = new ProductionService(reopened, reopenedQueue);
+  t.after(async () => { await reopenedService.close(); await reopenedQueue.close(); });
+  assert.equal(reopened.require("productionBatches", batch.id).status, "completed");
+  assert.equal(reopened.require("productionBatches", batch.id).items[0].jobId, retry.id);
+  assert.equal(reopened.require("jobs", failed.id).status, "failed");
+});
+
 test("news batch keeps each source paired with its own render and leaves the editor timeline unchanged",async t=>{
   const reports=[{title:"Space mission today",summary:"Launch confirmed",source:"Agency",url:"https://example.test/space"},{title:"Technology report today",summary:"New report published",source:"Agency",url:"https://example.test/tech"}];
   const research={discover:async()=>({articles:reports,warnings:[]}),research:async(request,store,{articles})=>store.add("researchResults",{projectId:request.projectId,topic:request.topic,headline:articles[0].title,script:"The source has published today's update.",articles,imageQueries:[articles[0].title],imageMediaIds:[],warnings:[]})};

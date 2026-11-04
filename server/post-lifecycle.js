@@ -12,7 +12,7 @@ export function returnPostToWarehouse(store, post, {automatic=false, at=new Date
   const previous=post.warehouse || {};
   const error=post.automationError || previous.error || post.lastDeliveryError || '';
   Object.assign(post,{
-    warehouse:{...previous,returnedAt:at,automatic,previousPageId:post.pageId || previous.previousPageId || '',previousPageName:page?.name || previous.previousPageName || '',previousGroupId:post.pageGroupId || previous.previousGroupId || '',error,errorDetails:post.automationErrorDetails || previous.errorDetails || null,attempts:Number(post.automationAttempts || previous.attempts || 0)},
+    warehouse:{...previous,returnedAt:at,automatic,previousPageId:post.pageId || previous.previousPageId || '',previousPageName:post.pageId?(page?.name || ''):(previous.previousPageName || ''),previousExternalPageId:post.pageId?String(page?.externalId || ''):String(previous.previousExternalPageId || ''),previousGroupId:post.pageGroupId || previous.previousGroupId || '',error,errorDetails:post.automationErrorDetails || previous.errorDetails || null,attempts:Number(post.automationAttempts || previous.attempts || 0)},
     pageId:'',pageGroupId:'',tokenGroupId:'',status:'draft',automationHold:true,scheduledAt:null,
     automationStatus:'warehouse',automationError:null,automationErrorDetails:post.automationErrorDetails || previous.errorDetails || null,automationRetryBlocked:true,
     automationBlockedReason:post.automationBlockedReason || 'warehouse_review',automationNextAttemptAt:null,

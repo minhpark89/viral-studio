@@ -148,6 +148,8 @@ export function normalizeScheduleConfig(value, fallback = {}) {
   return {
     times,
     staggerMinutes,
+    sameTokenMinutes: Math.max(0, Math.min(1440, Number(input.sameTokenMinutes ?? fallback.sameTokenMinutes ?? 0) || 0)),
+    crossTokenMinutes: Math.max(0, Math.min(1440, Number(input.crossTokenMinutes ?? fallback.crossTokenMinutes ?? 0) || 0)),
     dailyLimit,
     enabled,
     autoPublish: input.autoPublish === undefined ? enabled : input.autoPublish === true,

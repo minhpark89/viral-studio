@@ -73,22 +73,28 @@ test('one batch isolates simultaneous stories while same-story variations share 
   b.research.imageMediaIds.push(avatar.id,pageAvatar.id);
   const batch=store.add('productionBatches',{projectId:project.id,status:'failed',request:{},items:[],newsImageMediaIds:a.images.map(m=>m.id)});
   const request={projectId:project.id,avatarMediaId:avatar.id};
-  let rankings=0;
-  const llm=async(_s,_prompt,input)=>{rankings++;await delay(25);return {selectedImageIds:input.candidates.map(c=>c.id)};};
+  const rankings=[];
+  const llm=async(_s,_prompt,input)=>{rankings.push({headline:input.headline,ids:input.candidates.map(c=>c.id)});await delay(25);return {selectedImageIds:input.candidates.map(c=>c.id)};};
   const plan=name=>({headline:name,narration:`Verified ${name} report`,imageQueries:[]});
   const [a1,b1,a2]=await Promise.all([
     service.prepareNewsMedia(batch,request,a.research,plan('Space'),llm),
     service.prepareNewsMedia(batch,request,b.research,plan('Economy'),llm),
     service.prepareNewsMedia(batch,request,a.research,plan('Space'),llm),
   ]);
-  assert.equal(rankings,2);
+  // Ranking may split a story into bounded groups. Every candidate must still
+  // be reviewed exactly once per story, even with simultaneous same-story calls.
+  assert.deepEqual([...new Set(rankings.map(call=>call.headline))].sort(),['Economy','Space']);
+  for(const [headline,story] of [['Space',a],['Economy',b]]) {
+    assert.deepEqual(rankings.filter(call=>call.headline===headline).flatMap(call=>call.ids).sort(),story.images.map(m=>'media:'+m.id).sort());
+  }
   assert.deepEqual(a1.imageMediaIds,a.images.map(m=>m.id));
   assert.deepEqual(b1.imageMediaIds,b.images.map(m=>m.id));
   assert.deepEqual(a1,a2);
   assert.equal(a1.imageMediaIds.some(id=>b1.imageMediaIds.includes(id)),false);
   assert.equal(service.newsMediaPromises.size,0);
+  const callsBeforeCache=rankings.length;
   await service.prepareNewsMedia(batch,request,b.research,plan('Economy'),llm);
-  assert.equal(rankings,2,'Verified same-story cache should be reused');
+  assert.equal(rankings.length,callsBeforeCache,'Verified same-story cache should be reused');
   assert.throws(()=>queue.enqueueNews({projectId:project.id,plan:{avatarMediaId:avatar.id},imageMediaIds:[avatar.id]}),error=>error.code==='INVALID_EDITORIAL_IMAGE');
   assert.throws(()=>queue.enqueueNews({projectId:project.id,plan:{},imageMediaIds:[pageAvatar.id]}),error=>error.code==='INVALID_EDITORIAL_IMAGE');
 });

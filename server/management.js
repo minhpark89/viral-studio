@@ -42,6 +42,15 @@ export function postRows(store) {
     const local=isPublication?s.socialPages.find(l=>String(l.externalId)===String(p.pageId)):s.socialPages.find(l=>l.id===p.pageId);
     const externalId=isPublication?String(p.pageId):local?.externalId || '';
     const row={...p,id:isPublication?`pub:${p.idempotencyKey || p.externalPostId}`:p.id,isPublication,revision:isPublication?Number(p.managementRevision || 0):Number(p.revision || 1),externalPageId:externalId,pageName:local?.name || p.pageName || '',groupIds:p.pageGroupId?[p.pageGroupId]:meta.pageGroups.filter(g=>g.pageIds.includes(externalId)).map(g=>g.id),projectName:s.projects.find(v=>v.id===p.projectId)?.name || '',date:p.publishedAt || p.scheduledAt || p.updatedAt || p.createdAt,error:p.automationError || p.firstCommentError || p.warehouse?.error || '',errorKind:p.automationErrorDetails?.kind || p.firstCommentErrorDetails?.kind || p.warehouse?.errorDetails?.kind || '',attempts:Number(p.automationAttempts || 0)};
+    // Warehouse posts are intentionally unassigned; retain a separate reference
+    // to the Page involved in the failed delivery instead of rebinding the post.
+    const previous=!p.pageId && p.warehouse;
+    const previousLocal=previous?s.socialPages.find(l=>l.id===previous.previousPageId):null;
+    const candidate=String(previous?(previous.previousExternalPageId || previousLocal?.externalId || ''):externalId);
+    const pageId=/^\d{1,40}$/.test(candidate)?candidate:'';
+    const metaPage=meta.pages.find(page=>String(page.id)===pageId);
+    const name=previous?(previous.previousPageName || previousLocal?.name || metaPage?.name || pageId):(row.pageName || metaPage?.name || pageId);
+    row.pageReference=name || pageId?{kind:previous?'previous':'current',name,externalId:pageId,url:pageId?`https://www.facebook.com/${pageId}`:''}:null;
     row.stage=postStage(row);return row;
   };
   return [...s.socialPosts.map(p=>enrich(p)),...meta.publications.filter(p=>!s.socialPosts.some(s=>s.id===p.postId)).map(p=>enrich(p,true))];

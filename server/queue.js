@@ -10,6 +10,7 @@ import { generate } from "./providers/generate.js";
 import { renderNewsBroadcast } from "./news-render.js";
 import { isPageAvatar, isMcImage } from "../shared/output-media.js";
 import { selectRenderEncoder } from './render-hardware.js';
+import { accountQuotaBlocked, quotaFailureState } from '../shared/account-health.js';
 
 function elapsedMs(job, finishedAt) {
   const started = Date.parse(job.startedAt || job.createdAt || "");
@@ -225,6 +226,7 @@ export class JobQueue {
         (account) =>
           account.provider === job.payload.provider &&
           account.status === "ready" &&
+          !accountQuotaBlocked(account) &&
           !this.browsers?.isProfileLocked?.(account) &&
           !this.store.state.accounts.some((other) =>
             (other.profileId || other.id) === (account.profileId || account.id) &&
@@ -365,10 +367,7 @@ export class JobQueue {
         });
       }
       if (account && error.code === "PROVIDER_QUOTA") {
-        this.store.patch("accounts", account.id, {
-          status: "error",
-          message: error.message,
-        });
+        this.store.patch("accounts", account.id, quotaFailureState(error,this.now()));
       }
     } finally {
       if (account?.status === "busy" && (!this.running.has(job.id) || this.running.get(job.id).accountId === account.id))

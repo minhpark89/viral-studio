@@ -10,6 +10,18 @@ const research = {
 };
 const sentence = 'Officials published the transport review, but the next decision remains unknown. ';
 
+test('a factual narration with no concrete visual subjects can use the source-card fallback', async () => {
+  for (const imageQueries of [[], undefined]) {
+    const result = await writeNewsNarration({}, research, {
+      llm: async () => ({ headline: research.headline, summary: sentence.trim(), imageQueries }),
+    });
+    assert.deepEqual(result.imageQueries, []);
+    assert.deepEqual(result.contextImageQueries, []);
+    assert.equal(result.narration, sentence.trim() + ' ' + NEWS_CTA);
+    assert.doesNotThrow(() => newsPlanSchema.parse({ ...result, visualMode: 'source-card', imageMediaIds: ['11111111-1111-4111-8111-111111111111'] }));
+  }
+});
+
 test('news narration accepts overlong model summaries and fits the provider limit with the complete CTA', async () => {
   for (const length of [399, 400, 401, 450, 700, 4000]) {
     const summary = sentence.repeat(Math.ceil(length / sentence.length)).slice(0, length);

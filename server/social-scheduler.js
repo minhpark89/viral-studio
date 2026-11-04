@@ -35,11 +35,54 @@ export class SocialScheduler {
 
   process(post) {
     if (this.closed || this.running.has(post.id) || post.automationRetryBlocked || post.deletedAt || post.archivedAt) return null;
+    if (!this.reserveCadence(post)) return null;
     this.running.add(post.id);
     const task = this.processPost(post);
     this.pending.add(task);
     task.finally(() => this.pending.delete(task)).catch(() => {});
     return task;
+  }
+
+  reserveCadence(post) {
+    // A first-comment retry does not publish another video or consume its slot.
+    if (publishedVideo(this.store, post)) return true;
+    const meta = this.store.state.settings?.meta;
+    const group = meta?.pageGroups?.find(group => group.id === post.pageGroupId);
+    const same = Math.max(0, Number(group?.scheduleConfig?.sameTokenMinutes) || 0) * 60_000;
+    const cross = Math.max(0, Number(group?.scheduleConfig?.crossTokenMinutes) || 0) * 60_000;
+    if (!same && !cross) return true;
+    const page = this.store.state.socialPages?.find(page => page.id === post.pageId);
+    const pool = meta.tokenGroups?.find(pool => pool.id === (post.tokenGroupId || group.scheduleConfig.tokenGroupId));
+    const tokenId = pool?.pageTokenBindings?.[page?.externalId];
+    const token = meta.tokens?.find(token => token.id === tokenId && token.status === 'ACTIVE');
+    const managedPage = meta.pages?.find(managedPage => managedPage.id === page?.externalId);
+    if (!tokenId || !pool.tokenIds?.includes(tokenId) || !token || !managedPage?.tokenBindings?.[tokenId]?.pageToken) {
+      this.recordFailure(post, { message: 'Thiếu phân công token cố định cho lịch giãn cách. Kiểm tra nhóm token và Page trước khi xếp lịch lại.', code: 'META_PAGE_NOT_BOUND' });
+      return false;
+    }
+    const ledger = meta.publishCadence ||= { tokens: {}, groups: {} };
+    ledger.tokens ||= {}; ledger.groups ||= {};
+    const current = this.now();
+    const afterToken = ledger.tokens[tokenId] === undefined ? 0 : Number(ledger.tokens[tokenId]) + same;
+    const afterGroup = ledger.groups[group.id] === undefined ? 0 : Number(ledger.groups[group.id]) + cross;
+    const earliest = Math.max(afterToken, afterGroup);
+    if (earliest > current) {
+      const nextAt = new Date(earliest).toISOString();
+      if (post.automationNextAttemptAt !== nextAt) {
+        post.automationNextAttemptAt = nextAt;
+        post.automationCadence = { ...post.automationCadence, tokenId, nextAt };
+        this.store.save();
+      }
+      return false;
+    }
+    // Reserve synchronously and persist before sending to Meta. A restart or
+    // overdue queue therefore cannot collapse the user's posting intervals.
+    ledger.tokens[tokenId] = current;
+    ledger.groups[group.id] = current;
+    post.automationCadence = { tokenId, attemptedAt: new Date(current).toISOString(), nextAt: null };
+    post.automationNextAttemptAt = null;
+    this.store.save();
+    return true;
   }
 
   async processPost(post) {
@@ -94,7 +137,7 @@ export class SocialScheduler {
         // workspace and can be fixed there; it must not stop other groups.
       }
     }
-    await Promise.all(this.duePosts().map((post) => this.process(post)));
+    await Promise.all(this.duePosts().sort((a, b) => Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt)).map((post) => this.process(post)));
   }
 
   async close() {

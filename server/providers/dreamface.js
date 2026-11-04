@@ -7,6 +7,7 @@ import { importMedia, probe, binary, runProcess } from "../media.js";
 import { StudioError } from "../store.js";
 import { ensureNewsMcImage } from "../mc-image.js";
 import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
+import { inspectDreamFaceQuota } from '../dreamface-quota.js';
 import { ensureDreamFaceCredentials, getDreamFaceCredentials, getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
 import { profileStorage, profileLaunchArgs } from '../profile-storage.js';
 import { resolveBrowserExecutable } from '../browser-runtime.js';
@@ -61,8 +62,8 @@ async function firstVisible(locators) {
 }
 
 function generateButtonLocators(page) {
-  // DreamFace shows the remaining free quota in the submit label, for
-  // example "2 Generate".  The old exact "Generate" selector missed that
+  // DreamFace can prefix the credit cost in the submit label, for
+  // example "2 Generate". The old exact "Generate" selector missed that
   // valid button and made a connected profile look unavailable.
   const label = /^(?:\d+\s+)?Generate(?:\s+\d+)?$/i;
   return [
@@ -78,29 +79,47 @@ async function findGenerateButton(page) {
   return firstVisible(generateButtonLocators(page));
 }
 
-async function findAvailableRadio(radios, preferred, fallbackPattern = null, timeoutMs = 30000) {
+export async function selectDreamFaceRadio(page, menu, preferred, fallbackPattern = null, { timeoutMs = 30000, signal } = {}) {
   const deadline = Date.now() + timeoutMs;
+  const wantedLabel = (label) => preferred.includes(label) || Boolean(fallbackPattern?.test(label));
   while (Date.now() < deadline) {
-    const options = await radios.evaluateAll((nodes) => nodes.map((node, index) => {
+    signal?.throwIfAborted();
+    if (page.isClosed()) throw providerError("DreamFace closed its composer.", "PROVIDER_NOT_READY");
+    const options = await page.getByRole("radio").evaluateAll((nodes) => nodes.map((node) => {
       const style = getComputedStyle(node);
       return {
-        index,
-        label: String(node.innerText || "").trim(),
+        label: String(node.getAttribute("aria-label") || node.innerText || "").replace(/\s+/g, " ").trim(),
         visible: style.display !== "none" && style.visibility !== "hidden" && Boolean(node.getClientRects().length),
         disabled: Boolean(node.disabled) || node.getAttribute("aria-disabled") === "true",
       };
-    }).filter((item) => item.visible && !item.disabled)).catch(() => []);
-    for (const wanted of preferred) {
-      const match = options.find((item) => item.label === wanted);
-      if (match) return match;
+    }).filter((item) => item.visible)).catch(() => []);
+    const available = options.filter((item) => !item.disabled);
+    const choice = preferred.map((label) => available.find((item) => item.label === label)).find(Boolean)
+      || available.find((item) => wantedLabel(item.label));
+    const clickTimeout = () => Math.max(1, Math.min(1500, deadline - Date.now()));
+    try {
+      if (choice) {
+        // Image/model hydration can replace or reorder this menu between the
+        // read and click. Resolve by name each time; an old numeric index can
+        // target a different option or disappear entirely.
+        const radio = page.getByRole("radio", { name: choice.label, exact: true }).first();
+        await radio.click({ timeout: clickTimeout() });
+        // Some versions close the menu after selection. Reopen only to verify
+        // the selected value; no Generate/paid submission occurs in this loop.
+        if (!await radio.isVisible().catch(() => false)) await menu.click({ timeout: clickTimeout() });
+        const checked = await radio.evaluate((node) => node.getAttribute("aria-checked") === "true" || node.checked === true, undefined, { timeout: clickTimeout() });
+        if (checked) return choice.label;
+      } else if (!options.some((item) => wantedLabel(item.label))) {
+        await menu.click({ timeout: clickTimeout() });
+      }
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (page.isClosed()) throw error;
+      // Only retry reversible UI selection while the composer hydrates.
     }
-    if (fallbackPattern) {
-      const match = options.find((item) => fallbackPattern.test(item.label));
-      if (match) return match;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 750));
+    await page.waitForTimeout(Math.max(0, Math.min(300, deadline - Date.now())));
   }
-  return null;
+  throw providerError(`DreamFace could not confirm an available option: ${preferred.join(", ")}.`, "PROVIDER_NOT_READY");
 }
 
 export function classifyGoogleSignupPage({ url = "", body = "", captcha = false, formVisible = false } = {}) {
@@ -1103,6 +1122,17 @@ export class DreamFaceProvider {
     return { ...result, checkedAt };
   }
 
+  async checkQuota(account,{signal}={}) {
+    const existing=this.sessions.get(accountId(account));
+    if(existing?.visible){
+      const page=await existing.context.newPage();
+      try{return await inspectDreamFaceQuota(page,{selectRadio:selectDreamFaceRadio,signal});}
+      finally{await page.close().catch(()=>{});}
+    }
+    const session=await this.open(account,{visible:false});
+    return inspectDreamFaceQuota(session.page,{selectRadio:selectDreamFaceRadio,signal});
+  }
+
   async checkProxy(account) {
     const proxy = validateProxy(getDreamFaceProxy(this.store, account));
     if (!proxy.server) return { status: "missing", message: "Profile này chưa có proxy." };
@@ -1753,31 +1783,12 @@ export class DreamFaceProvider {
     await prompt.fill(narration);
     const effect = page.getByRole("button", { name: /Animate Effect/i }).first();
     if (!await effect.isVisible().catch(() => false)) throw providerError("DreamFace Animate Effect is unavailable.", "PROVIDER_NOT_READY");
-    await effect.click();
-    // The uploaded still is processed asynchronously. Open the effect menu and
-    // wait for DreamFace to enable the Avatar 3.0 family instead of relying on
-    // a short fixed delay, which can race the image-processing request.
-    // The provider can keep the composer visible while the uploaded image is
-    // still processing, so allow the motion options to settle before reading them.
-    await page.waitForTimeout(6500);
-    const radios = page.getByRole("radio");
-    const effectChoice = await findAvailableRadio(radios, ["Avatar 3.0 Fast", "Avatar 3.0", "Avatar 2.0", "Avatar"], /avatar/i);
-    const selectedRadio = effectChoice ? radios.nth(effectChoice.index) : null;
-    const selectedEffect = effectChoice?.label || "";
-    if (!selectedRadio) throw providerError("DreamFace chưa có Avatar effect khả dụng cho ảnh MC này. Hãy đổi ảnh MC hoặc kiểm tra quota profile.", "PROVIDER_NOT_READY");
-    await selectedRadio.click();
-    if (await selectedRadio.getAttribute("aria-checked") === "false") throw providerError("DreamFace không xác nhận Avatar effect.", "PROVIDER_NOT_READY");
+    const selectedEffect = await selectDreamFaceRadio(page, effect, ["Avatar 3.0 Fast", "Avatar 3.0", "Avatar 2.0", "Avatar"], /avatar/i, { signal });
     if (selectedEffect !== "Avatar 3.0 Fast") store.log(job, `Avatar 3.0 Fast unavailable; using ${selectedEffect}.`);
 
     const resolution = page.getByRole("button", { name: /Resolution/i }).first();
     if (!await resolution.isVisible().catch(() => false)) throw providerError("DreamFace resolution selector is unavailable.", "PROVIDER_NOT_READY");
-    await resolution.click();
-    const resolutionRadios = page.getByRole("radio");
-    const resolutionChoice = await findAvailableRadio(resolutionRadios, ["720p", "480p", "1080p"]);
-    const selectedResolutionRadio = resolutionChoice ? resolutionRadios.nth(resolutionChoice.index) : null;
-    const selectedResolution = resolutionChoice?.label || "";
-    if (!selectedResolutionRadio) throw providerError("DreamFace không có độ phân giải khả dụng cho profile này.", "PROVIDER_NOT_READY");
-    await selectedResolutionRadio.click();
+    const selectedResolution = await selectDreamFaceRadio(page, resolution, ["720p", "480p", "1080p"], null, { signal });
     update({ status: "configured", workflow: "avatar-news", effect: selectedEffect, resolution: selectedResolution, progress: 3 });
     let generate = null;
     await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => /generate|free\s+daily/i.test(button.innerText.trim())), null, { timeout: 30000 }).catch(() => {});

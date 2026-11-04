@@ -52,6 +52,7 @@ export const statusLabels = {
   checking: "Đang kiểm tra",
   busy: "Đang dùng",
   error: "Có lỗi",
+  quota: "Hết hạn mức",
 };
 
 export const activeStatuses = [

@@ -919,7 +919,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     const now = new Date().toISOString();
     let group = meta.pageGroups.find((item) => item.id === id);
     if (!group) { group = { id, createdAt: now }; meta.pageGroups.push(group); }
-    Object.assign(group, { name, pageIds, folderBinding: String(body.folderBinding || body.folder_binding || group.folderBinding || ""), scheduleConfig: normalizeScheduleConfig(body.scheduleConfig || body.schedule_config || group.scheduleConfig || {}), updatedAt: now });
+    Object.assign(group, { name, pageIds, folderBinding: String(body.folderBinding || body.folder_binding || group.folderBinding || ""), scheduleConfig: normalizeScheduleConfig(body.scheduleConfig || body.schedule_config || {}, group.scheduleConfig || {}), updatedAt: now });
     for (const page of meta.pages) page.groupIds = meta.pageGroups.filter((item) => item.pageIds.includes(page.id)).map((item) => item.id);
     store.save();
     try {

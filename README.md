@@ -2,18 +2,22 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-**Version 0.8.6** adds automatic hidden DreamFace login: the app fills saved credentials, solves reCAPTCHA with 2Captcha inside the profile's own browser and confirms the session without opening a window. It also restores count-based profile creation with generated credentials. See [release notes](RELEASE_NOTES_v0.8.6.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [verification checkpoint](CHECKPOINT_2026-11-03_v0.8.6.md).
+**Version 0.8.7** fixes post-manager scrolling and bulk account checks, adds error/quota filters and automatic DreamFace quota recovery, identifies the Page associated with returned posts, and improves source-grounded news image variety. It also preserves posting cadence across retries and restarts. See [release notes](RELEASE_NOTES_v0.8.7.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [verification checkpoint](CHECKPOINT_v0.8.7.md).
 
 ## Download for Windows
 
-- [Portable v0.8.6](https://github.com/minhpark89/viral-studio/releases/download/v0.8.6/Viral.Studio.0.8.6.exe)
-- [Installer v0.8.6](https://github.com/minhpark89/viral-studio/releases/download/v0.8.6/Viral.Studio.Setup.0.8.6.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.6/SHA256SUMS.txt)
+- [Portable v0.8.7](https://github.com/minhpark89/viral-studio/releases/download/v0.8.7/Viral.Studio.0.8.7.exe)
+- [Installer v0.8.7](https://github.com/minhpark89/viral-studio/releases/download/v0.8.7/Viral.Studio.Setup.0.8.7.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.8.7/SHA256SUMS.txt)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 
 ## Included features
 
+- Accounts distinguishes completed checks from render readiness. Bulk checking reports progress and per-profile failures; **Bị lỗi** and **Hết hạn mức** filters include accurate quota state. DreamFace quota-blocked profiles are rechecked every 30 minutes while the app is open, with overdue checks resumed on startup. Readiness returns only after confirmed usable allowance; a calendar date change alone is insufficient. Login and verification steps still require attention.
+- Post management scrolls at normal and compact window sizes. Returned posts retain the historical Page name, ID and link in the table, details, search/filter and CSV export without silently assigning them for publication. Unfinished drafts and published history remain separate views.
+- News preparation expands article galleries and grounded context searches, ranks in bounded groups, refills failed downloads and rejects duplicates by normalized decoded image content. Context images remain labeled; unrelated images do not fill a shortage.
+- Distribution groups can enforce same-token and group-wide posting gaps using persisted attempt times. Comment-only retries reuse the published video and do not consume another video-posting slot.
 - News clips summarize the source and direct viewers to the full article in the first comment. Choose automatic pacing (approximately 15–30 seconds) or a 15/20/30-second script target. Actual duration follows the voice; short results hold the closing CTA to reach at least 15 seconds. Queue distinguishes processing time from actual clip duration.
 - Choose up to 6, 8 or 10 illustrations, or let duration determine the target. Source galleries and captions, full-name/context queries, relevance ranking and duplicate checks improve variety. The app reports shortages instead of filling them with unrelated photos. Shot length stays at least about 2.5 seconds; actual image count is saved with the output.
 - News with one to five photos can compose directly when free RAM covers the configured workers. Larger stories or lower-memory PCs render photos individually with pairwise transitions; an allocation failure retries that bounded path using the same cached inputs and encoder. DreamFace MC image creation waits for page readiness and submission acknowledgement; retry can recover a matching submitted image without generating another one.

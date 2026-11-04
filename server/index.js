@@ -32,6 +32,7 @@ import { inspectMcImageSettings } from "./mc-image.js";
 import { inspectRenderHardware, nvidiaDriverRecommendation } from './render-hardware.js';
 import { profileStorage } from './profile-storage.js';
 import { SocialScheduler } from "./social-scheduler.js";
+import { AccountHealthService } from './account-health.js';
 import {
   createCaptchaClient,
   publicCaptchaSettings,
@@ -72,6 +73,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     store.patch("accounts", account.id, { gmailStatus: "ready", gmailAuthStep: "ready" });
   }
   const dreamfaceSetup = new DreamFaceSetupQueue({ store, dreamface });
+  const accountHealth = new AccountHealthService(store,{dreamface,browsers});
   const queue = new JobQueue(store, browsers, {
     generateDreamFace: (currentStore, job, account, signal, update) =>
       job.payload.workflow === "avatar-news"
@@ -257,13 +259,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   const researchBatches = mountResearchRoutes(app, store, { queue });
   const production = mountProductionRoutes(app, store, queue);
 
-  const checkAccount = async (id) => {
-    const account = store.require("accounts", id);
-    if (account.provider !== "dreamface") return browsers.check(id);
-    const result = await dreamface.check(account);
-    store.patch("accounts", id, result);
-    return result;
-  };
+  const checkAccount = id => accountHealth.check(id);
   const loginAccount = async (id, credentials) => {
     const account = store.require("accounts", id);
     if (account.provider !== "dreamface") return browsers.login(id, credentials);
@@ -835,6 +831,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       listening.once("error", reject);
     });
   } catch (error) {
+    await accountHealth.close();
     await researchBatches.close();
     await socialScheduler.close();
     await queue.close();
@@ -842,10 +839,12 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   }
   const address = `http://${host}:${server.address().port}`;
   instance.setAddress(address);
+  accountHealth.tick();
   const close = async () => {
     try {
       for (const stream of streams) stream.end();
       clearTimeout(changeTimer);
+      await accountHealth.close();
       await socialScheduler.close();
       await metaService.close();
       await researchBatches.close();
@@ -863,7 +862,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       instance.release();
     }
   };
-  return { app, server, store, browsers, queue, socialScheduler, address, close };
+  return { app, server, store, browsers, queue, socialScheduler, accountHealth, address, close };
 }
 
 if (

@@ -5,6 +5,22 @@ import { importMedia } from "./media.js";
 
 export const WIKIMEDIA_API = "https://commons.wikimedia.org/w/api.php";
 
+// A thumbnail, resized CDN URL and original file are the same photograph.
+// Keep content IDs and unknown query parameters so distinct photos stay distinct.
+export function newsImageKey(image) {
+  try {
+    const url = new URL(image.originalImageUrl || image.imageUrl);
+    if (/(^|\.)wikimedia\.org$/i.test(url.hostname)) {
+      const match = decodeURIComponent(url.pathname).match(/\/commons\/(?:thumb\/)?[\da-f]\/[^/]+\/([^/]+)/i);
+      if (match) return 'commons:' + match[1].replace(/\.(?:jpe?g|png|tiff?|webp)$/i, '');
+    }
+    if (url.hostname === 'ichef.bbci.co.uk') url.pathname = url.pathname.replace(/\/(?:standard|raw)\/\d+\//, '/standard/');
+    for (const key of [...url.searchParams.keys()]) if (/^(?:utm_.+|width|height|w|h|quality|q|fit|format|auto|dpr|crop)$/i.test(key)) url.searchParams.delete(key);
+    url.searchParams.sort(); url.hash = '';
+    return url.toString();
+  } catch { return image.id || image.mediaId; }
+}
+
 export function editorialImages(images) {
   return images.filter(image => (!image.mime || image.mime.startsWith("image/")) && image.mime !== "image/svg+xml" && !/\.(?:pdf|djvu|svg|webm)(?:\b|\/)/i.test(image.title+" "+image.imageUrl) && !/\b(?:logo|icon|wordmark|flag|seal|insignia|stamp|poster|diagram|document)\b/i.test(image.title) && (!image.width || image.width >= 500) && (!image.height || image.height >= 400));
 }
@@ -13,10 +29,10 @@ export function newsImageCandidates(articles,images=[]) {
   const sourceImages=(articles||[]).filter(article=>article.imageUrl&&isPublicImageUrl(article.imageUrl)).map(article=>{
     const url=new URL(article.imageUrl);
     if(url.hostname==="ichef.bbci.co.uk")url.pathname=url.pathname.replace(/\/standard\/\d+\//,"/standard/1280/");
-    return {id:`article:${article.id || 'source'}:${createHash('sha256').update(url.toString()).digest('hex').slice(0, 12)}`,query:article.title,title:article.title,description:article.imageDescription||'',publishedAt:article.publishedAt,imageUrl:url.toString(),pageUrl:article.url,width:0,height:0,mime:"image/jpeg",license:"",attribution:article.source||""};
+    return {id:`article:${article.id || 'source'}:${createHash('sha256').update(newsImageKey({imageUrl:url.toString()})).digest('hex').slice(0, 12)}`,query:article.title,title:article.imageDescription||article.title,articleTitle:article.title,description:article.imageDescription||'',publishedAt:article.publishedAt,imageUrl:url.toString(),pageUrl:article.url,width:0,height:0,mime:"image/jpeg",license:"",attribution:article.source||""};
   });
   const seen=new Set();
-  return [...sourceImages,...editorialImages(images)].filter(image=>{if(seen.has(image.imageUrl))return false;seen.add(image.imageUrl);return true;});
+  return [...sourceImages,...editorialImages(images)].filter(image=>{const key=newsImageKey(image);if(seen.has(key))return false;seen.add(key);return true;});
 }
 const MAX_QUERY_LENGTH = 300;
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
@@ -148,8 +164,9 @@ export async function searchImageQueries(queries, { fetchImpl = globalThis.fetch
   for (let rank = 0; rank < maxResultsPerQuery; rank++) for (const items of results) if (items?.[rank]) images.push(items[rank]);
   const seen = new Set();
   const deduped = images.filter((image) => {
-    if (seen.has(image.imageUrl)) return false;
-    seen.add(image.imageUrl);
+    const key = newsImageKey(image);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   }).slice(0, maxResults);
   return { images: deduped, warnings: [...new Set(warnings)] };

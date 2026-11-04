@@ -1427,6 +1427,9 @@ nav button b {
   justify-items: start;
   min-width: 0;
 }
+.account-check-progress { margin: 12px 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 13px; overflow-wrap: anywhere; }
+.account-check-progress details { margin-top: 8px; }
+.badge.quota { background: #fff4df; color: #8a5700; }
 .account-row-message {
   display: -webkit-box;
   overflow: hidden;

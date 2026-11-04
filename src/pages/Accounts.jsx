@@ -20,12 +20,16 @@ import {
 } from "lucide-react";
 import { api } from "../api.js";
 import { Button, Modal, Field, Badge, Empty, Notice } from "../components.jsx";
+import {accountQuotaBlocked,accountDisplayStatus} from '../../shared/account-health.js';
+import {checkAccountSelection,accountCheckSummary} from '../account-checks.js';
 
 const STATUS_FILTERS = [
   { value: "attention", label: "Cần xử lý" },
   { value: "ready", label: "Sẵn sàng" },
   { value: "needs_login", label: "Cần đăng nhập" },
   { value: "verification", label: "Cần xác minh" },
+  { value: "error", label: "Bị lỗi" },
+  { value: "quota", label: "Hết hạn mức" },
   { value: "offline", label: "Chưa kiểm tra" },
   { value: "busy", label: "Đang chạy" },
 ];
@@ -65,8 +69,11 @@ const gmailLabel = (status) =>
   })[status] || "";
 
 const matchesStatus = (account, value) => {
+  if(value==='quota')return accountQuotaBlocked(account);
+  if(value==='error')return account.status==='error'||accountQuotaBlocked(account);
+  if(value==='ready')return account.status==='ready'&&!accountQuotaBlocked(account);
   if (value === "attention")
-    return account.status !== "ready" ||
+    return account.status !== "ready" || accountQuotaBlocked(account) ||
       account.gmailStatus === "verification" ||
       account.proxyStatus === "error";
   if (value === "verification")
@@ -105,6 +112,7 @@ export function AccountsPage({ data, run, notify }) {
   const [proxyValue, setProxyValue] = useState("");
   const [bulkProxyValue, setBulkProxyValue] = useState("");
   const [busy, setBusy] = useState("");
+  const [checkProgress,setCheckProgress]=useState(null);
   const [filters, setFilters] = useState({
     provider: "all",
     statuses: [],
@@ -121,7 +129,7 @@ export function AccountsPage({ data, run, notify }) {
   const [gmailPrefix, setGmailPrefix] = useState("DreamFace Gmail");
   const [gmailProxy, setGmailProxy] = useState("");
   const dreamfaceAccounts = data.accounts.filter((account) => account.provider === "dreamface");
-  const dreamfaceReady = dreamfaceAccounts.filter((account) => account.status === "ready").length;
+  const dreamfaceReady = dreamfaceAccounts.filter((account) => account.status === "ready"&&!accountQuotaBlocked(account)).length;
   const dreamfaceNeedsLogin = dreamfaceAccounts.filter((account) => account.status === "needs_login").length;
   const captchaConfigured = Boolean(data.settings?.captcha?.hasKey) &&
     data.settings?.captcha?.enabled !== false &&
@@ -212,13 +220,10 @@ export function AccountsPage({ data, run, notify }) {
   const checkAccounts = async (list) => {
     if (!list.length || busy) return;
     setBusy("bulk-check");
-    let checked = 0;
-    for (const account of list) {
-      const result = await run(() => api(`/accounts/${account.id}/check`));
-      if (result) checked += 1;
-    }
-    setBusy("");
-    notify(`Đã kiểm tra ${checked}/${list.length} tài khoản.`);
+    try{
+      const progress=await checkAccountSelection(list,{onProgress:setCheckProgress});
+      notify(accountCheckSummary(progress),progress.failed||!progress.checked?'error':'success');
+    }finally{setBusy('');}
   };
   const checkDreamfaceAll = async () => {
     if (!dreamfaceAccounts.length || busy) return;
@@ -439,6 +444,7 @@ export function AccountsPage({ data, run, notify }) {
           <div className="eyebrow">DREAMFACE POOL</div>
           <h3>{dreamfaceAccounts.length ? `${dreamfaceAccounts.length} profile đang quản lý` : "Tạo pool DreamFace"}</h3>
           <p>Chọn <strong>Tự chọn</strong> khi render. App ưu tiên profile chưa dùng trong ngày, sau đó xoay theo lượt ít dùng gần đây nhất.</p>
+          <p>Profile hết hạn mức được tự kiểm tra lại mỗi 30 phút khi app mở; việc kiểm tra tiếp tục khi mở app lại. Khi DreamFace cấp lại lượt/credit dùng được, profile tự trở về sẵn sàng. Đổi ngày không bảo đảm hạn mức đã hồi.</p>
         </div>
         <div className="dreamface-pool-stats">
           <span><strong>{dreamfaceReady}</strong> sẵn sàng</span>
@@ -562,6 +568,10 @@ export function AccountsPage({ data, run, notify }) {
           <button type="button" className="account-bulk-clear" onClick={() => setSelectedIds([])}>Bỏ chọn</button>
         </div>
       )}
+      {checkProgress&&<div className="account-check-progress" role="status" aria-live="polite">
+        <strong>{checkProgress.activeName?`Đang kiểm tra ${checkProgress.completed}/${checkProgress.total} · ${checkProgress.activeName}`:accountCheckSummary(checkProgress)}</strong>
+        {checkProgress.results.some(item=>item.error)&&<details><summary>Xem tài khoản chưa kiểm tra được</summary><ul>{checkProgress.results.filter(item=>item.error).map(item=><li key={item.id}>{item.name}: {item.error}</li>)}</ul></details>}
+      </div>}
       {data.accounts.length === 0 ? (
         <Empty icon={Users} title="Thêm tài khoản đầu tiên">
           Dola hỗ trợ Google và Apple. Google Flow dùng tài khoản Google.
@@ -591,7 +601,7 @@ export function AccountsPage({ data, run, notify }) {
             const selected = selectedIds.includes(account.id);
             const canOperate = !busy && !["busy", "checking"].includes(account.status);
             return (
-              <section className={`account-row ${selected ? "selected" : ""}`} key={account.id}>
+              <section className={`account-row ${selected ? "selected" : ""}`} key={account.id} data-account-id={account.id}>
                 <label className="row-check">
                   <input type="checkbox" checked={selected} onChange={() => toggleSelect(account.id)} aria-label={`Chọn ${account.name}`} />
                 </label>
@@ -640,8 +650,9 @@ export function AccountsPage({ data, run, notify }) {
                   )}
                 </div>
                 <div className="account-row-state">
-                  <Badge status={account.status} />
+                  <Badge status={accountDisplayStatus(account)} />
                   {account.message && <small className="account-row-message" title={account.message}>{account.message}</small>}
+                  {accountQuotaBlocked(account)&&account.quota?.nextCheckAt&&<small>Tự kiểm tra lại: {new Date(account.quota.nextCheckAt).toLocaleString('vi-VN')}</small>}
                 </div>
                 <div className="account-row-actions">
                   <button
@@ -649,7 +660,7 @@ export function AccountsPage({ data, run, notify }) {
                     className="icon-button"
                     title="Kiểm tra phiên"
                     aria-label={`Kiểm tra phiên ${account.name}`}
-                    disabled={Boolean(busy) || account.status === "busy"}
+                    disabled={!canOperate}
                     onClick={() => action(account.id, "check")}
                   >
                     <RefreshCw size={15} />
