@@ -1,0 +1,506 @@
+{
+  "schemaVersion": 1,
+  "version": "0.10.1",
+  "tag": "v0.10.1",
+  "verifiedAt": "2026-11-05T17:08:42.390Z",
+  "passed": true,
+  "sourceCommitReference": "See RELEASE_MANIFEST_v0.10.1.json and the v0.10.1 tag.",
+  "automatedTests": {
+    "passed": 435,
+    "failed": 0
+  },
+  "browser": {
+    "researchStyle": {
+      "passed": true,
+      "checks": [
+        "Research bulk render uses the visible shared style/font/duration/images and MC, retaining Research and its selection",
+        "Render and Research share preferences; compact and expanded per-story rendering use the same choices",
+        "LLM-to-render also uses the selection; old batch style and Retry remain immutable; completed video previews inside Research",
+        "Save errors block sending a mismatched configuration; retry and rapid edits persist the last choice; projects remain independent",
+        "Preferences survive a real server restart at a new port and a clean browser context; desktop/mobile have no overflow"
+      ],
+      "errors": []
+    },
+    "newsStyle": {
+      "passed": true,
+      "checks": [
+        "Fresh project defaults to V3, with standard/fast/classic choices",
+        "All three selections reach the submitted request and survive reload",
+        "Old saved preferences acquire V3 without resetting duration/image count",
+        "Product rendering does not receive a news style control"
+      ],
+      "errors": [],
+      "mobileOverflow": false
+    },
+    "workspaces": {
+      "passed": true,
+      "checks": [
+        "Research & News stays visible with an existing result and has no blank-screen error",
+        "Settings Test LLM sends the current unsaved endpoint and API key",
+        "Research retains the selected source and visible render record without leaving the Research workspace",
+        "Left navigation has an independent mouse-scroll region on short windows",
+        "Channels workspace imports a local Page through the current ID/CSV/JSON dialog",
+        "Post management opens in its own tab without duplicate warehouse rows",
+        "News Content stores first comment and source link",
+        "Product Studio queues a DreamFace video request",
+        "Render workspace switches between News and Product and exposes the direct-link and three style presets",
+        "Bulk DreamFace slots create local rotation profiles without external email creation",
+        "Separated workspaces have no console errors or horizontal overflow"
+      ],
+      "errors": []
+    },
+    "selection": {
+      "passed": true,
+      "checks": [
+        "Compact rows, partial page checkbox, cross-page selection and page-size changes preserve exact selection",
+        "Select-all targets only current filter, clear works, changing filter clears previous selection",
+        "One confirmed API request deletes selected idle stories and preserves both active stages, other projects and existing jobs",
+        "Legacy single-delete API also rejects a story still preparing before job creation",
+        "Per-story delete supports cancellation and removes only its target even when other stories are selected",
+        "Bulk render submits exactly the selected eligible stories, per-story counts and MC, skipping active story",
+        "Quick single render uses selected MC; per-story settings expand; desktop/mobile remain usable without script errors"
+      ],
+      "errors": []
+    },
+    "manager": {
+      "passed": true,
+      "checks": [
+        "Default work view hides completed history; counts and pagination match 30 stories",
+        "Search, quality filter and bulk render target only the matching story",
+        "Mixed selection renders only selected unfinished idle stories, skipping completed and running ones",
+        "Published cleaned video remains in history; available final video opens with playable metadata",
+        "Failure opens the correct batch; live SSE completion updates filters and prevents duplicate render while active",
+        "Desktop and narrow layout have no horizontal overflow or JavaScript errors"
+      ],
+      "errors": []
+    },
+    "rotation": {
+      "passed": true,
+      "checks": [
+        "Editable 100-story request researches 100 distinct sources through real local HTTP, persists progress and selects that research run",
+        "100-story render submits one ordered batch, repeats MC 10/20 across story boundaries and saves separate AI/render concurrency",
+        "Direct News production supports 100 videos and MC rotation",
+        "One research story can produce 100 versions with a 15/5 MC cycle",
+        "Rotation controls fit narrow screens without JavaScript errors"
+      ],
+      "errors": []
+    },
+    "mediaFlow": {
+      "passed": true,
+      "checks": [
+        "Electron Queue completion plays the correct final MP4 inline, advances time and seeks without opening a popup",
+        "Reveal targets the exact physical video file through the data junction",
+        "Library defaults to three final outputs and separates Page avatars, MC stills and raw presenter clips",
+        "Source-age filter distinguishes old news from newly completed renders and displays source date separately",
+        "Research individual story sends the selected MC and requested three videos, separate from the provider profile",
+        "Research bulk render sends one common MC and two videos per selected unfinished story",
+        "Importing an MC image immediately selects it and stores it under the MC group"
+      ],
+      "errors": []
+    }
+  },
+  "packagedRuntime": {
+    "passed": true,
+    "version": "0.10.1",
+    "asarSha256": "c7c6dad791f9e4414a266398b65c58e6ec6ba22962b5d60b7a5d753f8062bdfc",
+    "sourceAndFrontendFilesMatched": 102,
+    "offlineCaptionResourcesVerified": true,
+    "checks": [
+      "Packaged server/shared/desktop/frontend/fonts match the reviewed working tree",
+      "Offline captions, model and licenses are bundled byte-for-byte",
+      "Native Research bulk render uses visible V3 Fast and font, remains in Research, and shows immutable new/old batch styles",
+      "Native Render and Research share persisted choices after reload; isolated data and sandboxed renderer verified"
+    ]
+  },
+  "rendererBaseline": {
+    "unchangedSince": "v0.10.0",
+    "files": [
+      "server/news-render.js",
+      "server/news-v3-render.js",
+      "server/news-v3-motion.js",
+      "server/news-v3-editorial.js",
+      "server/news-render-common.js",
+      "server/news-typography.js",
+      "server/news-captions.js",
+      "shared/news-caption-assets.json"
+    ]
+  },
+  "gpuUnpackedExe": {
+    "passed": true,
+    "checks": 11,
+    "settings": {
+      "renderConcurrency": 1,
+      "renderThreads": 2,
+      "renderAcceleration": "gpu"
+    },
+    "machine": {
+      "platform": "win32",
+      "arch": "x64",
+      "osRelease": "10.0.19045",
+      "cpu": "Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz",
+      "logicalCpus": 56,
+      "memoryGiB": 95.9
+    },
+    "elapsedMs": 63754,
+    "tools": [
+      {
+        "name": "ffmpeg",
+        "sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
+        "version": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers"
+      },
+      {
+        "name": "ffprobe",
+        "sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
+        "version": "ffprobe version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+      }
+    ],
+    "cases": [
+      {
+        "name": "portrait-3-4",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 110
+      },
+      {
+        "name": "portrait-9-16",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 79
+      },
+      {
+        "name": "landscape-4-3",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 96
+      },
+      {
+        "name": "landscape-16-9",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 93
+      },
+      {
+        "name": "square",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 89
+      },
+      {
+        "name": "small",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 122
+      },
+      {
+        "name": "non-square-pixels",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 97
+      },
+      {
+        "name": "odd-dimensions",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 111
+      },
+      {
+        "name": "540x720",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 28868,
+        "metadata": {
+          "kind": "video",
+          "duration": 25,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 3785784
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "h264_nvenc",
+          "gpu": true,
+          "name": "NVIDIA GeForce RTX 3060",
+          "driver": "32.0.16.2101"
+        },
+        "photoOrder": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "newsRenderStyle": "v3",
+        "captionTiming": "estimated",
+        "captionRuntimeExecuted": true,
+        "meanVolumeDb": -18.3,
+        "renderPipeline": "v3-single-pass"
+      },
+      {
+        "name": "1056x792",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 23955,
+        "metadata": {
+          "kind": "video",
+          "duration": 25,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 3688837
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "h264_nvenc",
+          "gpu": true,
+          "name": "NVIDIA GeForce RTX 3060",
+          "driver": "32.0.16.2101"
+        },
+        "photoOrder": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "newsRenderStyle": "v3-fast",
+        "captionTiming": "estimated",
+        "captionRuntimeExecuted": true,
+        "meanVolumeDb": -18.3,
+        "renderPipeline": "v3-single-pass"
+      },
+      {
+        "name": "logo-and-looped-music",
+        "type": "timeline",
+        "passed": true,
+        "elapsedMs": 3825,
+        "metadata": {
+          "kind": "video",
+          "duration": 5,
+          "width": 480,
+          "height": 854,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 231119
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "h264_nvenc",
+          "gpu": true,
+          "name": "NVIDIA GeForce RTX 3060",
+          "driver": "32.0.16.2101"
+        }
+      }
+    ]
+  },
+  "cpuPortableExe": {
+    "passed": true,
+    "checks": 11,
+    "settings": {
+      "renderConcurrency": 1,
+      "renderThreads": 2,
+      "renderAcceleration": "cpu"
+    },
+    "machine": {
+      "platform": "win32",
+      "arch": "x64",
+      "osRelease": "10.0.19045",
+      "cpu": "Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz",
+      "logicalCpus": 56,
+      "memoryGiB": 95.9
+    },
+    "elapsedMs": 42563,
+    "tools": [
+      {
+        "name": "ffmpeg",
+        "sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
+        "version": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers"
+      },
+      {
+        "name": "ffprobe",
+        "sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
+        "version": "ffprobe version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+      }
+    ],
+    "cases": [
+      {
+        "name": "portrait-3-4",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 144
+      },
+      {
+        "name": "portrait-9-16",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 94
+      },
+      {
+        "name": "landscape-4-3",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 102
+      },
+      {
+        "name": "landscape-16-9",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 99
+      },
+      {
+        "name": "square",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 100
+      },
+      {
+        "name": "small",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 94
+      },
+      {
+        "name": "non-square-pixels",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 94
+      },
+      {
+        "name": "odd-dimensions",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 103
+      },
+      {
+        "name": "540x720",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 18885,
+        "metadata": {
+          "kind": "video",
+          "duration": 15,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 969933
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "libx264",
+          "gpu": false,
+          "name": "CPU"
+        },
+        "newsRenderStyle": "v3",
+        "captionTiming": "estimated",
+        "captionRuntimeExecuted": true,
+        "meanVolumeDb": -18.9,
+        "renderPipeline": "v3-single-pass"
+      },
+      {
+        "name": "1056x792",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 15964,
+        "metadata": {
+          "kind": "video",
+          "duration": 15,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 908790
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "libx264",
+          "gpu": false,
+          "name": "CPU"
+        },
+        "newsRenderStyle": "v3-fast",
+        "captionTiming": "estimated",
+        "captionRuntimeExecuted": true,
+        "meanVolumeDb": -18.9,
+        "renderPipeline": "v3-single-pass"
+      },
+      {
+        "name": "logo-and-looped-music",
+        "type": "timeline",
+        "passed": true,
+        "elapsedMs": 2607,
+        "metadata": {
+          "kind": "video",
+          "duration": 5,
+          "width": 480,
+          "height": 854,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 279508
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "libx264",
+          "gpu": false,
+          "name": "CPU"
+        }
+      }
+    ]
+  },
+  "installedUpgrade": {
+    "passed": true,
+    "version": "0.10.1",
+    "workspaceBackupVerified": true,
+    "allFilesUnchangedByInstaller": true,
+    "recordsPreserved": true,
+    "settingsAndCredentialsUnchanged": true,
+    "styleMigrationFields": 0,
+    "timelineAutosaveTouchedProjectCount": 1,
+    "observedProjectPatchFields": [
+      [
+        "timeline"
+      ]
+    ],
+    "note": "Opening the existing timeline editor autosaves identical timeline content and updates project.updatedAt. Every other persisted value was verified unchanged.",
+    "researchControlsVerified": true,
+    "renderControlsVerified": true,
+    "defaultStyle": "v3"
+  },
+  "assets": [
+    {
+      "name": "Viral.Studio.Setup.0.10.1.exe",
+      "bytes": 304771856,
+      "sha256": "88a2c4402e227f56f149148d01f866f9ab1b16b8b83b600cde36c2cf00f92ba7"
+    },
+    {
+      "name": "Viral.Studio.0.10.1.exe",
+      "bytes": 304509908,
+      "sha256": "5ff03b30b838c94568e0e49a5353f4a4f45e8579d56fae91bc04dcb3cf228106"
+    }
+  ],
+  "scope": {
+    "providers": "No paid MC or LLM request used for validation; submission bodies were intercepted in isolated workspaces.",
+    "publishing": "No social post was published by verification scripts.",
+    "platform": "Windows x64; NVIDIA RTX 3060 and explicit CPU mode tested. AMD/Intel GPUs not physically tested.",
+    "performance": "The V3 renderer is unchanged. GPU and CPU diagnostic inputs differ and are not a speed comparison.",
+    "captions": "Bundled English ASR is used for timing anchors; low confidence falls back to estimated timing with a visible warning."
+  }
+}

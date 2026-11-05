@@ -30,9 +30,12 @@ try{
   await page.reload();await page.locator('nav').getByRole('button',{name:'Dựng video',exact:true}).click();assert.equal(await selector.inputValue(),style);
  }
  report.checks.push('All three selections reach the submitted request and survive reload');
- await page.evaluate(({id})=>localStorage.setItem(`studio-news-format:${id}`,JSON.stringify({newsDuration:20,newsImageCount:8})),{id:project.id});
+ const legacyProject=store.createProject('Legacy preferences');
+ await page.evaluate(({id})=>{localStorage.setItem(`studio-news-format:${id}`,JSON.stringify({newsDuration:20,newsImageCount:8}));localStorage.setItem('studio-project',id);},{id:legacyProject.id});
  await page.reload();await page.locator('nav').getByRole('button',{name:'Dựng video',exact:true}).click();
  assert.equal(await selector.inputValue(),'v3');assert.equal(await page.getByLabel('Độ dài clip tóm tắt',{exact:true}).inputValue(),'20');
+ await page.waitForFunction(()=>!document.querySelector('.news-options-save-state')?.textContent.includes('Đang lưu'));
+ assert.equal(store.require('projects',legacyProject.id).newsVideoOptions.newsImageCount,8);
  report.checks.push('Old saved preferences acquire V3 without resetting duration/image count');
  await page.screenshot({path:root+'/desktop.png',fullPage:true});
  await page.getByRole('button',{name:/Render video sản phẩm/}).click();assert.equal(await selector.count(),0);

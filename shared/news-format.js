@@ -12,6 +12,18 @@ export const NEWS_RENDER_STYLES = [
 export const newsRenderStyleLabel = style => NEWS_RENDER_STYLES.find(item => item.id === style)?.label || NEWS_RENDER_STYLES[0].label;
 export const newsDurationSchema = z.union([z.literal('auto'), z.literal(15), z.literal(20), z.literal(30)]);
 export const newsImageCountSchema = z.union([z.literal('auto'), z.literal(6), z.literal(8), z.literal(10)]);
+export const newsVideoOptionsSchema = z.object({
+  newsRenderStyle: newsRenderStyleSchema.default(DEFAULT_NEWS_RENDER_STYLE),
+  newsDuration: newsDurationSchema.default('auto'),
+  newsImageCount: newsImageCountSchema.default('auto'),
+  fontStyle: z.enum(['news', 'viral', 'minimal']).default('news'),
+});
+
+export const NEWS_FONTS = [
+  { id: 'news', label: 'News chuẩn · Barlow Condensed' },
+  { id: 'viral', label: 'Viral mạnh · Anton + Barlow' },
+  { id: 'minimal', label: 'Viral sạch · Be Vietnam Pro' },
+];
 
 export function newsScriptBudget(duration = 'auto') {
   const seconds = duration === 'auto' ? 24 : Number(duration);

@@ -62,6 +62,7 @@ try {
   await page.getByRole('button', { name: 'Render 100 tin chưa có video', exact: true }).waitFor();
   report.checks.push('Editable 100-story request researches 100 distinct sources through real local HTTP, persists progress and selects that research run');
   const bulk = page.locator('.research-batch-mc');
+  await page.locator('.research-render-settings').evaluate(element => { element.open = true; });
   await bulk.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
   await bulk.getByLabel('Ảnh MC 1', { exact: true }).selectOption(hosts[0].id);
   await bulk.getByLabel('Số video cho MC 1', { exact: true }).fill('10');
@@ -82,8 +83,8 @@ try {
     const request = route.request().postDataJSON(); report.requests.push(request);
     await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: randomUUID(), items: Array.from({ length: request.count }, () => ({ status: 'pending' })) }) });
   });
-  await page.getByRole('button', { name: 'Render 100 tin chưa có video', exact: true }).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/production/batches') && response.request().method() === 'POST'), page.getByRole('button', { name: 'Render 100 tin chưa có video', exact: true }).click()]);
+  assert.equal(await page.locator('.research-page').count(), 1);
   const submitted = report.requests.at(-1);
   assert.equal(submitted.count, 100);
   assert.equal(new Set(submitted.researchIds).size, 100);
@@ -92,6 +93,7 @@ try {
   const savedSettings = await page.evaluate(async () => (await (await fetch('/api/state')).json()).settings);
   assert.equal(savedSettings.concurrency, 3); assert.equal(savedSettings.renderConcurrency, 2);
   report.checks.push('100-story render submits one ordered batch, repeats MC 10/20 across story boundaries and saves separate AI/render concurrency');
+  await nav('Dựng video').click();
   await page.getByLabel('Number of videos', { exact: true }).fill('100');
   const production = page.locator('.production-panel');
   await production.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
@@ -112,13 +114,14 @@ try {
   await card.getByLabel('Số video cho MC 1', { exact: true }).fill('15');
   await card.getByRole('button', { name: 'Thêm MC vào vòng', exact: true }).click();
   await card.getByLabel('Số video cho MC 2', { exact: true }).fill('5');
-  await card.getByRole('button', { name: 'Render 100 videos', exact: true }).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/production/batches') && response.request().method() === 'POST'), card.getByRole('button', { name: 'Render 100 videos', exact: true }).click()]);
+  assert.equal(await page.locator('.research-page').count(), 1);
   assert.equal(report.requests.at(-1).count, 100);
   assert.ok(report.requests.at(-1).researchId);
   assert.deepEqual(report.requests.at(-1).mcRotation.map(entry => entry.count), [15, 5]);
   report.checks.push('One research story can produce 100 versions with a 15/5 MC cycle');
   await nav('Research & News').click();
+  await page.locator('.research-render-settings').evaluate(element => { element.open = true; });
   await bulk.getByLabel('Xoay vòng ảnh MC theo số video', { exact: true }).check();
   await bulk.getByRole('button', { name: 'Thêm MC vào vòng', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });

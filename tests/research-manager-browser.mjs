@@ -86,20 +86,21 @@ try {
   await page.getByLabel('Chất lượng nội dung').selectOption('needs-llm');
   await waitCards(1);
   await page.getByLabel('Chất lượng nội dung').selectOption('all');
-  await page.getByRole('button', { name: 'Render 1 tin chưa có video', exact: true }).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/production/batches') && response.request().method() === 'POST'), page.getByRole('button', { name: 'Render 1 tin chưa có video', exact: true }).click()]);
+  assert.equal(await page.locator('.research-page').count(), 1);
   assert.deepEqual(report.batches.splice(0), [stories[0].id]);
   report.checks.push('Search, quality filter and bulk render target only the matching story');
 
   await goResearch();
+  await page.getByLabel('Tìm tin Research', { exact: true }).fill('');
   await tab('Tất cả').click();
   await page.getByLabel('Số tin mỗi trang').selectOption('48');
   await waitCards(30);
   await card(stories[1]).getByRole('checkbox', { name: 'Chọn tin', exact: true }).check();
   await card(done).getByRole('checkbox', { name: 'Chọn tin', exact: true }).check();
   await card(running).getByRole('checkbox', { name: 'Chọn tin', exact: true }).check();
-  await page.getByRole('button', { name: 'Render 1 tin chưa có video', exact: true }).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/production/batches') && response.request().method() === 'POST'), page.getByRole('button', { name: 'Render 1 tin chưa có video', exact: true }).click()]);
+  assert.equal(await page.locator('.research-page').count(), 1);
   assert.deepEqual(report.batches.splice(0), [stories[1].id]);
   report.checks.push('Mixed selection renders only selected unfinished idle stories, skipping completed and running ones');
 
@@ -120,8 +121,10 @@ try {
   await tab('Lỗi').click();
   await waitCards(2);
   await card(broken).getByRole('button', { name: 'Xem lượt render' }).click();
-  await page.getByTestId('render-record').waitFor();
-  assert.equal(await page.getByTestId('render-record').getAttribute('data-production-batch-id'), failedBatch.id);
+  const focusedRecord = page.locator('.research-render-history .production-batch.is-focused');
+  await focusedRecord.waitFor();
+  assert.equal(await focusedRecord.getAttribute('data-production-batch-id'), failedBatch.id);
+  assert.equal(await page.locator('.research-page').count(), 1);
   await goResearch();
   await tab('Đang xử lý').click();
   await waitCards(1);

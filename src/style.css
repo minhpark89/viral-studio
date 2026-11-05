@@ -3791,3 +3791,6 @@ option {
 .news-video-options .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .news-video-options .field select { width: 100%; }
 .news-video-options > p { margin: 10px 0 0; }
+.news-options-save-state { color: var(--muted, #a9bad0); font-size: 11px; line-height: 1.5; }
+.news-options-save-state [role="alert"] { color: #ffcdad; }
+.news-video-options > .news-options-save-state { margin: 8px 0 14px; }

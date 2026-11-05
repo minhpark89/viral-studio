@@ -89,12 +89,11 @@ try {
   report.checks.push("Settings Test LLM sends the current unsaved endpoint and API key");
   await page.getByRole("button", { name: "Research & News", exact: true }).click();
   await page.locator(".research-page").waitFor();
-  await page.getByRole("button", { name: "Render 1 News video", exact: true }).last().click();
-  await page.locator(".render-hub").waitFor();
-  await page.getByTestId("render-record").waitFor();
-  assert.match(await page.getByTestId("render-record").innerText(), /Research screen smoke test/);
-  assert.equal(await page.locator(".render-editor-note").count(), 1);
-  report.checks.push("Research render keeps the selected article attached to a visible render record and explains Queue versus manual timeline");
+  await page.locator('.research-result-card').first().getByRole("button", { name: "Render 1 video", exact: true }).click();
+  await page.getByRole('region', { name: 'Lượt render từ Research', exact: true }).waitFor();
+  assert.match(await page.locator('.research-render-history').innerText(), /Research screen smoke test/);
+  assert.equal(await page.locator(".render-hub").count(), 0);
+  report.checks.push("Research retains the selected source and visible render record without leaving the Research workspace");
   await page.setViewportSize({ width: 1440, height: 500 });
   const sidebarScroll = await page.locator(".sidebar > nav").evaluate((element) => {
     const before = element.scrollTop;

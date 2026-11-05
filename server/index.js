@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { newsVideoOptionsSchema } from '../shared/news-format.js';
 import { Store, StudioError, safeName } from "./store.js";
 import { BrowserProfiles } from "./providers/browser-profiles.js";
 import { JobQueue } from "./queue.js";
@@ -307,6 +308,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       .object({
         name: z.string().trim().min(1).max(120).optional(),
         timeline: timelineSchema.optional(),
+          newsVideoOptions: newsVideoOptionsSchema.optional(),
         storyboard: z
           .array(
             z.object({

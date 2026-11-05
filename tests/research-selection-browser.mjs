@@ -44,7 +44,7 @@ try {
   await toolbar.getByRole('checkbox', { name: 'Chọn trang này', exact: true }).check();
   await toolbar.getByText('12 tin đã chọn · 27 tin trong bộ lọc', { exact: true }).waitFor();
   await card(stories[0]).getByRole('checkbox', { name: 'Chọn tin', exact: true }).uncheck();
-  assert.equal(await toolbar.getByRole('checkbox').evaluate(input => input.indeterminate), true);
+  assert.equal(await toolbar.getByRole('checkbox', { name: 'Chọn trang này', exact: true }).evaluate(input => input.indeterminate), true);
   await page.getByRole('button', { name: 'Trang sau', exact: true }).click();
   await card(stories[12]).getByRole('checkbox', { name: 'Chọn tin', exact: true }).check();
   await toolbar.getByText('12 tin đã chọn · 27 tin trong bộ lọc', { exact: true }).waitFor();
@@ -87,18 +87,20 @@ try {
 
   await toolbar.getByRole('button', { name: 'Bỏ chọn tất cả', exact: true }).click();
   for (const story of [stories[3], stories[4], active]) await card(story).getByRole('checkbox', { name: 'Chọn tin', exact: true }).check();
+  await page.locator('.research-render-settings').evaluate(element => { element.open = true; });
   await page.getByLabel('Ảnh MC cho cả lô', { exact: true }).selectOption(avatar.id);
   await page.getByLabel('Số video mỗi tin', { exact: true }).fill('2');
-  await toolbar.getByRole('button', { name: 'Render 2 tin chưa có video · 4 video', exact: true }).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/production/batches') && response.request().method() === 'POST'), toolbar.getByRole('button', { name: 'Render 2 tin chưa có video · 4 video', exact: true }).click()]);
+  assert.equal(await page.locator('.research-page').count(), 1);
   assert.deepEqual(report.renderRequests.at(-1).researchIds, [stories[3].id, stories[3].id, stories[4].id, stories[4].id]);
   assert.equal(report.renderRequests.at(-1).avatarMediaId, avatar.id);
   report.checks.push('Bulk render submits exactly the selected eligible stories, per-story counts and MC, skipping active story');
 
   await goResearch();
+  await page.getByLabel('Số video mỗi tin', { exact: true }).fill('1');
   await page.getByLabel('Ảnh MC cho cả lô', { exact: true }).selectOption(avatar.id);
-  await card(stories[5]).getByRole('button', { name: 'Render 1 video', exact: true }).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/production/batches') && response.request().method() === 'POST'), card(stories[5]).getByRole('button', { name: 'Render 1 video', exact: true }).click()]);
+  assert.equal(await page.locator('.research-page').count(), 1);
   assert.equal(report.renderRequests.at(-1).researchId, stories[5].id); assert.equal(report.renderRequests.at(-1).avatarMediaId, avatar.id);
   await goResearch();
   await card(stories[5]).getByRole('button', { name: 'Chi tiết & MC', exact: true }).click();

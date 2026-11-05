@@ -1,22 +1,12 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, RefreshCw, Sparkles, Video } from "lucide-react";
+import { Sparkles, Video } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Button, Field, Notice } from "../components.jsx";
 import { NewsMcPicker } from "../NewsMcPicker.jsx";
 import { isPageAvatar } from "../../shared/output-media.js";
 import { MAX_NEWS_VIDEOS } from "../../shared/mc-rotation.js";
-import { NewsVideoOptions, useNewsVideoOptions } from '../NewsVideoOptions.jsx';
-import { newsRenderStyleLabel } from '../../shared/news-format.js';
-
-const statusLabels = {
-  pending: "đang chuẩn bị",
-  preparing: "đang chuẩn bị nguồn và hình",
-  queued: "đã vào Queue",
-  partial: "một phần đã vào Queue",
-  failed: "có lỗi",
-  interrupted: "bị gián đoạn",
-  completed: "đã hoàn tất",
-};
+import { NewsVideoOptions, NewsFontSelect, useNewsVideoOptions } from '../NewsVideoOptions.jsx';
+import { ProductionBatchRecords } from '../ProductionBatchRecords.jsx';
 
 function batchTitle(batch, research) {
   const request = batch.request || {};
@@ -37,8 +27,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
   const [mcRotation, setMcRotation] = useState([]);
   const [references, setReferences] = useState([]);
   const [feeds, setFeeds] = useState("");
-  const [fontStyle, setFontStyle] = useState("news");
-  const [newsOptions, setNewsOptions] = useNewsVideoOptions(project.id);
+  const [newsOptions, setNewsOptions, newsSave] = useNewsVideoOptions(project);
   const [autoCreateContent, setAutoCreateContent] = useState(true);
   const [busy, setBusy] = useState(false);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
@@ -61,7 +50,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
 
   const start = async (event) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || mode === 'news' && (newsSave.saving || newsSave.error)) return;
     setBusy(true);
     try {
       const batch = await api("/production/batches", {
@@ -83,7 +72,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
         references: mode === "product" ? references : [],
         feeds: feeds.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
         variationPolicy: "visual-unique",
-        fontStyle: mode === "news" ? fontStyle : "news",
+        fontStyle: "news",
         ...(mode === 'news' ? newsOptions : {}),
       });
       setRequestId(crypto.randomUUID());
@@ -93,15 +82,6 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
       notify(error.message, "error");
     } finally {
       setBusy(false);
-    }
-  };
-
-  const retry = async (batch) => {
-    try {
-      await api(`/production/batches/${batch.id}/retry`, {});
-      notify("Đã chạy lại bước chuẩn bị video.");
-    } catch (error) {
-      notify(error.message, "error");
     }
   };
 
@@ -140,44 +120,21 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
       <div className="production-inputs">
         {mode === "news" || autoResearch ? <Field label={mode === "news" ? "News niche" : "Product niche"}><input required={mode !== "news" || !sourceUrl} minLength={mode === "news" && sourceUrl ? undefined : 2} maxLength={200} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={mode === "news" ? "US technology, space, business…" : "Kitchen gadgets, pet accessories…"} /></Field> : <Field label="Product name"><input required maxLength={200} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Portable blender" /></Field>}
         <Field label="Number of videos"><input type="number" min="1" max={mode === "news" ? MAX_NEWS_VIDEOS : 50} required value={count} onChange={(event) => setCount(event.target.value)} /></Field>
-        {mode === "news" && <Field label="Font chữ"><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value)}><option value="news">News chuẩn · Barlow Condensed</option><option value="viral">Viral mạnh · Anton + Barlow</option><option value="minimal">Viral sạch · Be Vietnam Pro</option></select></Field>}
+        {mode === "news" && <NewsFontSelect value={newsOptions} onChange={setNewsOptions} disabled={busy} />}
       </div>
       {mode === "news" && <Field label="Link bài news (tuỳ chọn)" hint="Dán link bài viết để dùng đúng bài đó; bỏ trống để tự research theo từ khóa."><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://news.example.com/article" /></Field>}
-      {mode === "news" && <><NewsVideoOptions value={newsOptions} onChange={setNewsOptions} /><NewsMcPicker data={data} projectId={project.id} value={avatarMediaId} onChange={setAvatarMediaId} rotation={mcRotation} onRotationChange={setMcRotation} count={count || 1} notify={notify} /></>}
+      {mode === "news" && <><NewsVideoOptions value={newsOptions} onChange={setNewsOptions} saveState={newsSave} disabled={busy} /><NewsMcPicker data={data} projectId={project.id} value={avatarMediaId} onChange={setAvatarMediaId} rotation={mcRotation} onRotationChange={setMcRotation} count={count || 1} notify={notify} /></>}
       {mode === "product" && <><div className="form-grid"><Field label="Product facts / creative brief"><textarea value={productBrief} maxLength={4000} onChange={(event) => setProductBrief(event.target.value)} placeholder="Verified features and the style you want. No invented offers." rows={3} /></Field><Field label="Product or store link" hint="Leave blank to use the store link from Settings."><input type="url" value={productUrl} onChange={(event) => setProductUrl(event.target.value)} placeholder={data.settings?.content?.storeUrl || "https://your-store.com/products/…"} /></Field></div>{images.length > 0 && <Field label="Product reference images" hint="Choose up to 10 images from this project's Library. News/editorial images are hidden."><div className="production-images">{images.map((media) => <label key={media.id}><input type="checkbox" checked={references.includes(media.id)} disabled={!references.includes(media.id) && references.length >= 10} onChange={() => setReferences((current) => current.includes(media.id) ? current.filter((id) => id !== media.id) : [...current, media.id])} /><img src={media.thumbnailUrl || media.url} alt="" /><span>{media.name}</span></label>)}</div></Field>}</>}
       <details className="production-options"><summary>Sources, profile &amp; render rules</summary><div className="form-grid"><Field label="RSS sources (optional)"><textarea rows={2} value={feeds} onChange={(event) => setFeeds(event.target.value)} placeholder="One RSS URL per line. Blank: search current US English news." /></Field><Field label="DreamFace profile" hint="Auto dùng nhiều profile sẵn sàng. Chọn một profile thì các video tạo MC lần lượt trên profile đó."><select value={accountId} onChange={(event) => setAccountId(event.target.value)}><option value="auto">Auto · daily rotation</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.status}</option>)}</select></Field></div><div className="production-render-rules"><strong>Quy tắc render</strong><span>MC dùng ảnh đã chọn hoặc xoay vòng theo số video mỗi ảnh, độc lập với profile DreamFace.</span><span>Auto luân phiên profile sẵn sàng theo số tác vụ AI đồng thời trong Cài đặt.</span><span>Mỗi video có lời đọc, thứ tự ảnh và chuyển động riêng.</span><span>Xuất video dùng giới hạn “Video render song song”, áp dụng chung cho News và timeline.</span></div></details>
       <label className="toggle-field production-auto-content"><input type="checkbox" checked={autoCreateContent} onChange={(event) => setAutoCreateContent(event.target.checked)} /><span><strong>Tự tạo Content sau khi render</strong><small>{autoCreateContent ? "Sau khi có video, LLM sẽ tạo Content và báo lỗi ngay trong Queue/Content nếu không tạo được." : "Chỉ tạo video. Vào Content để chọn video và tạo bài sau."}</small></span></label>
       {!data.settings?.llm?.enabled && <Notice>Configure and enable your LLM in Settings to start automatic production.</Notice>}
       {(mode === "product" || engine === "dreamface") && !accounts.some((account) => account.status === "ready") && <p className="small muted">DreamFace MC videos wait in Queue until a verified profile is ready. <button type="button" className="inline-link" onClick={() => navigate?.("accounts")}>Open accounts</button></p>}
-      <div className="production-actions"><span className="small muted">Output được gắn riêng là {mode === "news" ? "News" : "Product"}; Content {autoCreateContent ? "sẽ tạo sau render" : "để tạo sau"}.</span><Button type="submit" variant="primary" busy={busy} disabled={!data.settings?.llm?.enabled}><Sparkles size={16} /> Create {count || 1} video{Number(count) === 1 ? "" : "s"}</Button></div>
+      <div className="production-actions"><span className="small muted">Output được gắn riêng là {mode === "news" ? "News" : "Product"}; Content {autoCreateContent ? "sẽ tạo sau render" : "để tạo sau"}.</span><Button type="submit" variant="primary" busy={busy} disabled={!data.settings?.llm?.enabled || mode === 'news' && (newsSave.saving || Boolean(newsSave.error))}><Sparkles size={16} /> Create {count || 1} video{Number(count) === 1 ? "" : "s"}</Button></div>
     </form>
 
     {batches.length > 0 && <div className="production-batches">
       <div className="production-batches-heading"><div><span className="hub-kicker">RENDER RECORDS</span><strong>Recent video records</strong></div><small>Each record keeps its source, progress, retry and Content handoff.</small></div>
-      {batches.map((batch) => {
-        const request = batch.request || {};
-        const research = request.researchId ? researchById.get(request.researchId) : null;
-        const jobs = (batch.items || []).map((item) => (data.jobs || []).findLast((job) => job.production?.batchId === batch.id && job.production?.itemIndex === item.index) || (data.jobs || []).find((job) => job.id === item.jobId));
-        const complete = jobs.filter((job) => job?.status === "completed").length;
-        const active = jobs.find((job) => ["queued", "submitting", "rendering", "downloading"].includes(job?.status));
-        const failed = (batch.items || []).filter((item) => ["failed", "interrupted"].includes(item.status)).length;
-        const title = batchTitle(batch, research);
-        return <article className={`production-batch${focusedSet.has(batch.id) ? " is-focused" : ""}`} data-production-batch-id={batch.id} key={batch.id}>
-          <div>
-            <strong><Video size={15} /> {title}</strong>
-            <p>{complete}/{request.count || batch.items?.length || 0} completed · {(batch.items || []).filter((item) => item.jobId).length} queued · {statusLabels[batch.status] || batch.status}{active ? ` · ${active.status} ${Math.round(active.progress || 0)}%` : ""}</p>
-            {request.contentType === 'news' && <small className="production-batch-source">Style: {newsRenderStyleLabel(request.newsRenderStyle || 'classic')}</small>}
-            {research && <small className="production-batch-source">Research đã chọn · {research.articles?.length || 0} nguồn · {research.topic || research.headline}</small>}
-            <small className={request.autoCreateContent ? "production-content-mode enabled" : "production-content-mode"}>{request.autoCreateContent ? "Content: tự tạo sau render" : "Content: tạo sau trong Content Studio"}</small>
-            {!research && request.sourceUrl && <small className="production-batch-source">Nguồn trực tiếp · {request.sourceUrl}</small>}
-            {batch.warnings?.map((warning) => <small key={warning}>{warning}</small>)}
-            {batch.error && <small className="danger-text">Batch: {batch.error}</small>}
-            {(batch.items || []).filter((item) => item.error).map((item) => <small className="danger-text" key={item.index}>Video {item.index + 1}: {item.error}</small>)}
-            {(batch.items || []).filter((item) => !item.error && ["preparing", "queued"].includes(item.status)).map((item) => <small key={item.index}>Video {item.index + 1}: {item.status === "preparing" ? "đang chuẩn bị" : "đã đưa vào Queue"}</small>)}
-          </div>
-          <div className="inline-actions">{failed > 0 && <Button onClick={() => retry(batch)}><RefreshCw size={14} /> Retry preparation</Button>}<Button onClick={() => navigate?.(complete ? "content" : "queue")}>{complete ? "Open Content" : "Open Queue"}<ArrowRight size={14} /></Button></div>
-        </article>;
-      })}
+      <ProductionBatchRecords batches={batches} data={data} notify={notify} navigate={navigate} focusedIds={[...focusedSet]} />
     </div>}
   </section>;
 }

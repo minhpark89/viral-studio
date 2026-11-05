@@ -2,19 +2,20 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-**Version 0.10.0** makes the approved V3 composition the default for new News videos. Choose V3 standard, V3 fast or the previous layout in **Dựng video → Render video tin tức → Style render tin tức**. V3 separates the photo, presenter and captions, uses restrained red/white graphics, and targets eight distinct relevant photographs. Offline English speech alignment ships with both Windows packages. See [release notes](RELEASE_NOTES_v0.10.0.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [current continuation checkpoint](CHECKPOINT_CURRENT.md).
+**Version 0.10.1** puts the News style selector beside the render actions in **Research & News**. V3 standard remains the default; choose V3 fast or the previous layout there. Style, font, duration and illustration count are shared with **Dựng video** and saved per project across app restarts. Bulk, individual and LLM-to-render actions keep you in Research with progress, saved batch styles and video previews. The approved V3 composition and bundled offline captions are unchanged. See [release notes](RELEASE_NOTES_v0.10.1.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [current continuation checkpoint](CHECKPOINT_CURRENT.md).
 
 ## Download for Windows
 
-- [Portable v0.10.0](https://github.com/minhpark89/viral-studio/releases/download/v0.10.0/Viral.Studio.0.10.0.exe)
-- [Installer v0.10.0](https://github.com/minhpark89/viral-studio/releases/download/v0.10.0/Viral.Studio.Setup.0.10.0.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.10.0/SHA256SUMS.txt)
-- [Checkpoint for this PC or another PC](CHECKPOINT_v0.10.0.md)
+- [Portable v0.10.1](https://github.com/minhpark89/viral-studio/releases/download/v0.10.1/Viral.Studio.0.10.1.exe)
+- [Installer v0.10.1](https://github.com/minhpark89/viral-studio/releases/download/v0.10.1/Viral.Studio.Setup.0.10.1.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.10.1/SHA256SUMS.txt)
+- [Checkpoint for this PC or another PC](CHECKPOINT_v0.10.1.md)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 
 ## Included features
 
+- Research keeps the main style selector and video count beside selection/render actions. Font, duration, illustrations, MC rotation and performance settings are in an expandable panel. Batch history displays the style saved when submitted, progress, preparation errors and final-video previews. Failed preparation retries retain the original request; the latest job attempt determines progress. If no stories are selected, bulk render applies to eligible filtered results; completed and active stories are skipped. Configuration save failures block submission until saved successfully.
 - **Tổng quan Meta** reads real verified Page bindings, displays current followers plus views/engagement over 7/28 completed Meta reporting days, and offers charts, search, groups, status filters and pagination. Missing and stale data remain distinct from real zeros. Refreshes use a bounded separate cache, coalesced work, three workers and one Page per token lane.
 - **Thư viện** selects all filtered media across pages within the current project, previews bulk deletion and reports protected items. Confirmed publication also removes unused editorial illustrations; reusable MC images and unfinished work remain protected.
 
@@ -38,7 +39,7 @@ The portable app keeps `Viral Data` beside its EXE. Installed data lives in a si
 - Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
 - News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
 
-For a separate test workspace on another PC (or this PC), start with the [v0.10.0 checkpoint](CHECKPOINT_v0.10.0.md). The [Windows render test guide](WINDOWS_TEST_GUIDE_v0.7.8.md) covers additional hardware checks.
+For a separate test workspace on another PC (or this PC), start with the [v0.10.1 checkpoint](CHECKPOINT_v0.10.1.md). The [Windows render test guide](WINDOWS_TEST_GUIDE_v0.7.8.md) covers additional hardware checks.
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
 - Research accepts an editable 1–1,000 story target. It starts with the requested topic or custom feeds, then expands related keywords and source/date partitions until enough valid sources are found or search is exhausted. Choose 24 hours, 3 days or 7 days; the time window is not widened silently. Saved stories and discovery progress survive restart, and old short batches offer **Tìm tiếp phần thiếu**. Keyword suggestions show coverage in current reports, not measured social views or shares. Filter by research run, render status, source date or text.
@@ -90,6 +91,6 @@ Build outputs are written to `release/`. The installer and portable executable u
 
 ## Repository
 
-This repository is the dedicated Viral Studio project. The current release is v0.9.0. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_v0.9.0.md` for implementation, verification and recovery details.
+This repository is the dedicated Viral Studio project. The current release is v0.10.1. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_v0.10.1.md` for implementation, verification and recovery details.
 
 

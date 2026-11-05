@@ -7,7 +7,10 @@ import { Store } from '../server/store.js';
 
 const root=path.resolve('.verification',`media-flow-ui-${Date.now()}`);
 const source=JSON.parse(await fs.readFile('D:/DROPSHIP/Viral Studio Data/workspace/studio.json','utf8'));
-const recent=source.jobs.filter(job=>job.type==='news'&&job.status==='completed').sort((a,b)=>Date.parse(b.finishedAt)-Date.parse(a.finishedAt)).slice(0,3);
+const availableMedia=new Set((await Promise.all(source.media.map(async media=>await fs.stat(media.file).catch(()=>null)?media.id:null))).filter(Boolean));
+const selectedHosts=new Set();
+const recent=source.jobs.filter(job=>job.type==='news'&&job.status==='completed'&&[job.mediaId,job.payload?.presenterMediaId,job.payload?.avatarMediaId].every(id=>availableMedia.has(id))).sort((a,b)=>Date.parse(b.finishedAt)-Date.parse(a.finishedAt)).filter(job=>{const id=job.payload.avatarMediaId;if(selectedHosts.has(id))return false;selectedHosts.add(id);return true;}).slice(0,3);
+assert.equal(recent.length,3,'This optional live-media smoke test needs three retained final videos, presenters and distinct MC images.');
 const store=new Store(root);
 const project=store.createProject('Media flow QA');
 store.state.settings.queuePaused=true;
@@ -98,8 +101,8 @@ try{
   await card.getByLabel('Ảnh MC cho tin này',{exact:true}).selectOption(selectedMc);
   assert.equal(await card.getByLabel('Ảnh MC cho tin này').locator('option').filter({hasText:'Page Avatar'}).count(),0);
   await card.getByLabel('Số video',{exact:true}).fill('3');
-  await card.getByRole('button',{name:'Render 3 videos',exact:true}).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response=>response.url().endsWith('/api/production/batches')&&response.request().method()==='POST'),card.getByRole('button',{name:'Render 3 videos',exact:true}).click()]);
+  assert.equal(await page.locator('.research-page').count(),1);
   assert.equal(report.requests.at(-1).avatarMediaId,selectedMc);
   assert.equal(report.requests.at(-1).count,3);
   assert.equal(report.requests.at(-1).researchId,fresh.id);
@@ -110,17 +113,19 @@ try{
   // Navigation refreshes state asynchronously; Render has the same MC label.
   // Target Research so a fast test action cannot select the departing page's MC.
   const researchPage=page.locator('.research-page');
+  await researchPage.locator('.research-render-settings').evaluate(element=>{element.open=true;});
   const batchMc=researchPage.getByLabel('Ảnh MC cho cả lô',{exact:true});
   await batchMc.selectOption(selectedMc);
   await researchPage.getByLabel('Số video mỗi tin',{exact:true}).fill('2');
   assert.equal(await batchMc.inputValue(),selectedMc,'Fast selection must survive initial Research mount');
-  await page.getByRole('button',{name:'Render 1 tin chưa có video · 2 video',exact:true}).click();
-  await page.locator('.render-hub').waitFor();
+  await Promise.all([page.waitForResponse(response=>response.url().endsWith('/api/production/batches')&&response.request().method()==='POST'),page.getByRole('button',{name:'Render 1 tin chưa có video · 2 video',exact:true}).click()]);
+  assert.equal(await page.locator('.research-page').count(),1);
   assert.equal(report.requests.at(-1).avatarMediaId,selectedMc);
   assert.equal(report.requests.at(-1).count,2);
   assert.deepEqual(report.requests.at(-1).researchIds,[fresh.id,fresh.id]);
   report.checks.push('Research bulk render sends one common MC and two videos per selected unfinished story');
 
+  await nav('Dựng video').click();
   const upload=page.locator('.production-panel').getByLabel('Nhập ảnh MC',{exact:true});
   const avatar=source.media.find(m=>m.id===selectedMc);
   await upload.setInputFiles(avatar.file);
@@ -136,7 +141,8 @@ try{
   report.passed=true;
 }catch(error){report.failure=error.stack;process.exitCode=1;}
 finally{
-  await application.close();
+  for (const window of application.windows()) await window.close().catch(()=>{});
+  await application.close().catch(()=>{});
   await fs.writeFile(path.resolve('.verification/media-flow-ui-report.json'),JSON.stringify(report,null,2));
   console.log(JSON.stringify({...report,requests:report.requests.map(({count,avatarMediaId,researchId})=>({count,avatar:avatarMediaId?.slice(0,8),research:researchId?.slice(0,8)}))},null,2));
 }
