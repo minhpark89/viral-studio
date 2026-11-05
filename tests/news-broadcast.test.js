@@ -72,6 +72,7 @@ for (const presenterSize of ["540x720", "1056x792"]) {
       narration: "A new technology report is drawing attention today. Officials say the development is being reviewed as more details emerge. Read the full story through the link in the first comment.",
       source: "Test News",
       brand: "VIRAL NEWS",
+      newsRenderStyle: 'classic',
     };
     const result = await renderNewsBroadcast(store, { id: randomUUID(), name: "News broadcast QA", projectId: project.id }, presenter, plan, images, new AbortController().signal);
     const output = await probe(result.file, store.state.settings);

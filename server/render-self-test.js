@@ -109,12 +109,15 @@ export async function runRenderSelfTest(directory, { gpu = false } = {}) {
       const presenter = await importMedia(store, input, { projectId: project.id, name: path.basename(input), move: true });
       const result = await renderNewsBroadcast(store, { id: randomUUID(), name: `Offline ${size}`, projectId: project.id }, presenter, {
         headline: "Viral Studio offline render test", narration: "This synthetic sample checks the same broadcast renderer on each PC. The presenter should stay centered and the audio tone should be audible.", source: "SYNTHETIC TEST", brand: "RENDER TEST",
+        ...(size === '1056x792' ? { newsRenderStyle: 'v3-fast' } : {}),
       }, gpu && size === '540x720' ? images.slice(0, 5) : images, signal);
       const output = path.join(root, `NEWS-${size}.mp4`);
       fs.copyFileSync(result.file, output);
       const metadata = await probe(output, store.state.settings);
       assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
       assert.equal(metadata.videoCodec, "h264"); assert.equal(metadata.audioCodec, "aac");
+      assert.equal(result.newsRenderStyle, size === '1056x792' ? 'v3-fast' : 'v3');
+      assert.doesNotMatch(result.newsCaptionWarning || '', /Chưa có bộ|Không căn được/, 'Bundled offline caption runtime must execute');
       assert.ok(Math.abs(metadata.duration - (gpu ? 25 : 15)) < 0.25);
       await runProcess(ffmpeg, ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"], { signal, timeout: 120000 });
       const volume = await runProcess(ffmpeg, ["-hide_banner", "-i", output, "-vn", "-af", "volumedetect", "-f", "null", "-"], { signal, timeout: 60000 });
@@ -135,7 +138,7 @@ export async function runRenderSelfTest(directory, { gpu = false } = {}) {
         assert.deepEqual(photoOrder, expected.map((_, index) => index), 'Every photo must remain in order');
         fs.unlinkSync(sample);
       }
-      report.cases.push({ name: size, type: "full-news", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, meanVolumeDb, fullyDecoded: true, renderDevice: result.renderDevice, renderPipeline: result.renderPipeline, photoOrder });
+      report.cases.push({ name: size, type: "full-news", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, meanVolumeDb, fullyDecoded: true, renderDevice: result.renderDevice, renderPipeline: result.renderPipeline, photoOrder, newsRenderStyle: result.newsRenderStyle, captionTiming: result.newsCaptionTiming, captionRuntimeExecuted: true });
     }
     save("Rendering timeline with a logo, text and looped music");
     const start = Date.now();

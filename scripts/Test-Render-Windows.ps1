@@ -3,13 +3,13 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $AppPath) {
     $candidates = @(
-        (Join-Path $PSScriptRoot 'Viral.Studio.0.8.7.exe'),
+        (Join-Path $PSScriptRoot 'Viral.Studio.0.10.0.exe'),
         (Join-Path $PSScriptRoot 'Viral Studio.exe'),
-        (Join-Path $PSScriptRoot '..\release\Viral.Studio.0.8.7.exe')
+        (Join-Path $PSScriptRoot '..\release\Viral.Studio.0.10.0.exe')
     )
     $AppPath = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
-if (-not $AppPath) { throw 'Pass -AppPath with the path to Viral Studio 0.8.7 Portable or the installed EXE.' }
+if (-not $AppPath) { throw 'Pass -AppPath with the path to Viral Studio 0.10.0 Portable or the installed EXE.' }
 $AppPath = (Resolve-Path -LiteralPath $AppPath).Path
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path (Split-Path $AppPath -Parent) 'Render Test Results' }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 Write-Host 'Running offline render checks (no accounts or API credits required)...'
 Write-Host ('App SHA256: ' + (Get-FileHash -LiteralPath $AppPath -Algorithm SHA256).Hash)
 Write-Host ('Results: ' + $runDirectory)
-$arguments = '"--render-self-test={0}"' -f $runDirectory
+$arguments = '"--render-self-test={0}" "--user-data-dir={1}"' -f $runDirectory, ($runDirectory + '-profile')
 if ($Gpu) { $arguments += ' --render-self-test-gpu' }
 $process = Start-Process -FilePath $AppPath -ArgumentList $arguments -PassThru -WindowStyle Hidden
 $reportFile = Join-Path $runDirectory 'report.json'
@@ -39,7 +39,7 @@ while ((Get-Date) -lt $deadline) {
     }
 }
 if (-not $report -or -not $report.finished) { throw "Test did not finish within 32 minutes. Check $runDirectory" }
-if ($report.version -ne '0.8.7') { throw "Wrong app version tested: $($report.version). Use 0.8.7." }
+if ($report.version -ne '0.10.0') { throw "Wrong app version tested: $($report.version). Use 0.10.0." }
 Get-Content -LiteralPath (Join-Path $runDirectory 'RESULT.txt') -Encoding UTF8
 if (-not $report.passed) { exit 1 }
 exit 0

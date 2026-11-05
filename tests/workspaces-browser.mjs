@@ -54,6 +54,7 @@ try {
   await page.getByRole("button", { name: "Research & News", exact: true }).click();
   await page.locator(".research-page").waitFor();
   assert.equal(errors.length, 0, errors.join("\n"));
+  await page.getByRole("button", { name: "Chi tiết & MC", exact: true }).click();
   await page.locator("details.research-articles > summary").click();
   const sourceLink = page.getByRole("link", { name: /Mở nguồn: A verified source readers can open/ });
   assert.equal(await sourceLink.getAttribute("href"), "https://example.com/qa-news");
@@ -64,6 +65,7 @@ try {
   assert.equal(await page.locator(".research-result-card").count(), 1);
   await page.getByLabel("Chất lượng nội dung").selectOption("all");
   assert.equal(await page.getByText("Render 1 tin chưa có video", { exact: true }).count(), 1);
+  assert.equal(await page.getByLabel("Style render tin tức", { exact: true }).inputValue(), "v3");
   report.checks.push("Research & News stays visible with an existing result and has no blank-screen error");
   let testLlmPayload = null;
   await page.route("**/api/settings/llm/models", async (route) => {
@@ -152,9 +154,9 @@ try {
   await page.locator(".render-mode-tabs button").nth(0).click();
   assert.equal(await page.locator(".production-panel").count(), 1);
   assert.equal(await page.locator(".editor-heading .eyebrow").innerText(), "NEWS RENDER");
-  assert.equal(await page.getByLabel("Font / style").count(), 1);
+  assert.equal(await page.getByLabel("Font chữ").count(), 1);
   assert.equal(await page.getByLabel("Link bài news (tuỳ chọn)").count(), 1);
-  assert.deepEqual(await page.getByLabel("Font / style").locator("option").allTextContents(), ["News chuẩn · Barlow Condensed", "Viral mạnh · Anton + Barlow", "Viral sạch · Be Vietnam Pro"]);
+  assert.deepEqual(await page.getByLabel("Font chữ").locator("option").allTextContents(), ["News chuẩn · Barlow Condensed", "Viral mạnh · Anton + Barlow", "Viral sạch · Be Vietnam Pro"]);
   report.checks.push("Render workspace switches between News and Product and exposes the direct-link and three style presets");
   await page.getByRole("button", { name: "Tài khoản", exact: true }).click();
   await page.getByRole("button", { name: "Tạo profile xoay vòng" }).click();

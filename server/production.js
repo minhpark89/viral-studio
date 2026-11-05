@@ -390,6 +390,8 @@ export class ProductionService {
         variation: item.index + 1,
         visualVariant: item.index + 1,
         fontStyle: request.fontStyle,
+        newsRenderStyle: request.newsRenderStyle,
+        reportDate: research.articles?.[0]?.publishedAt || '',
         avatarMediaId: item.avatarMediaId,
       });
       item.title = newsPlan.headline;
@@ -428,6 +430,7 @@ export class ProductionService {
       topic: request.topic,
       sourceUrl: request.sourceUrl,
       fontStyle: request.fontStyle,
+      newsRenderStyle: newsPlan?.newsRenderStyle || null,
       title: item.title,
       productBrief: item.productBrief || request.productBrief,
       productUrl: request.productUrl,

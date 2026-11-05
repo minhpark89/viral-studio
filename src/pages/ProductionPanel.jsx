@@ -6,6 +6,7 @@ import { NewsMcPicker } from "../NewsMcPicker.jsx";
 import { isPageAvatar } from "../../shared/output-media.js";
 import { MAX_NEWS_VIDEOS } from "../../shared/mc-rotation.js";
 import { NewsVideoOptions, useNewsVideoOptions } from '../NewsVideoOptions.jsx';
+import { newsRenderStyleLabel } from '../../shared/news-format.js';
 
 const statusLabels = {
   pending: "đang chuẩn bị",
@@ -139,7 +140,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
       <div className="production-inputs">
         {mode === "news" || autoResearch ? <Field label={mode === "news" ? "News niche" : "Product niche"}><input required={mode !== "news" || !sourceUrl} minLength={mode === "news" && sourceUrl ? undefined : 2} maxLength={200} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={mode === "news" ? "US technology, space, business…" : "Kitchen gadgets, pet accessories…"} /></Field> : <Field label="Product name"><input required maxLength={200} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Portable blender" /></Field>}
         <Field label="Number of videos"><input type="number" min="1" max={mode === "news" ? MAX_NEWS_VIDEOS : 50} required value={count} onChange={(event) => setCount(event.target.value)} /></Field>
-        {mode === "news" && <Field label="Font / style"><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value)}><option value="news">News chuẩn · Barlow Condensed</option><option value="viral">Viral mạnh · Anton + Barlow</option><option value="minimal">Viral sạch · Be Vietnam Pro</option></select></Field>}
+        {mode === "news" && <Field label="Font chữ"><select value={fontStyle} onChange={(event) => setFontStyle(event.target.value)}><option value="news">News chuẩn · Barlow Condensed</option><option value="viral">Viral mạnh · Anton + Barlow</option><option value="minimal">Viral sạch · Be Vietnam Pro</option></select></Field>}
       </div>
       {mode === "news" && <Field label="Link bài news (tuỳ chọn)" hint="Dán link bài viết để dùng đúng bài đó; bỏ trống để tự research theo từ khóa."><input type="url" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://news.example.com/article" /></Field>}
       {mode === "news" && <><NewsVideoOptions value={newsOptions} onChange={setNewsOptions} /><NewsMcPicker data={data} projectId={project.id} value={avatarMediaId} onChange={setAvatarMediaId} rotation={mcRotation} onRotationChange={setMcRotation} count={count || 1} notify={notify} /></>}
@@ -165,6 +166,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
           <div>
             <strong><Video size={15} /> {title}</strong>
             <p>{complete}/{request.count || batch.items?.length || 0} completed · {(batch.items || []).filter((item) => item.jobId).length} queued · {statusLabels[batch.status] || batch.status}{active ? ` · ${active.status} ${Math.round(active.progress || 0)}%` : ""}</p>
+            {request.contentType === 'news' && <small className="production-batch-source">Style: {newsRenderStyleLabel(request.newsRenderStyle || 'classic')}</small>}
             {research && <small className="production-batch-source">Research đã chọn · {research.articles?.length || 0} nguồn · {research.topic || research.headline}</small>}
             <small className={request.autoCreateContent ? "production-content-mode enabled" : "production-content-mode"}>{request.autoCreateContent ? "Content: tự tạo sau render" : "Content: tạo sau trong Content Studio"}</small>
             {!research && request.sourceUrl && <small className="production-batch-source">Nguồn trực tiếp · {request.sourceUrl}</small>}

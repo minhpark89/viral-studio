@@ -17,7 +17,7 @@ export function RenderPage(props) {
     <section className="render-switcher">
       <div><div className="eyebrow">RENDER WORKSPACE</div><h1>Render nhanh, đúng loại video.</h1><p>Chọn News hoặc Product trước khi dựng. Timeline và preset xuất được giữ nguyên trong project.</p></div>
       <div className="render-mode-tabs">{modes.map(({ id, label, hint, icon: Icon }) => <button key={id} className={mode === id ? "active" : ""} onClick={() => setMode(id)}><span><Icon size={18} /></span><strong>{label}</strong><small>{hint}</small></button>)}</div>
-      <div className="render-fast-note"><Zap size={15} /><span><strong>Xuất nhanh</strong> dùng 480p, draft và preset FFmpeg tốc độ cao.</span></div>
+      <div className="render-fast-note"><Zap size={15} /><span>{mode === 'news' ? <><strong>V3 chuẩn</strong> là mặc định. V3 nhanh giữ Full HD, dùng ảnh tĩnh và hòa cảnh để xuất nhanh hơn.</> : <><strong>Xuất nhanh</strong> dùng 480p, draft và preset FFmpeg tốc độ cao.</>}</span></div>
     </section>
     <ProductionPanel key={`production:${props.project.id}:${mode}`} {...props} mode={mode} focusBatchIds={focus.batchIds} focusResearchId={focus.researchId} />
     <div className="render-selected-line"><span><FileVideo size={15} /> {selected.label}</span><Button onClick={() => props.navigate?.("content")}>Mở Content</Button></div>

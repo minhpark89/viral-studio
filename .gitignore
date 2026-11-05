@@ -6,6 +6,7 @@ dist/
 *.log
 *.tmp
 *.bak
+runtime/news-captions/
 
 # Keep only the source icon assets used by electron-builder.
 build/*

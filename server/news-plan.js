@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { requestJsonContent } from "./llm.js";
 import { StudioError } from "./store.js";
-import { NEWS_MAX_IMAGES, newsDurationSchema, newsImageCountSchema, newsScriptBudget } from '../shared/news-format.js';
+import { NEWS_MAX_IMAGES, newsDurationSchema, newsImageCountSchema, newsScriptBudget, newsRenderStyleSchema, DEFAULT_NEWS_RENDER_STYLE } from '../shared/news-format.js';
 
 export const NEWS_CTA="Read the full story through the link in the first comment.";
 function sourceLabel(value) {
@@ -28,6 +28,10 @@ export const newsPlanSchema=z.object({
   selectedImageIds:z.array(z.string()).max(NEWS_MAX_IMAGES).default([]),
   newsDuration:newsDurationSchema.default('auto'),
   newsImageCount:newsImageCountSchema.default('auto'),
+  newsRenderStyle:newsRenderStyleSchema.default(DEFAULT_NEWS_RENDER_STYLE),
+  category:z.string().trim().max(24).default('U.S. NEWS'),
+  location:z.string().trim().max(70).default(''),
+  reportDate:z.string().max(40).default(''),
   estimatedSeconds:z.number().min(1).max(60).optional(),
   visualMode:z.enum(['photo','illustration','source-card']).default('photo'),
   resolution:z.union([z.literal(720),z.literal(1080)]).default(1080),
@@ -36,7 +40,7 @@ export const newsPlanSchema=z.object({
   visualVariant:z.number().int().min(1).max(100).default(1),
 });
 
-const narrationOutput = z.object({headline:z.string().trim().min(5).max(100),summary:z.string().trim().min(20).max(16000),imageQueries:z.array(z.string().min(2).max(100)).max(6).default([]),contextImageQueries:z.array(z.string().min(2).max(100)).max(6).default([])});
+const narrationOutput = z.object({headline:z.string().trim().min(5).max(100),summary:z.string().trim().min(20).max(16000),category:z.enum(['U.S. NEWS','U.S. POLITICS','BUSINESS','TECHNOLOGY','SCIENCE','HEALTH','WORLD NEWS','SPORTS','WEATHER']).catch('U.S. NEWS'),location:z.string().trim().max(70).catch(''),imageQueries:z.array(z.string().min(2).max(100)).max(6).default([]),contextImageQueries:z.array(z.string().min(2).max(100)).max(6).default([])});
 const wordCount = text => text.trim().split(/\s+/u).filter(Boolean).length;
 
 export function fitNewsSummary(value, budget) {
@@ -60,7 +64,8 @@ export async function writeNewsNarration(store,research,{llm=requestJsonContent,
   const instruction = `Write a concise American English news summary for a short clip that leads viewers to the full article in the first comment. Return JSON {headline,summary,imageQueries}. Headline: factual, maximum 70 characters. Summary: 1–3 complete short sentences, approximately ${Math.max(15, summaryBudget.words - 5)}–${summaryBudget.words} words and no more than ${summaryBudget.characters} characters including spaces. State the main confirmed development first, then one useful detail or context explicitly supported by the source. Attribute allegations. Summarize only; do not retell the full article, create suspense, invent uncertainty or add filler to reach a duration. Do not invent facts, dates, quotes, reactions, stakes or promises of future updates. No CTA; the app appends it once. Image queries: 4–6 distinct literal noun phrases using only named people, exact locations and objects actually mentioned in this report. Keep full names and place qualifiers; do not broaden to unrelated people or events. A short source can use fewer queries. ${total > 1 ? `This is variation ${variation} of ${total}; vary wording, never the verified facts.` : ''}`;
   const input = {variation,total,headline:research.headline,script:research.script,articles:(research.articles || []).map(({title,summary,source,url})=>({title,summary,source,url}))};
   const visualInstruction = ' Also return contextImageQueries: 2–4 short queries for labeled context photos, distinct from event-photo searches. Use the exact full name of a named person plus portrait, or the exact city and state plus city view. Do not include rally/campaign/crowd/event terms in context queries. Only include subjects explicitly named in the source. Do not invent a venue or search only a first name. If the source has no concrete visual subjects, return empty imageQueries and contextImageQueries; the app can show a factual source card.';
-  let parsed = narrationOutput.parse(await llm(store, instruction + visualInstruction, input));
+  const identityInstruction = ' Also return category (one of U.S. NEWS, U.S. POLITICS, BUSINESS, TECHNOLOGY, SCIENCE, HEALTH, WORLD NEWS, SPORTS, WEATHER) and location. For location, copy a short exact place name present in the source or return an empty string; never infer a dateline, date, live status or breaking-news status.';
+  let parsed = narrationOutput.parse(await llm(store, instruction + visualInstruction + identityInstruction, input));
   let summary = fitNewsSummary(parsed.summary, summaryBudget);
   // Never cut the end off a sentence or append invented context. Ask once for
   // a shorter complete fact if even the first sentence exceeds the budget.
@@ -72,6 +77,8 @@ export async function writeNewsNarration(store,research,{llm=requestJsonContent,
   const narration=`${summary} ${NEWS_CTA}`;
   return {
     headline: parsed.headline,
+    category: parsed.category,
+    location: parsed.location && JSON.stringify(input).toLowerCase().includes(parsed.location.toLowerCase()) ? parsed.location : '',
     narration,
     newsDuration,
     newsImageCount,

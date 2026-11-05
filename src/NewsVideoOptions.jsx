@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Field } from './components.jsx';
-import { newsDurationSchema, newsImageCountSchema } from '../shared/news-format.js';
+import { newsDurationSchema, newsImageCountSchema, newsRenderStyleSchema, DEFAULT_NEWS_RENDER_STYLE, NEWS_RENDER_STYLES } from '../shared/news-format.js';
 
 export function useNewsVideoOptions(projectId) {
   const key = `studio-news-format:${projectId}`;
   const read = () => {
     try {
       const saved = JSON.parse(localStorage.getItem(key) || '{}');
-      return { newsDuration: newsDurationSchema.catch('auto').parse(saved.newsDuration), newsImageCount: newsImageCountSchema.catch('auto').parse(saved.newsImageCount) };
-    } catch { return { newsDuration: 'auto', newsImageCount: 'auto' }; }
+      return { newsDuration: newsDurationSchema.catch('auto').parse(saved.newsDuration), newsImageCount: newsImageCountSchema.catch('auto').parse(saved.newsImageCount), newsRenderStyle: newsRenderStyleSchema.catch(DEFAULT_NEWS_RENDER_STYLE).parse(saved.newsRenderStyle) };
+    } catch { return { newsDuration: 'auto', newsImageCount: 'auto', newsRenderStyle: DEFAULT_NEWS_RENDER_STYLE }; }
   };
   const [value, setValue] = useState(read);
   useEffect(() => setValue(read()), [key]);
@@ -22,6 +22,11 @@ export function useNewsVideoOptions(projectId) {
 export function NewsVideoOptions({ value, onChange }) {
   const change = (key, text) => onChange({ ...value, [key]: text === 'auto' ? text : Number(text) });
   return <div className="news-video-options">
+    <Field label="Style render tin tức" hint={NEWS_RENDER_STYLES.find(style => style.id === value.newsRenderStyle)?.description || NEWS_RENDER_STYLES[0].description}>
+      <select aria-label="Style render tin tức" value={value.newsRenderStyle || DEFAULT_NEWS_RENDER_STYLE} onChange={event => onChange({ ...value, newsRenderStyle: event.target.value })}>
+        {NEWS_RENDER_STYLES.map(style => <option key={style.id} value={style.id}>{style.label}</option>)}
+      </select>
+    </Field>
     <div className="form-grid">
       <Field label="Độ dài clip tóm tắt" hint="Mục tiêu theo lời đọc, tối thiểu 15 giây. Tốc độ MC có thể làm độ dài thực tế chênh vài giây.">
         <select aria-label="Độ dài clip tóm tắt" value={value.newsDuration} onChange={event => change('newsDuration', event.target.value)}>
@@ -31,7 +36,7 @@ export function NewsVideoOptions({ value, onChange }) {
       </Field>
       <Field label="Ảnh minh họa" hint="Ưu tiên đúng nội dung và khác nhau; nếu nguồn thiếu, dùng ít ảnh hơn và báo số thực tế.">
         <select aria-label="Ảnh minh họa" value={value.newsImageCount} onChange={event => change('newsImageCount', event.target.value)}>
-          <option value="auto">Theo độ dài clip · 5–10 ảnh</option>
+          <option value="auto">Theo tin · thường 8 ảnh, khoảng 6–10 ảnh</option>
           <option value="6">Tối đa 6 ảnh</option><option value="8">Tối đa 8 ảnh</option><option value="10">Tối đa 10 ảnh</option>
         </select>
       </Field>

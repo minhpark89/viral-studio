@@ -239,6 +239,7 @@ test("news broadcast uses the research result selected in the UI", async t => {
     contentType: "news",
     autoResearch: true,
     researchId: selected.id,
+    newsRenderStyle: 'v3-fast',
     topic: "Washington news",
     engine: "dreamface",
     count: 3,
@@ -251,6 +252,7 @@ test("news broadcast uses the research result selected in the UI", async t => {
   assert.ok(jobs.every((job) => job.production.researchId === selected.id));
   assert.ok(jobs.every((job) => JSON.stringify(job.payload.imageMediaIds) === JSON.stringify(jobs[0].payload.imageMediaIds)));
   assert.ok(jobs.every((job) => job.payload.plan.source === "Example News"));
+  assert.ok(jobs.every((job) => job.payload.plan.newsRenderStyle === 'v3-fast' && job.production.newsRenderStyle === 'v3-fast'));
 });
 
 test("news batches can use a supplied article URL without running keyword discovery", async t => {

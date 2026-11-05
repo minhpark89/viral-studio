@@ -123,6 +123,16 @@ export class Store extends EventEmitter {
       }
     }
     let recovered = relocation.changed;
+    // Existing records keep their original composition on retry. Only new
+    // requests default to V3; never regenerate a presenter's paid AI result.
+    const preserveNewsStyle = plan => {
+      if (plan && plan.newsRenderStyle === undefined) { plan.newsRenderStyle = 'classic'; recovered = true; }
+    };
+    for (const job of this.state.jobs || []) if (job.type === 'news') preserveNewsStyle(job.payload?.newsPlan);
+    for (const batch of this.state.productionBatches || []) {
+      if (batch.request?.contentType === 'news') preserveNewsStyle(batch.request);
+      for (const item of batch.items || []) preserveNewsStyle(item.newsPlan);
+    }
     for (const collection of ["socialPages", "socialPosts", "researchResults", "researchBatches", "productionBatches"]) {
       if (this.state[collection] === undefined) {
         this.state[collection] = [];

@@ -6,6 +6,8 @@ import { StudioError, safeName } from "./store.js";
 import { NEWS_MIN_SECONDS, NEWS_MAX_IMAGES } from '../shared/news-format.js';
 import { renderNewsVisualTrack, directNewsBudget, directNewsVisualGraph } from './news-motion.js';
 import { selectRenderEncoder, videoEncodingArgs, recordRenderDevice } from './render-hardware.js';
+import { renderNewsV3 } from './news-v3-render.js';
+import { newsRenderStyleSchema, DEFAULT_NEWS_RENDER_STYLE } from '../shared/news-format.js';
 
 const FPS = 30;
 const WIDTH = 1080;
@@ -119,6 +121,8 @@ export async function createNewsSourceCard(store, research, signal) {
  * background uses animated Ken Burns shots and overlapping xfade transitions.
  */
 export async function renderNewsBroadcast(store, job, presenter, plan, images, signal, update = () => {}, { allowDirect = true } = {}) {
+  const style = newsRenderStyleSchema.parse(plan?.newsRenderStyle || DEFAULT_NEWS_RENDER_STYLE);
+  if (style !== 'classic') return renderNewsV3(store, job, presenter, { ...plan, newsRenderStyle: style }, images, signal, update);
   if (!presenter?.file || presenter.kind !== "video" || !presenter.hasAudio) {
     throw new StudioError("DreamFace did not return a presenter video with audio.", "NEWS_PRESENTER_AUDIO_REQUIRED", 422);
   }
@@ -231,7 +235,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       jobId: job.id,
       mediaType: "news-video",
     });
-    return store.patch('media', media.id, { newsPresenterMediaId: presenter.id, newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
+    return store.patch('media', media.id, { newsPresenterMediaId: presenter.id, newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', newsRenderStyle: 'classic', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
   } finally {
     const resolved = path.resolve(directory);
     if (resolved.startsWith(path.resolve(tempRoot) + path.sep)) await fsPromises.rm(resolved, { recursive: true, force: true }).catch(() => {});

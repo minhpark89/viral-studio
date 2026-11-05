@@ -1,6 +1,6 @@
 {
   "name": "viral-studio",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "private": true,
   "license": "UNLICENSED",
   "author": "Viral Studio",
@@ -13,9 +13,10 @@
     "build": "vite build",
     "desktop": "electron .",
     "pack": "npm run pack:portable",
-    "pack:portable": "npm run build && electron-builder --win portable --publish never",
-    "pack:installer": "npm run build && electron-builder --win nsis --publish never",
-    "pack:release": "npm run build && electron-builder --win nsis portable --publish never",
+    "setup:captions": "node scripts/setup-news-captions.mjs",
+    "pack:portable": "node scripts/setup-news-captions.mjs --check && npm run build && electron-builder --win portable --publish never",
+    "pack:installer": "node scripts/setup-news-captions.mjs --check && npm run build && electron-builder --win nsis --publish never",
+    "pack:release": "node scripts/setup-news-captions.mjs --check && npm run build && electron-builder --win nsis portable --publish never",
     "test": "node --test --test-concurrency=4 tests/*.test.js",
     "test:ui": "node tests/browser.mjs",
     "test:workspaces": "node tests/workspaces-browser.mjs",
@@ -23,6 +24,7 @@
   },
   "dependencies": {
     "express": "5.3.0",
+    "fontkit": "2.0.4",
     "lucide-react": "1.61.0",
     "multer": "2.5.0",
     "playwright": "1.64.1",
@@ -51,6 +53,17 @@
       "package.json"
     ],
     "extraResources": [
+      {
+        "from": "runtime/news-captions",
+        "to": "news-captions",
+        "filter": [
+          "*.exe",
+          "*.dll",
+          "*.bin",
+          "*.txt",
+          "manifest.json"
+        ]
+      },
       {
         "from": "bin",
         "to": "bin",

@@ -95,6 +95,8 @@ export function parseWikimediaImages(body, query, maxResults = 6) {
       height: Number(info.height) || 0,
       mime: String(info.mime || "").slice(0, 80),
       license: metadataValue(info.extmetadata, "LicenseShortName"),
+      licenseUrl: metadataValue(info.extmetadata, 'LicenseUrl'),
+      capturedAt: metadataValue(info.extmetadata, 'DateTimeOriginal'),
       attribution: metadataValue(info.extmetadata, "Artist"),
       description: metadataValue(info.extmetadata, "ImageDescription"),
     });
@@ -210,7 +212,7 @@ export async function downloadImageAsset({ image, store, projectId, fetchImpl = 
       move: true,
       mediaType: "news-editorial",
     });
-    return store.patch("media",media.id,{sourceUrl:image.pageUrl||image.imageUrl,sourceImageUrl:image.imageUrl,imageDescription:image.description||'',contentHash,attribution:image.attribution||"",license:image.license||""});
+    return store.patch("media",media.id,{sourceUrl:image.pageUrl||image.imageUrl,sourceImageUrl:image.imageUrl,imageDescription:image.description||'',contentHash,attribution:image.attribution||"",license:image.license||"",licenseUrl:image.licenseUrl||'',capturedAt:image.capturedAt||'',newsContextOnly:!String(image.id||'').startsWith('article:')});
   } finally {
     await fs.rm(temporary, { force: true }).catch(() => {});
   }
