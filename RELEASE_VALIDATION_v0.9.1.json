@@ -1,0 +1,69 @@
+{
+  "version": "0.9.1",
+  "validatedAt": "2026-11-05T02:10:52.425Z",
+  "runtimeUnchanged": true,
+  "sourceComparison": {
+    "runtimeAndBuildFiles": 140,
+    "testFiles": 94,
+    "textComparison": "UTF-8 with normalized LF line endings",
+    "binaryComparison": "byte for byte"
+  },
+  "runtime": {
+    "asarSha256": "4e9f434a93bd71400a7d4112ea548bb0bd6acbb5f50fb85715d35d0df75b4325",
+    "packagedSourceFiles": 94,
+    "lockedProductionDependencies": 80,
+    "binaries": [
+      {
+        "name": "ffmpeg.exe",
+        "sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e"
+      },
+      {
+        "name": "ffprobe.exe",
+        "sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07"
+      }
+    ],
+    "privateWorkspaceExcluded": true
+  },
+  "automatedTests": {
+    "passed": 424,
+    "failed": 0,
+    "executedAt": "2026-11-04",
+    "node": "26.13.0",
+    "platform": "Windows x64"
+  },
+  "browser": {
+    "research": {
+      "passed": true,
+      "checks": [
+        "50 requested; source exhaustion shows 23/50 and an actionable 27-story refill",
+        "Refill preserves 23 saved IDs and completes 50; keywords and actual queries are visible",
+        "Responsive layout; no JavaScript errors or external writes"
+      ]
+    },
+    "pageGroups": {
+      "passed": true,
+      "checks": [
+        "Tick, Shift range, mouse drag, row numbering and 100 avatars",
+        "Select every matching Page; preserve hidden selections and zero spacing",
+        "30 tokens / 100 Pages preview, edit existing pool and group scope",
+        "Group membership links to Page filters with avatars and row numbers",
+        "Create group from filtered results; mobile layout; no JavaScript errors or external requests"
+      ]
+    }
+  },
+  "windows": {
+    "unpackedPassed": true,
+    "portableLauncherPassed": true,
+    "installedPassed": true,
+    "existingWorkspacePreserved": true
+  },
+  "liveRss": {
+    "date": "2026-11-04",
+    "topic": "donal trump wars",
+    "requested": 50,
+    "found": 50,
+    "searches": 4,
+    "productionWrites": 0
+  },
+  "publicDownloadVerification": "Release assets are verified against SHA256SUMS.txt after upload; exact source commit is in RELEASE_MANIFEST_v0.9.1.json."
+}

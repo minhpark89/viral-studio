@@ -2,13 +2,14 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
-**Version 0.9.0** adds a cached real Meta overview with 7/28-day metrics, safe library selection and bulk deletion across pages, and automatic cleanup of unused news illustrations after confirmed publication. It includes previous video/MC cleanup, account, Page, scrolling and image improvements. See [release notes](RELEASE_NOTES_v0.9.0.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [continuation checkpoint](CHECKPOINT_v0.9.0.md).
+**Version 0.9.1** automatically expands related Research queries when the first search is short, resumes missing stories without replacing saved results, and improves Page group selection, token pools and posting schedules. It supports 1–1,000 research stories with a visible source-age window and honest source-exhaustion status. See [release notes](RELEASE_NOTES_v0.9.1.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [current continuation checkpoint](CHECKPOINT_CURRENT.md).
 
 ## Download for Windows
 
-- [Portable v0.9.0](https://github.com/minhpark89/viral-studio/releases/download/v0.9.0/Viral.Studio.0.9.0.exe)
-- [Installer v0.9.0](https://github.com/minhpark89/viral-studio/releases/download/v0.9.0/Viral.Studio.Setup.0.9.0.exe)
-- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.9.0/SHA256SUMS.txt)
+- [Portable v0.9.1](https://github.com/minhpark89/viral-studio/releases/download/v0.9.1/Viral.Studio.0.9.1.exe)
+- [Installer v0.9.1](https://github.com/minhpark89/viral-studio/releases/download/v0.9.1/Viral.Studio.Setup.0.9.1.exe)
+- [SHA-256 checksums](https://github.com/minhpark89/viral-studio/releases/download/v0.9.1/SHA256SUMS.txt)
+- [Checkpoint for this PC or another PC](CHECKPOINT_v0.9.1.md)
 
 The portable app keeps `Viral Data` beside its EXE. Installed data lives in a sibling `Viral Studio.data` folder outside the app installation; the installer preserves legacy data before running the old uninstaller. The app can still discover legacy `Dropship Data`.
 
@@ -36,10 +37,10 @@ The portable app keeps `Viral Data` beside its EXE. Installed data lives in a si
 - Compact Research management: select individual stories, a page or every filtered result; clear selection, delete in one request, and render only eligible selected stories. Per-story Delete and Render are visible; **Chi tiết & MC** opens the full controls. Active preparation/render stories cannot be deleted, while existing media/publication history is retained.
 - News preparation preserves image relevance ordering, retries failed searches and uses labeled context imagery or a source/headline card when no appropriate image is available. Queue includes preparation progress and errors before job creation.
 
-For a separate test workspace on another PC (or this PC), see [Windows test guide](WINDOWS_TEST_GUIDE_v0.7.8.md). For future debugging, start with the [v0.9.0 checkpoint](CHECKPOINT_v0.9.0.md).
+For a separate test workspace on another PC (or this PC), start with the [v0.9.1 checkpoint](CHECKPOINT_v0.9.1.md). The [Windows render test guide](WINDOWS_TEST_GUIDE_v0.7.8.md) covers additional hardware checks.
 
 - MC rotation: choose multiple images, enter consecutive videos per image, and repeat the cycle across up to 100 News videos. Assignments survive preparation retries and restart, independently of DreamFace profile rotation.
-- Research accepts an editable 1–100 story target. Each current, distinct source becomes a separate saved story; progress continues in the background and resumes after restart. Existing stories are skipped, and shortages are reported instead of silently duplicating sources. Filter by research run, render status, source date or text.
+- Research accepts an editable 1–1,000 story target. It starts with the requested topic or custom feeds, then expands related keywords and source/date partitions until enough valid sources are found or search is exhausted. Choose 24 hours, 3 days or 7 days; the time window is not widened silently. Saved stories and discovery progress survive restart, and old short batches offer **Tìm tiếp phần thiếu**. Keyword suggestions show coverage in current reports, not measured social views or shares. Filter by research run, render status, source date or text.
 - Completed videos play inline with their source, MC and version details. The library separates final videos, MC images, raw presenter clips and Page avatars; folder reveal selects the exact video file.
 - News and timeline exports share the selected FFmpeg concurrency limit. Research exposes AI task concurrency and video export concurrency separately.
 - Page and post managers include filters, pagination, selection across all matching results, bulk previews and CSV export. Page review groups, notes, reminders, read-only checks, token/CSV/JSON imports and recoverable trash support large collections.

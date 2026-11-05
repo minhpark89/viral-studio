@@ -7,3 +7,5 @@
 - Bộ cài Windows và Portable 0.9.1. Bản cài trên PC giữ nguyên workspace và tạo icon Desktop.
 
 Kiểm chứng: 424 test tự động; Research/nhóm Page browser; native Windows, Portable và dữ liệu thật sau cài. Live RSS cùng chủ đề đã tìm đủ 50 tin qua 4 truy vấn.
+
+Đã bổ sung [checkpoint để session ở PC này hoặc PC khác tiếp tục sửa lỗi](https://github.com/minhpark89/viral-studio/blob/v0.9.1/CHECKPOINT_v0.9.1.md), kèm lệnh lấy đúng source, chạy kiểm thử, bản đồ module và hướng dẫn khôi phục. Tải checkpoint, validation và checksum ngay trong Assets của release này.
