@@ -1,6 +1,8 @@
 import { autoScheduleWarehousePosts } from "./social.js";
 import { automaticPostRetry } from "./meta-errors.js";
 import { publishedVideo, returnPostToWarehouse } from './post-lifecycle.js';
+import { resolvePageToken, reconcileGroupQueue } from './page-routing.js';
+import { managedPageUnavailable } from '../shared/management.js';
 
 export class SocialScheduler {
   constructor(store, publishReel, { intervalMs = 15_000, now = Date.now } = {}) {
@@ -19,6 +21,12 @@ export class SocialScheduler {
     const current = this.now();
     return (this.store.state.socialPosts || []).filter((post) => {
       if (post.status !== "scheduled" || !post.scheduledAt || this.running.has(post.id) || post.automationRetryBlocked || post.deletedAt || post.archivedAt) return false;
+      const group = this.store.state.settings?.meta?.pageGroups?.find(group => group.id === post.pageGroupId);
+      if (group?.purpose === 'review' || group?.id?.startsWith('pgrp_hold_')) return false;
+      if (post.automationSource === 'daily-automation' && (!group?.scheduleConfig?.enabled || group.scheduleConfig.autoPublish === false)) return false;
+      const local = this.store.state.socialPages?.find(page => page.id === post.pageId);
+      const page = this.store.state.settings?.meta?.pages?.find(page => page.id === local?.externalId);
+      if (managedPageUnavailable(page, local)) return false;
       // Upgrade old queued errors without sending another request to Meta.
       if (post.automationError) {
         const error = { message: post.automationError, metaError: post.automationErrorDetails };
@@ -50,22 +58,27 @@ export class SocialScheduler {
     const group = meta?.pageGroups?.find(group => group.id === post.pageGroupId);
     const same = Math.max(0, Number(group?.scheduleConfig?.sameTokenMinutes) || 0) * 60_000;
     const cross = Math.max(0, Number(group?.scheduleConfig?.crossTokenMinutes) || 0) * 60_000;
-    if (!same && !cross) return true;
+    const stagger = Math.max(0, Number(group?.scheduleConfig?.staggerMinutes) || 0) * 60_000;
+    const samePage = Math.max(0, Number(group?.scheduleConfig?.samePageMinutes) || 0) * 60_000;
+    if (!group) return true;
     const page = this.store.state.socialPages?.find(page => page.id === post.pageId);
-    const pool = meta.tokenGroups?.find(pool => pool.id === (post.tokenGroupId || group.scheduleConfig.tokenGroupId));
-    const tokenId = pool?.pageTokenBindings?.[page?.externalId];
-    const token = meta.tokens?.find(token => token.id === tokenId && token.status === 'ACTIVE');
     const managedPage = meta.pages?.find(managedPage => managedPage.id === page?.externalId);
-    if (!tokenId || !pool.tokenIds?.includes(tokenId) || !token || !managedPage?.tokenBindings?.[tokenId]?.pageToken) {
+    const poolId = post.tokenGroupId || group?.scheduleConfig?.tokenGroupId || '';
+    const route = resolvePageToken(meta, managedPage, poolId);
+    const tokenId = route?.tokenId;
+    if (!tokenId) {
       this.recordFailure(post, { message: 'Thiếu phân công token cố định cho lịch giãn cách. Kiểm tra nhóm token và Page trước khi xếp lịch lại.', code: 'META_PAGE_NOT_BOUND' });
       return false;
     }
     const ledger = meta.publishCadence ||= { tokens: {}, groups: {} };
-    ledger.tokens ||= {}; ledger.groups ||= {};
+    ledger.tokens ||= {}; ledger.groups ||= {}; ledger.pages ||= {}; ledger.pools ||= {};
+    ledger.tokenNext ||= {}; ledger.pageNext ||= {}; ledger.poolNext ||= {};
     const current = this.now();
     const afterToken = ledger.tokens[tokenId] === undefined ? 0 : Number(ledger.tokens[tokenId]) + same;
-    const afterGroup = ledger.groups[group.id] === undefined ? 0 : Number(ledger.groups[group.id]) + cross;
-    const earliest = Math.max(afterToken, afterGroup);
+    const afterGroup = ledger.groups[group.id] === undefined ? 0 : Number(ledger.groups[group.id]) + Math.max(cross, stagger);
+    const afterPage = ledger.pages[page.externalId] === undefined ? 0 : Number(ledger.pages[page.externalId]) + samePage;
+    const afterPool = !poolId || ledger.pools[poolId] === undefined ? 0 : Number(ledger.pools[poolId]) + cross;
+    const earliest = Math.max(afterToken, afterGroup, afterPage, afterPool, ledger.tokenNext[tokenId] || 0, ledger.pageNext[page.externalId] || 0, poolId ? ledger.poolNext[poolId] || 0 : 0);
     if (earliest > current) {
       const nextAt = new Date(earliest).toISOString();
       if (post.automationNextAttemptAt !== nextAt) {
@@ -79,6 +92,11 @@ export class SocialScheduler {
     // overdue queue therefore cannot collapse the user's posting intervals.
     ledger.tokens[tokenId] = current;
     ledger.groups[group.id] = current;
+    ledger.pages[page.externalId] = current;
+    if (poolId) ledger.pools[poolId] = current;
+    ledger.tokenNext[tokenId] = current + same;
+    ledger.pageNext[page.externalId] = current + samePage;
+    if (poolId) ledger.poolNext[poolId] = current + cross;
     post.automationCadence = { tokenId, attemptedAt: new Date(current).toISOString(), nextAt: null };
     post.automationNextAttemptAt = null;
     this.store.save();
@@ -129,8 +147,10 @@ export class SocialScheduler {
     if (this.closed) return;
     for (const group of this.store.state.settings?.meta?.pageGroups || []) {
       try {
+        reconcileGroupQueue(this.store, group);
         autoScheduleWarehousePosts(this.store, group.id, {
           tokenGroupId: group.scheduleConfig?.tokenGroupId || "",
+          nowValue: this.now(),
         });
       } catch {
         // A group with incomplete Page/token mapping remains visible in the

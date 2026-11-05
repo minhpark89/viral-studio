@@ -312,3 +312,12 @@
   .research-selection-actions > div { width: 100%; }
   .research-selection-controls .button, .research-selection-actions .button { white-space: normal; text-align: left; }
 }
+.research-discovery-details { min-width: 0; padding: 9px 0; border-top: 1px solid var(--border, #303a38); }
+.research-discovery-details summary { cursor: pointer; font-size: 12px; }
+.research-discovery-details > small { display: block; margin: 10px 0; }
+.research-discovery-details ol { max-height: 180px; overflow: auto; padding-left: 24px; font-size: 12px; }
+.research-discovery-details li { overflow-wrap: anywhere; margin: 8px 0; }
+.research-discovery-details li small { margin-left: 8px; opacity: .7; }
+.research-keyword-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.research-keyword-list button { display: flex; gap: 8px; align-items: center; max-width: 100%; padding: 6px 9px; border: 1px solid var(--border, #3a4540); border-radius: 7px; color: inherit; background: transparent; cursor: pointer; overflow-wrap: anywhere; text-align: left; }
+.research-keyword-list button span { font-size: 10px; opacity: .65; white-space: nowrap; }

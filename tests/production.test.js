@@ -350,12 +350,26 @@ test("news batch rotates the same story's editorial visuals and records each var
   assert.ok(jobs.every((job) => job.production.variationPolicy === "visual-unique"));
 });
 
-test("auto research excludes stale stories using the US Eastern date",async()=>{
-  const rss='<rss><channel><title>Tech</title><item><title>Space current</title><link>https://example.test/current</link><pubDate>Sun, 25 Oct 2026 05:00:00 GMT</pubDate></item><item><title>Space yesterday in New York</title><link>https://example.test/old</link><pubDate>Sun, 25 Oct 2026 02:00:00 GMT</pubDate></item></channel></rss>';
+test("auto research uses a rolling 24-hour window across US midnight and excludes older stories",async()=>{
+  const rss='<rss><channel><title>Tech</title><item><title>Space current</title><link>https://example.test/current</link><pubDate>Sun, 25 Oct 2026 05:00:00 GMT</pubDate></item><item><title>Space yesterday in New York</title><link>https://example.test/recent</link><pubDate>Sun, 25 Oct 2026 02:00:00 GMT</pubDate></item><item><title>Space stale story</title><link>https://example.test/old</link><pubDate>Fri, 23 Oct 2026 02:00:00 GMT</pubDate></item></channel></rss>';
   const service=createResearchService({now:()=>"2026-10-25T12:00:00Z",fetchImpl:async()=>new Response(rss)});
   const {articles}=await service.discover({topic:"space",count:5});
-  assert.deepEqual(articles.map(article=>article.url),["https://example.test/current"]);
-  await assert.rejects(()=>service.discover({topic:"unrelated",count:5}),error=>error.code==="NO_CURRENT_NEWS");
+  assert.deepEqual(articles.map(article=>article.url),["https://example.test/current","https://example.test/recent"]);
+  const empty = await service.discover({topic:"unrelated",count:5});
+  assert.equal(empty.articles.length, 0);
+  assert.equal(empty.discovery.exhausted, true);
+});
+
+test('auto news production does not call the LLM or queue videos when adaptive search exhausts all sources', async t => {
+  let llmCalls = 0;
+  const { store, project, service } = await fixture(t, { llm: async () => { llmCalls++; return {}; } });
+  service.research = { discover: async ({ signal }) => { assert.ok(signal instanceof AbortSignal); return { articles: [], warnings: [] }; } };
+  const batch = service.create({ requestId: randomUUID(), projectId: project.id, contentType: 'news', autoResearch: true, topic: 'An unavailable topic', count: 2 });
+  await service.worker;
+  assert.equal(batch.status, 'failed');
+  assert.equal(batch.errorCode, 'NO_CURRENT_NEWS');
+  assert.equal(llmCalls, 0);
+  assert.equal(store.state.jobs.length, 0);
 });
 
 test("completed jobs attach source context to Library videos and retries preserve it",async t=>{

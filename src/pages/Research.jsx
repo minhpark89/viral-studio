@@ -36,6 +36,7 @@ const emptyResearch = {
   feeds: "",
   count: 10,
   includeImages: true,
+  windowHours: 24,
 };
 
 function dateLabel(value) {
@@ -94,6 +95,7 @@ function ResearchForm({ project, notify, active }) {
         requestId: crypto.randomUUID(),
         count: Number(value.count),
         includeImages: value.includeImages,
+        windowHours: Number(value.windowHours),
       };
       await api("/research/batches", payload);
       notify(`Đang tìm tối đa ${payload.count} tin mới riêng biệt. Bạn có thể chuyển màn hình; tiến độ được lưu trong dự án.`);
@@ -116,11 +118,14 @@ function ResearchForm({ project, notify, active }) {
         <Field label="Ngôn ngữ">
           <select value={value.language} onChange={(event) => update("language", event.target.value)}><option value="en">English (US)</option></select>
         </Field>
-        <Field label="Số tin muốn research" hint="Nhập 1–100. Mỗi nguồn mới tạo một tin riêng để render; bỏ tin trùng và tin đã research.">
+        <Field label="Số tin muốn research" hint={`Nhập 1–${MAX_RESEARCH_STORIES}. App tự mở rộng các góc cùng chủ đề để lấy đủ số tin; bỏ tin trùng và tin đã research.`}>
           <input type="number" min="1" max={MAX_RESEARCH_STORIES} step="1" required value={value.count} onChange={event => update('count', event.target.value)} />
         </Field>
+        <Field label="Độ mới của tin" hint="Lọc theo thời điểm đăng nguồn. 24 giờ liên tục tránh thiếu tin khi vừa qua nửa đêm ở Mỹ.">
+          <select value={value.windowHours} onChange={event => update('windowHours', event.target.value)}><option value="24">24 giờ qua</option><option value="72">3 ngày qua</option><option value="168">7 ngày qua</option></select>
+        </Field>
       </div>
-      <Field label="RSS/Atom feeds riêng (tùy chọn)" hint="Mỗi dòng một URL HTTPS. Bỏ trống để tìm tin theo chủ đề, đăng trong ngày hiện tại theo giờ Mỹ. Nếu nguồn ít hơn số yêu cầu, app báo số tin thực tế.">
+      <Field label="RSS/Atom feeds riêng (tùy chọn)" hint="Ưu tiên các RSS này, rồi tự tìm thêm tin và từ khóa liên quan nếu còn thiếu. Mỗi dòng một URL HTTPS.">
         <textarea rows="3" value={value.feeds} placeholder="https://example.com/feed.xml" onChange={(event) => update("feeds", event.target.value)} />
       </Field>
       <label className="research-check"><input type="checkbox" checked={value.includeImages} onChange={(event) => update("includeImages", event.target.checked)} /><span /> Gợi ý hình ảnh cho từng góc nội dung</label>

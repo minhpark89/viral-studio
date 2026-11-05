@@ -17,6 +17,7 @@ import { normalizeLlmEndpoint } from "./llm.js";
 import { readChatCompletion } from "./llm-response.js";
 import { ResearchBatchService } from "./research-batches.js";
 import { deleteResearchResults } from './research-management.js';
+import { discoverResearch } from './research-discovery.js';
 
 const DEFAULT_FEEDS = [
   "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml",
@@ -90,6 +91,7 @@ function parseEntry(block, atom, feedUrl) {
   const publishedAt = parseDate(tagValue(block, atom ? "published" : "pubDate") || tagValue(block, "updated"));
   return {
     title,
+    source: cleanText(tagValue(block, 'source'), 200),
     summary: cleanText(description),
     url,
     publishedAt,
@@ -105,7 +107,7 @@ export function parseFeed(xml, feedUrl = "") {
   const expression = new RegExp(`<${elementName}\\b[^>]*>[\\s\\S]*?</${elementName}>`, "gi");
   for (const match of xml.matchAll(expression)) {
     const entry = parseEntry(match[0], atom, feedUrl);
-    if (entry) entries.push({ ...entry, source: source || domainOf(feedUrl) });
+    if (entry) entries.push({ ...entry, source: entry.source || source || domainOf(feedUrl) });
     if (entries.length >= MAX_FEED_ITEMS) break;
   }
   return entries;
@@ -146,7 +148,7 @@ export function dedupeArticles(entries, { maxArticles = 6, topic = "" } = {}) {
   const unique = [];
   for (const entry of entries) {
     const key = canonicalArticleUrl(entry.url);
-    const titleKey = entry.title.toLocaleLowerCase().replace(/\W+/gu, " ").trim();
+    const titleKey = entry.title.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     if (!key || seenUrls.has(key) || (titleKey && seenTitles.has(titleKey))) continue;
     seenUrls.add(key);
     if (titleKey) seenTitles.add(titleKey);
@@ -187,11 +189,13 @@ async function fetchFeeds(feeds, fetchImpl, warnings, signal) {
   let cursor = 0;
   async function worker() {
     while (cursor < feeds.length) {
+      signal?.throwIfAborted();
       const index = cursor++;
       const url = feeds[index];
       try {
         output.push(...await fetchFeed(url, fetchImpl, DEFAULT_FETCH_TIMEOUT_MS, signal));
       } catch {
+        signal?.throwIfAborted();
         warnings.push(`Không thể tải feed ${domainOf(url) || url}.`);
       }
     }
@@ -349,23 +353,11 @@ function validateFeedUrls(feeds) {
 export function createResearchService({ fetchImpl = globalThis.fetch, now = () => new Date().toISOString() } = {}) {
   if (typeof fetchImpl !== "function") throw new Error("Fetch implementation is required");
   return {
-    async discover({ topic, feeds = [], count = 12, excludeArticles = [], signal }) {
-      const warnings = [];
-      const sources = feeds.length ? feeds : [
-        `https://news.google.com/rss/search?q=${encodeURIComponent(`${topic} when:1d`)}&hl=en-US&gl=US&ceid=US:en`,
-      ];
-      const entries = await fetchFeeds(validateFeedUrls(sources), fetchImpl, warnings, signal);
-      signal?.throwIfAborted();
-      const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" });
-      const today = day.format(new Date(now()));
-      const current = entries.filter(article => article.publishedAt && day.format(new Date(article.publishedAt)) === today);
-      const seenUrls = new Set(excludeArticles.map(article => canonicalArticleUrl(article.url)));
-      const titleKey = title => String(title || '').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-      const seenTitles = new Set(excludeArticles.map(article => titleKey(article.title)));
-      const articles = dedupeArticles(current, { topic, maxArticles: current.length }).filter(article => article.relevance > 0
-        && !seenUrls.has(canonicalArticleUrl(article.url)) && !seenTitles.has(titleKey(article.title))).slice(0, count);
-      if (!articles.length) throw new StudioError("No matching reports from today (US Eastern time). Try a broader niche or another RSS feed.", "NO_CURRENT_NEWS", 422);
-      return { articles, warnings };
+    async discover(request) {
+      return discoverResearch(request, {
+        now,
+        readFeeds: (urls, warnings, signal) => fetchFeeds(validateFeedUrls(urls), fetchImpl, warnings, signal),
+      });
     },
     async research(requestInput, store, { articles: selectedArticles, batchId, batchItemIndex, signal } = {}) {
       const request = researchRequestSchema.parse(requestInput);

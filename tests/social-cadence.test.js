@@ -6,7 +6,7 @@ import { normalizeScheduleConfig } from '../server/social.js';
 function fixture() {
   const at = Date.parse('2026-11-03T17:00:00Z');
   const posts = ['A1','B1','A2','B2'].map((id,index) => ({id,revision:1,pageId:id,pageGroupId:'campaign',tokenGroupId:'pool',status:'scheduled',scheduledAt:new Date(at-10_000+index).toISOString()}));
-  const state = {socialPosts:posts,socialPages:posts.map(p=>({id:p.id,externalId:p.id})),settings:{meta:{publications:[],tokens:[{id:'A',status:'ACTIVE'},{id:'B',status:'ACTIVE'}],pages:posts.map(p=>({id:p.id,tokenBindings:{[p.id[0]]:{pageToken:'test-fixture'}}})),pageGroups:[{id:'campaign',pageIds:posts.map(p=>p.id),scheduleConfig:{enabled:false,sameTokenMinutes:10,crossTokenMinutes:1,tokenGroupId:'pool'}}],tokenGroups:[{id:'pool',tokenIds:['A','B'],pageTokenBindings:Object.fromEntries(posts.map(p=>[p.id,p.id[0]]))}]}}};
+  const state = {socialPosts:posts,socialPages:posts.map(p=>({id:p.id,externalId:p.id})),settings:{meta:{publications:[],tokens:[{id:'A',status:'ACTIVE',token:'fixture-A'},{id:'B',status:'ACTIVE',token:'fixture-B'}],pages:posts.map(p=>({id:p.id,tokenBindings:{[p.id[0]]:{pageToken:'test-fixture',status:'VERIFIED'}}})),pageGroups:[{id:'campaign',pageIds:posts.map(p=>p.id),scheduleConfig:{enabled:false,sameTokenMinutes:10,crossTokenMinutes:1,tokenGroupId:'pool'}}],tokenGroups:[{id:'pool',tokenIds:['A','B'],pageTokenBindings:Object.fromEntries(posts.map(p=>[p.id,p.id[0]]))}]}}};
   return {at,store:{state,save(){}}};
 }
 

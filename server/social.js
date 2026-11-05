@@ -13,6 +13,7 @@ import { createPostPackage, packageFilePath, validatePackageFileName } from "./s
 import { isPublishableVideo } from "../shared/output-media.js";
 import { managedPageUnavailable } from "../shared/management.js";
 import { publishedVideo } from './post-lifecycle.js';
+import { groupReadyPageIds, reconcileGroupQueue } from './page-routing.js';
 
 const mediaKinds = new Set(["image", "video"]);
 
@@ -150,6 +151,7 @@ export function normalizeScheduleConfig(value, fallback = {}) {
     staggerMinutes,
     sameTokenMinutes: Math.max(0, Math.min(1440, Number(input.sameTokenMinutes ?? fallback.sameTokenMinutes ?? 0) || 0)),
     crossTokenMinutes: Math.max(0, Math.min(1440, Number(input.crossTokenMinutes ?? fallback.crossTokenMinutes ?? 0) || 0)),
+    samePageMinutes: Math.max(0, Math.min(10080, Number(input.samePageMinutes ?? fallback.samePageMinutes ?? 0) || 0)),
     dailyLimit,
     enabled,
     autoPublish: input.autoPublish === undefined ? enabled : input.autoPublish === true,
@@ -224,7 +226,7 @@ export function schedulePostsForGroup(store, groupId, { postIds = [], startAt = 
   const group = (store.state.settings?.meta?.pageGroups || []).find((item) => item.id === String(groupId));
   if (!group) throw new StudioError("Không tìm thấy nhóm Page.", "META_PAGE_GROUP_NOT_FOUND", 404);
   if (group.purpose === 'review' || group.id.startsWith('pgrp_hold_')) throw new StudioError('Nhóm chờ xử lý không dùng để đăng bài.', 'GROUP_ON_HOLD', 409);
-  const pageIds = [...new Set((group.pageIds || []).map(String))].filter(id => !managedPageUnavailable(store.state.settings.meta.pages?.find(page => String(page.id) === id), store.state.socialPages.find(page => String(page.externalId) === id)));
+  const pageIds = groupReadyPageIds(store, group, tokenGroupId || group.scheduleConfig?.tokenGroupId || '');
   if (!pageIds.length) throw new StudioError("Nhóm Page đang trống.", "GROUP_PAGES_EMPTY", 409);
   ensureLocalPagesForGroup(store, pageIds);
   const localPages = pageIds.map((id) => store.state.socialPages.find((page) => String(page.externalId) === id && !page.archived)).filter(Boolean);
@@ -263,7 +265,10 @@ export function schedulePostsForGroup(store, groupId, { postIds = [], startAt = 
     validatePostPayload(store, { ...post, ...changes }, { existing: post, reapprove: true });
     return { post, page, changes };
   });
-  for (const { post, changes } of scheduled) Object.assign(post, changes, { revision: Number(post.revision || 1) + 1, updatedAt: now() });
+  for (const { post, page, changes } of scheduled) {
+    Object.assign(post, changes, { revision: Number(post.revision || 1) + 1, updatedAt: now() });
+    group.lastScheduledPageId = page.externalId;
+  }
   store.save();
   return { group, scheduled: scheduled.map(({ post }) => post) };
 }
@@ -273,7 +278,7 @@ function localScheduleKey(timestamp, timeZone = "Asia/Bangkok") {
   return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
 }
 
-function nextGroupSlots(group, used, count, nowValue = Date.now()) {
+function nextGroupSlots(group, used, count, nowValue = Date.now(), dailyCounts = new Map()) {
   const config = normalizeScheduleConfig(group.scheduleConfig);
   if (!config.times.length || !count) return [];
   const timeZone = scheduleTimeZone(config.timezone);
@@ -285,31 +290,53 @@ function nextGroupSlots(group, used, count, nowValue = Date.now()) {
       if (candidate <= nowValue) continue;
       const iso = new Date(candidate).toISOString();
       if (used.has(iso)) continue;
+      const day = localScheduleKey(candidate, timeZone);
+      const dailyLimit = config.dailyLimit || config.times.length;
+      if ((dailyCounts.get(day) || 0) >= dailyLimit) continue;
       used.add(iso);
+      dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
       slots.push(iso);
+      if (slots.length >= count) break;
     }
   }
   return slots;
 }
 
-export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId = "" } = {}) {
+function groupOccupancy(store, group, excluded = new Set()) {
+  const used = new Set(), dailyCounts = new Map(), counted = new Set();
+  const records = [...(store.state.settings.meta.publications || []), ...store.state.socialPosts.filter(post => post.status === 'scheduled' && !post.automationRetryBlocked && !post.archivedAt && !post.deletedAt && !excluded.has(post.id))];
+  for (const record of records) {
+    const key = record.postId || record.id || record.idempotencyKey || record.externalPostId || record;
+    const stamp = record.publishedAt || record.scheduledAt;
+    if (record.pageGroupId !== group.id || !stamp || counted.has(key)) continue;
+    counted.add(key);
+    const day = localScheduleKey(stamp, group.scheduleConfig?.timezone);
+    dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
+    if (record.scheduledAt) used.add(new Date(record.scheduledAt).toISOString());
+  }
+  return { used, dailyCounts };
+}
+
+export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId = "", nowValue = Date.now() } = {}) {
   const group = (store.state.settings?.meta?.pageGroups || []).find((item) => item.id === String(groupId));
   if (!group) throw new StudioError("Không tìm thấy nhóm Page.", "META_PAGE_GROUP_NOT_FOUND", 404);
+  reconcileGroupQueue(store, group);
   const config = normalizeScheduleConfig(group.scheduleConfig);
   if (!config.enabled || !config.autoPublish || !config.times.length || group.purpose === 'review' || group.id.startsWith('pgrp_hold_')) return { group, scheduled: [] };
-  const pageIds = [...new Set((group.pageIds || []).map(String))].filter(id => !managedPageUnavailable(store.state.settings.meta.pages?.find(page => String(page.id) === id), store.state.socialPages.find(page => String(page.externalId) === id)));
+  const pageIds = groupReadyPageIds(store, group, tokenGroupId || config.tokenGroupId || '');
   if (!pageIds.length) return { group, scheduled: [] };
   ensureLocalPagesForGroup(store, pageIds);
   const localPages = pageIds.map((id) => store.state.socialPages.find((page) => String(page.externalId) === id && !page.archived)).filter(Boolean);
   if (localPages.length !== pageIds.length) return { group, scheduled: [] };
-  const dailyLimit = Math.max(1, Number(limit || config.dailyLimit || config.times.length) || config.times.length);
-  const today = localScheduleKey(Date.now(), config.timezone);
-  const existingToday = (store.state.socialPosts || []).filter((post) => post.pageGroupId === group.id && post.status === "scheduled" && post.scheduledAt && localScheduleKey(post.scheduledAt, config.timezone) === today).length;
+  const dailyLimit = Math.min(config.times.length, Math.max(1, Number(limit || config.dailyLimit || config.times.length) || config.times.length));
+  const signature = JSON.stringify([config.times, config.timezone, config.dailyLimit]);
   const futureAutoPosts = (store.state.socialPosts || [])
-    .filter((post) => post.pageGroupId === group.id && post.status === "scheduled" && !post.automationRetryBlocked && post.automationSource === "daily-automation" && post.scheduledAt && Date.parse(post.scheduledAt) > Date.now())
+    .filter((post) => post.pageGroupId === group.id && post.status === "scheduled" && !post.automationRetryBlocked && post.automationSource === "daily-automation" && post.scheduledAt && Date.parse(post.scheduledAt) > nowValue)
     .sort((left, right) => Date.parse(left.scheduledAt) - Date.parse(right.scheduledAt));
-  if (futureAutoPosts.length) {
-    const expectedSlots = nextGroupSlots(group, new Set(), futureAutoPosts.length);
+  let rescheduled = [];
+  if (futureAutoPosts.length && group.automatedScheduleSignature !== signature) {
+    const occupancy = groupOccupancy(store, group, new Set(futureAutoPosts.map(post => post.id)));
+    const expectedSlots = nextGroupSlots(group, occupancy.used, futureAutoPosts.length, nowValue, occupancy.dailyCounts);
     const scheduleChanged = futureAutoPosts.some((post, index) => post.scheduledAt !== expectedSlots[index]);
     if (scheduleChanged && expectedSlots.length === futureAutoPosts.length) {
       futureAutoPosts.forEach((post, index) => Object.assign(post, {
@@ -319,14 +346,14 @@ export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId
         revision: Number(post.revision || 1) + 1,
         updatedAt: now(),
       }));
-      store.save();
+      rescheduled = futureAutoPosts;
     }
-    return { group, scheduled: [], rescheduled: scheduleChanged ? futureAutoPosts : [] };
+    group.automatedScheduleSignature = signature;
+    store.save();
   }
-  const hasFutureSlot = (store.state.socialPosts || []).some((post) => post.pageGroupId === group.id && post.status === "scheduled" && post.scheduledAt && Date.parse(post.scheduledAt) > Date.now());
-  if (hasFutureSlot) return { group, scheduled: [] };
-  const capacity = Math.max(0, dailyLimit - existingToday);
-  if (!capacity) return { group, scheduled: [] };
+  const futureCount = (store.state.socialPosts || []).filter(post => post.pageGroupId === group.id && post.status === 'scheduled' && !post.automationRetryBlocked && !post.archivedAt && !post.deletedAt && Date.parse(post.scheduledAt) > nowValue).length;
+  const capacity = Math.max(0, dailyLimit - futureCount);
+  if (!capacity) return { group, scheduled: [], rescheduled };
   const candidates = (store.state.socialPosts || [])
     .filter((post) => {
       if (!["draft", "ready"].includes(post.status) || post.pageGroupId || !post.mediaIds?.length || post.archivedAt || post.deletedAt || post.warehouse?.returnedAt || post.automationHold) return false;
@@ -344,15 +371,16 @@ export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId
     .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0))
     .slice(0, capacity);
   if (!candidates.length) return { group, scheduled: [] };
-  const used = new Set((store.state.socialPosts || []).filter((post) => post.pageGroupId === group.id && post.scheduledAt).map((post) => new Date(post.scheduledAt).toISOString()));
-  const slots = nextGroupSlots(group, used, candidates.length);
+  const { used, dailyCounts } = groupOccupancy(store, group);
+  const slots = nextGroupSlots(group, used, candidates.length, nowValue, dailyCounts);
   const selectedTokenGroup = String(tokenGroupId || config.tokenGroupId || "");
   if (selectedTokenGroup && !(store.state.settings?.meta?.tokenGroups || []).some((item) => item.id === selectedTokenGroup))
     throw new StudioError("Không tìm thấy pool token đã chọn.", "META_TOKEN_GROUP_NOT_FOUND", 404);
   const scheduled = [];
+  const offset = (localPages.findIndex(page => page.externalId === group.lastScheduledPageId) + 1) % localPages.length;
   for (let index = 0; index < candidates.length && index < slots.length; index += 1) {
     const post = candidates[index];
-    const page = localPages[index % localPages.length];
+    const page = localPages[(offset + index) % localPages.length];
     const changes = {
       pageId: page.id,
       pageGroupId: String(group.id),
@@ -368,15 +396,16 @@ export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId
       automationBlockedReason: null,
       automationErrorDetails: null,
     };
-    validatePostPayload(store, { ...post, ...changes }, { existing: post, reapprove: true });
+    validatePostPayload(store, { ...post, ...changes }, { existing: post, reapprove: true, nowValue });
     Object.assign(post, changes, { revision: Number(post.revision || 1) + 1, updatedAt: now() });
     scheduled.push(post);
+    group.lastScheduledPageId = page.externalId;
   }
-  if (scheduled.length) store.save();
-  return { group, scheduled };
+  if (scheduled.length) { group.automatedScheduleSignature = signature; store.save(); }
+  return { group, scheduled, rescheduled };
 }
 
-export function validatePostPayload(store, payload, { existing = null, reapprove = false } = {}) {
+export function validatePostPayload(store, payload, { existing = null, reapprove = false, nowValue = Date.now() } = {}) {
   const projectId = payload.projectId ?? existing?.projectId;
   const pageId = payload.pageId ?? existing?.pageId;
   requireProject(store, projectId);
@@ -395,10 +424,10 @@ export function validatePostPayload(store, payload, { existing = null, reapprove
       throw new StudioError("Bài đã duyệt cần có caption hoặc media.", "REVIEW_REQUIRED");
   }
   if (status === "scheduled") {
-    if (!scheduledAt || Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now())
+    if (!scheduledAt || Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= nowValue)
       throw new StudioError("Lịch đăng phải là thời điểm UTC trong tương lai.", "INVALID_SCHEDULE");
   }
-  if (scheduledAt !== null && (Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= Date.now()) && status !== "draft")
+  if (scheduledAt !== null && (Number.isNaN(Date.parse(scheduledAt)) || Date.parse(scheduledAt) <= nowValue) && status !== "draft")
     throw new StudioError("Lịch đăng phải là thời điểm trong tương lai.", "INVALID_SCHEDULE");
   if (status === "draft" && scheduledAt !== null && !reapprove)
     throw new StudioError("Bản nháp không được giữ lịch đăng.", "INVALID_SCHEDULE");

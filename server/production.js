@@ -285,9 +285,10 @@ export class ProductionService {
           batch.warnings = research.warnings || [];
           this.store.save();
         } else if ((request.contentType === "news" || request.autoResearch) && !batch.sources.length) {
-          const discovery = await this.research.discover({topic:request.topic,feeds:request.feeds,count:request.count});
+          const discovery = await this.research.discover({topic:request.topic,feeds:request.feeds,count:request.count,signal:this.controller.signal});
           batch.sources = discovery.articles;
           batch.warnings = discovery.warnings;
+          if (!batch.sources.length) throw new StudioError('Chưa tìm thấy tin mới phù hợp sau khi mở rộng từ khóa.', 'NO_CURRENT_NEWS', 422);
           if (batch.sources.length < request.count) batch.warnings.push(`${batch.sources.length} current stories found; extra videos use different versions of these stories.`);
           this.store.save();
         }

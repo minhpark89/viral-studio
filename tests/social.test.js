@@ -149,8 +149,8 @@ test("Meta Pages sync into local channels and a Page group schedules warehouse p
   const { request, store, project, media } = await fixture();
   store.state.settings.meta = {
     pages: [
-      { id: "111111", name: "First Page", avatar: "https://example.test/first.jpg" },
-      { id: "222222", name: "Second Page", avatar: "https://example.test/second.jpg" },
+      { id: "111111", name: "First Page", avatar: "https://example.test/first.jpg", accessToken: 'fixture-page-1' },
+      { id: "222222", name: "Second Page", avatar: "https://example.test/second.jpg", accessToken: 'fixture-page-2' },
     ],
     pageGroups: [{ id: "group_alpha", name: "Alpha group", pageIds: ["111111", "222222"], scheduleConfig: { times: ["23:59"], staggerMinutes: 10 } }],
     tokenGroups: [],
@@ -188,7 +188,7 @@ test("an enabled Page group materializes Meta Pages and schedules drafts without
   const { store, project, media } = await fixture();
   const now = new Date(Date.now() + 120_000);
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  store.state.settings.meta.pages = [{ id: "555555", name: "Meta-only Page" }];
+  store.state.settings.meta.pages = [{ id: "555555", name: "Meta-only Page", accessToken: 'fixture-page-token' }];
   const group = { id: "group_meta_only", name: "Meta only", pageIds: ["555555"], scheduleConfig: { times: [time], timezone: "Asia/Bangkok", dailyLimit: 1, enabled: true, autoPublish: true } };
   store.state.settings.meta.pageGroups = [group];
   const post = store.add("socialPosts", {

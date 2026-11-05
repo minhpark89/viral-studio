@@ -1,5 +1,5 @@
 export const MAX_NEWS_VIDEOS = 100;
-export const MAX_RESEARCH_STORIES = 100;
+export const MAX_RESEARCH_STORIES = 1000;
 
 // Assignment follows video order, never worker completion or account order.
 export function mcForVideo(request, index) {

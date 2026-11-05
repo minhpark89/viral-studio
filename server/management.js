@@ -1,3 +1,4 @@
+import { resolvePageToken } from './page-routing.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { z } from 'zod';
 import { StudioError } from './store.js';
@@ -17,7 +18,6 @@ export function pageRows(store) {
   const state=store.state, meta=state.settings.meta;
   const localById=new Map(state.socialPages.filter(p=>p.externalId).map(p=>[String(p.externalId),p]));
   const metaIds=new Set(meta.pages.map(p=>String(p.id)));
-  const tokens=new Map(meta.tokens.map(t=>[t.id,{...t,fingerprint:t.token?fingerprint(t.token):''}]));
   const queued=new Map(),published=new Map(),memberships=new Map();
   for(const p of state.socialPosts){const entry=queued.get(p.pageId)||{count:0,publishing:0};if(!p.deletedAt && !p.archivedAt && p.status!=='published')entry.count++;if(p.automationStatus==='publishing')entry.publishing++;queued.set(p.pageId,entry);}
   for(const p of meta.publications)published.set(String(p.pageId),(published.get(String(p.pageId))||0)+1);
@@ -27,9 +27,9 @@ export function pageRows(store) {
     const owner=page || local, management=owner.management || local?.management || {};
     const id=String(page?.id || local?.externalId || `local:${local.id}`);
     const bindings=Object.entries(page?.tokenBindings || {});
-    const usable=bindings.filter(([id,b])=>{const t=tokens.get(id);return t?.status==='ACTIVE' && t.token && b.pageToken && b.status==='VERIFIED' && (!b.credentialFingerprint || b.credentialFingerprint===t.fingerprint);});
     const counts=queued.get(local?.id)||{count:0,publishing:0};
-    const row={id,localId:local?.id || '',externalId:page?.id || local?.externalId || '',name:page?.name || local?.name || id,url:page?.id || local?.externalId ? `https://www.facebook.com/${page?.id || local.externalId}` : '',revision:Number(management.revision || 0),lifecycle:management.status || (local?.archived?'archived':page?.publishingHealth?.blocked?'review':'active'),source:management.source || (bindings.length?'Token':'Thủ công'),sourceKind:management.sourceKind || (bindings.length?'token':'manual'),tokenIds:bindings.map(([id])=>id),hasUsableToken:usable.length>0 || Boolean(page?.accessToken && !bindings.length),groupIds:memberships.get(id)||[],notes:management.notes ?? local?.notes ?? '',reviewAt:management.reviewAt || null,lastCheckedAt:owner.verification?.checkedAt || owner.publishingCheckedAt || null,verification:owner.verification || null,publishingHealth:page?.publishingHealth || null,isPublished:page?.isPublished,previousGroupIds:management.previousGroupIds || [],history:management.history || [],pendingCount:counts.count,publishingCount:counts.publishing,publishedCount:published.get(id)||0};
+    const avatar=page?.avatar || local?.avatar || '';
+    const row={id,avatar:/^https?:\/\//i.test(avatar)?`/api/meta/pages/${id}/avatar`:avatar,localId:local?.id || '',externalId:page?.id || local?.externalId || '',name:page?.name || local?.name || id,url:page?.id || local?.externalId ? `https://www.facebook.com/${page?.id || local.externalId}` : '',revision:Number(management.revision || 0),lifecycle:management.status || (local?.archived?'archived':page?.publishingHealth?.blocked?'review':'active'),source:management.source || (bindings.length?'Token':'Thủ công'),sourceKind:management.sourceKind || (bindings.length?'token':'manual'),tokenIds:bindings.map(([id])=>id),hasUsableToken:Boolean(resolvePageToken(meta,page)),groupIds:memberships.get(id)||[],notes:management.notes ?? local?.notes ?? '',reviewAt:management.reviewAt || null,lastCheckedAt:owner.verification?.checkedAt || owner.publishingCheckedAt || null,verification:owner.verification || null,publishingHealth:page?.publishingHealth || null,isPublished:page?.isPublished,previousGroupIds:management.previousGroupIds || [],history:management.history || [],pendingCount:counts.count,publishingCount:counts.publishing,publishedCount:published.get(id)||0};
     row.health=pageHealth(row);
     row.error=page?.publishingHealth?.blocked ? page.publishingHealth.message : owner.verification?.message || '';
     return row;
@@ -56,7 +56,7 @@ export function postRows(store) {
   return [...s.socialPosts.map(p=>enrich(p)),...meta.publications.filter(p=>!s.socialPosts.some(s=>s.id===p.postId)).map(p=>enrich(p,true))];
 }
 
-export function mountManagementRoutes(app,store,{client,postPreflight}) {
+export function mountManagementRoutes(app,store,{client,postPreflight,refreshTokenPools=()=>{}}) {
   const meta=store.state.settings.meta;
   let migrated=false;
   for(const post of store.state.socialPosts){
@@ -80,6 +80,7 @@ export function mountManagementRoutes(app,store,{client,postPreflight}) {
   const halt=(row,groupId='',onlyGroup=null)=>{
     if(!row.localId)return;
     for(const p of store.state.socialPosts.filter(p=>p.pageId===row.localId && (!onlyGroup || p.pageGroupId===onlyGroup))){
+      if (publishedVideo(store, p)) continue;
       p.status='draft';p.automationHold=true;p.scheduledAt=null;p.automationNextAttemptAt=null;p.pageGroupId=groupId;p.revision=Number(p.revision||1)+1;p.updatedAt=now();
     }
   };
@@ -147,7 +148,7 @@ export function mountManagementRoutes(app,store,{client,postPreflight}) {
         results.push({id:row.id,name:row.name,ok:true});
       }catch(e){results.push({id:item.id,name:rows.get(item.id)?.name || item.id,ok:false,error:e.message});}
     }
-    if(apply){refreshMembership();store.save();}
+    if(apply){refreshMembership();refreshTokenPools();store.save();}
     return {results,changed:results.filter(r=>r.ok).length,failed:results.filter(r=>!r.ok).length,preview:!apply};
   };
   app.post('/api/management/pages/bulk/preview',(req,res)=>res.json(pageBulk(bulkSchema.parse(req.body),false)));

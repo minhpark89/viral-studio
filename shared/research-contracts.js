@@ -36,6 +36,7 @@ export const researchArticleSchema = z.object({
 export const researchBatchRequestSchema = researchRequestSchema.omit({ maxArticles: true }).extend({
   requestId: id,
   count: z.number().int().min(1).max(MAX_RESEARCH_STORIES).default(10),
+  windowHours: z.union([z.literal(24), z.literal(72), z.literal(168)]).default(24),
 });
 
 export const researchImageSchema = z.object({

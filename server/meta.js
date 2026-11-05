@@ -11,6 +11,7 @@ import { classifyMetaFailure, metaResponseDetails } from "./meta-errors.js";
 import { mountManagementRoutes } from "./management.js";
 import { cleanupPublishedMedia, publishedMediaLineage, publishedVideo, returnPostToWarehouse } from "./post-lifecycle.js";
 import { managedPageUnavailable } from "../shared/management.js";
+import { verifiedPageBinding, resolvePageToken, groupReadyPageIds, reconcileGroupQueue, pageUnavailableReason } from './page-routing.js';
 
 const GRAPH_VERSION = "v26.0";
 const accessTokenSchema = z.string().trim().min(10).max(5000);
@@ -104,10 +105,14 @@ function publicTokenGroup(group) {
     note: group.note || "",
     maxPagesPerToken: Number(group.maxPagesPerToken || 0),
     autoAssign: group.autoAssign !== false,
+    pageScope: group.pageScope || 'all',
+    pageGroupId: group.pageGroupId || '',
+    selectedPageIds: group.selectedPageIds || [],
     pageAssignments: group.pageTokenBindings && typeof group.pageTokenBindings === "object" ? { ...group.pageTokenBindings } : {},
     assignmentLoads: Object.fromEntries(Object.entries(assignmentLoads).map(([id, count]) => [id, Number(count || 0)])),
     assignedPageCount: Number(group.assignedPageCount || Object.keys(group.pageTokenBindings || {}).length || 0),
     assignmentBlockedCount: Number(group.assignmentBlockedCount || 0),
+    assignmentBlocked: group.assignmentBlocked || [],
     assignmentUpdatedAt: group.assignmentUpdatedAt || null,
     createdAt: group.createdAt || null,
     updatedAt: group.updatedAt || null,
@@ -115,12 +120,13 @@ function publicTokenGroup(group) {
   };
 }
 
-function publicPageGroup(group) {
+function publicPageGroup(group, meta = null) {
   return {
     id: group.id,
     purpose: group.purpose || (group.id.startsWith('pgrp_hold_') ? 'review' : 'active'),
     name: group.name,
     pageIds: Array.isArray(group.pageIds) ? group.pageIds : [],
+    readyPageCount: meta ? (group.pageIds || []).filter(id => !pageUnavailableReason(meta, meta.pages.find(page => page.id === id), null, group.scheduleConfig?.tokenGroupId || '')).length : undefined,
     folderBinding: group.folderBinding || "",
     scheduleConfig: normalizeScheduleConfig(group.scheduleConfig),
     createdAt: group.createdAt || null,
@@ -138,7 +144,7 @@ function publicMeta(meta) {
     pages: (meta?.pages || []).filter(page => page.management?.status !== 'deleted').map(publicPage),
     tokens: (meta?.tokens || []).map(publicToken),
     tokenGroups: (meta?.tokenGroups || []).map(publicTokenGroup),
-    pageGroups: (meta?.pageGroups || []).map(publicPageGroup),
+    pageGroups: (meta?.pageGroups || []).map(group => publicPageGroup(group, meta)),
     boundPage: meta?.boundPageId
       ? { id: meta.boundPageId, name: meta.boundPageName || meta.boundPageId }
       : null,
@@ -289,6 +295,12 @@ function metaState(store) {
   for (const group of meta.tokenGroups) {
     group.tokenIds = Array.isArray(group.tokenIds) ? group.tokenIds : [];
     group.pageIds = Array.isArray(group.pageIds) ? group.pageIds : [];
+    // Legacy pools could have been assigned an explicit subset through the API.
+    // Preserve that boundary on upgrade; expanding to all Pages is an edit.
+    if (!group.pageScope && group.pageIds.length && !group.pageSourceTokenId) {
+      group.pageScope = 'selected';
+      group.selectedPageIds = [...group.pageIds];
+    }
     group.strategy = normalizeTokenStrategy(group.strategy);
     group.maxPagesPerToken = Math.max(0, Math.min(50, Math.floor(Number(group.maxPagesPerToken || 0) || 0)));
     group.pageTokenBindings = group.pageTokenBindings && typeof group.pageTokenBindings === "object" ? group.pageTokenBindings : {};
@@ -392,6 +404,7 @@ function syncPages(meta, tokenEntry, pages) {
       }
     }
   }
+  for (const pool of meta.tokenGroups || []) if (pool.autoAssign !== false && pool.tokenIds?.includes(tokenEntry.id)) autoAssignTokenGroup(meta, pool);
 }
 
 const tokenStrategies = new Set(["round_robin", "least_recently_used", "random"]);
@@ -402,12 +415,13 @@ function normalizeTokenStrategy(value, fallback = "round_robin") {
 }
 
 export function usableTokenBinding(meta, page, tokenId) {
-  const token = meta.tokens.find((item) => item.id === tokenId);
-  const binding = page?.tokenBindings?.[tokenId];
-  return Boolean(token?.status === "ACTIVE" && token.token && binding?.status === "VERIFIED" && binding.pageToken && String(binding.verifiedPageId || page.id) === String(page.id) && binding.credentialFingerprint === fingerprint(token.token));
+  return verifiedPageBinding(meta, page, tokenId, { strict: true });
 }
 
 function tokenGroupPageIds(meta, group) {
+  if (group.pageScope === 'selected') return [...new Set(group.selectedPageIds || [])];
+  if (group.pageScope === 'group') return [...new Set(meta.pageGroups?.find(item => item.id === group.pageGroupId)?.pageIds || [])];
+  if (group.pageScope === 'all') return meta.pages.filter(page => page.management?.status !== 'deleted' && group.tokenIds.some(id => page.tokenBindings?.[id])).map(page => page.id);
   const configured = [...new Set((Array.isArray(group.pageIds) ? group.pageIds : []).map(String).filter(Boolean))];
   const sourceId = String(group.pageSourceTokenId || "");
   if (sourceId) return meta.pages.filter((page) => usableTokenBinding(meta, page, sourceId)).map((page) => page.id);
@@ -416,17 +430,45 @@ function tokenGroupPageIds(meta, group) {
   return [...new Set([...configured, ...derived])].filter((id) => meta.pages.some((page) => page.id === id));
 }
 
+function tokenGroupDraft(meta, body) {
+  const existing = body.id ? meta.tokenGroups.find(group => group.id === body.id) : null;
+  if (body.id && !existing) throw new StudioError('Pool không còn tồn tại. Làm mới danh sách.', 'META_TOKEN_GROUP_NOT_FOUND', 404);
+  const group = { ...existing, id: existing?.id || `tgrp_${randomUUID().replaceAll('-', '').slice(0, 12)}`, createdAt: existing?.createdAt || new Date().toISOString() };
+  group.name = z.string().trim().min(1).max(120).parse(body.name);
+  group.tokenIds = [...new Set(z.array(z.string()).max(5000).parse(body.tokenIds ?? body.token_ids ?? existing?.tokenIds ?? []))];
+  if (group.tokenIds.some(id => !meta.tokens.some(token => token.id === id))) throw new StudioError('Nhóm chứa token không tồn tại.', 'META_TOKEN_NOT_FOUND', 404);
+  group.strategy = z.enum(['round_robin', 'least_recently_used', 'random']).parse(body.strategy ?? existing?.strategy ?? 'round_robin');
+  group.maxPagesPerToken = z.coerce.number().int().min(0).max(50).parse(body.maxPagesPerToken ?? existing?.maxPagesPerToken ?? 0);
+  group.autoAssign = body.autoAssign ?? existing?.autoAssign ?? true;
+  group.note = String(body.note ?? existing?.note ?? '').slice(0, 2000);
+  group.pageScope = z.enum(['all', 'group', 'selected']).parse(body.pageScope ?? existing?.pageScope ?? 'all');
+  group.pageGroupId = String(body.pageGroupId ?? existing?.pageGroupId ?? '');
+  group.selectedPageIds = [...new Set(z.array(z.string()).max(5000).parse(body.selectedPageIds ?? existing?.selectedPageIds ?? []))];
+  group.pageSourceTokenId = String(body.pageSourceTokenId ?? existing?.pageSourceTokenId ?? '');
+  if (group.pageScope === 'group' && !meta.pageGroups.some(item => item.id === group.pageGroupId)) throw new StudioError('Chọn nhóm Page cho pool.', 'META_PAGE_GROUP_NOT_FOUND', 404);
+  if (group.pageScope === 'selected' && group.selectedPageIds.some(id => !meta.pages.some(page => page.id === id))) throw new StudioError('Danh sách có Page không tồn tại.', 'META_PAGE_NOT_FOUND', 404);
+  group.updatedAt = new Date().toISOString();
+  return group;
+}
+
 export function autoAssignTokenGroup(meta, group, { strategy = group.strategy, maxPagesPerToken = group.maxPagesPerToken, pageIds = null } = {}) {
   const normalizedStrategy = normalizeTokenStrategy(strategy);
   const max = Number.isFinite(Number(maxPagesPerToken)) ? Math.max(0, Math.min(50, Math.floor(Number(maxPagesPerToken)))) : 0;
   const tokenIds = [...new Set((group.tokenIds || []).map(String).filter(Boolean))];
   const selectedPageIds = pageIds ? [...new Set(pageIds.map(String))] : tokenGroupPageIds(meta, group);
   const pages = selectedPageIds.map((id) => meta.pages.find((page) => page.id === id)).filter(Boolean);
+  // Assign the Pages with fewer eligible credentials first so a flexible Page
+  // does not occupy the only available slot for a restricted membership.
+  pages.sort((a, b) => tokenIds.filter(id => usableTokenBinding(meta, a, id)).length - tokenIds.filter(id => usableTokenBinding(meta, b, id)).length);
   const loads = Object.fromEntries(tokenIds.map((id) => [id, 0]));
   const assignments = {};
   const blocked = [];
   let cursor = 0;
   for (const page of pages) {
+    if (managedPageUnavailable(page) || page.verification?.status === 'error') {
+      blocked.push({ pageId: page.id, code: 'page_unavailable' });
+      continue;
+    }
     let choices = tokenIds.filter((tokenId) => usableTokenBinding(meta, page, tokenId));
     if (!choices.length) {
       blocked.push({ pageId: page.id, code: "missing_mapping" });
@@ -439,6 +481,8 @@ export function autoAssignTokenGroup(meta, group, { strategy = group.strategy, m
     }
     let selected;
     if (normalizedStrategy === "round_robin") {
+      const minimum = Math.min(...choices.map(id => loads[id]));
+      choices = choices.filter(id => loads[id] === minimum);
       const available = new Set(choices);
       for (let offset = 0; offset < tokenIds.length; offset += 1) {
         const candidate = tokenIds[(cursor + offset) % tokenIds.length];
@@ -454,7 +498,7 @@ export function autoAssignTokenGroup(meta, group, { strategy = group.strategy, m
       selected = choices.slice().sort((left, right) => {
         const a = meta.tokens.find((token) => token.id === left) || {};
         const b = meta.tokens.find((token) => token.id === right) || {};
-        return String(a.lastUsed || "").localeCompare(String(b.lastUsed || "")) || Number(a.totalCalls || 0) - Number(b.totalCalls || 0) || tokenIds.indexOf(left) - tokenIds.indexOf(right);
+        return loads[left] - loads[right] || String(a.lastUsed || "").localeCompare(String(b.lastUsed || "")) || Number(a.totalCalls || 0) - Number(b.totalCalls || 0) || tokenIds.indexOf(left) - tokenIds.indexOf(right);
       })[0];
     }
     if (!selected) {
@@ -473,6 +517,7 @@ export function autoAssignTokenGroup(meta, group, { strategy = group.strategy, m
     assignmentLoads: loads,
     assignedPageCount: Object.keys(assignments).length,
     assignmentBlockedCount: blocked.length,
+    assignmentBlocked: blocked,
     assignmentUpdatedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
@@ -530,22 +575,14 @@ function requirePostPage(store, meta, post, tokenIds = [], tokenGroup = null) {
     error.metaError = current.publishingHealth.details;
     throw error;
   }
-  const resolvedGroup = tokenGroup || (post?.pageGroupId ? meta.pageGroups.find((group) => group.id === post.pageGroupId && group.scheduleConfig?.tokenGroupId) && meta.tokenGroups.find((group) => group.id === meta.pageGroups.find((item) => item.id === post.pageGroupId)?.scheduleConfig?.tokenGroupId) : null) || meta.tokenGroups.find((group) => group.pageTokenBindings?.[current?.id]);
-  const resolvedTokenIds = tokenIds.length ? tokenIds : resolvedGroup?.tokenIds || [];
-  if (current?.tokenBindings && meta.tokens?.length) {
-    const allowed = new Set(resolvedTokenIds || []);
-    const ids = Object.keys(current.tokenBindings).filter((id) => current.tokenBindings[id]?.pageToken && (!allowed.size || allowed.has(id)));
-    const assignedId = resolvedGroup?.pageTokenBindings?.[current.id];
-    const selected = healthyToken(meta, assignedId && ids.includes(assignedId) ? [assignedId] : ids, resolvedGroup?.strategy);
-    const binding = selected ? current.tokenBindings[selected.id] : null;
-    if (binding) {
-      selected.lastUsed = new Date().toISOString();
-      selected.totalCalls = Number(selected.totalCalls || 0) + 1;
-      return { id: current.id, name: current.name || current.id, accessToken: binding.pageToken, tokenId: selected.id };
-    }
+  const poolId = post?.tokenGroupId || tokenGroup?.id || meta.pageGroups.find(group => group.id === post?.pageGroupId)?.scheduleConfig?.tokenGroupId || '';
+  const pinned = post?.automationStatus === 'publishing' ? post.automationCadence?.tokenId || '' : '';
+  const route = resolvePageToken(meta, current, poolId, pinned.startsWith('legacy:') ? '' : pinned);
+  if (route) {
+    const selected = meta.tokens.find(token => token.id === route.tokenId);
+    if (selected) { selected.lastUsed = new Date().toISOString(); selected.totalCalls = Number(selected.totalCalls || 0) + 1; }
+    return { id: current.id, name: current.name || current.id, ...route };
   }
-  if (current?.accessToken) return { id: current.id, name: current.name || current.id, accessToken: current.accessToken };
-  if (targetId && targetId === meta.boundPageId && meta.boundPageToken) return requireBoundPage(meta, resolvedTokenIds, resolvedGroup);
   throw new StudioError("Page local chưa có token Meta khỏe để đăng.", "META_PAGE_NOT_BOUND", 409);
 }
 
@@ -587,7 +624,8 @@ function postPreflight(store, post, meta) {
 }
 
 export function mountMetaRoutes(app, store, { client = createMetaClient(), llm = requestJsonContent, fetchImpl = globalThis.fetch } = {}) {
-  const management = mountManagementRoutes(app, store, { client, postPreflight });
+  const refreshTokenPools = () => { for (const pool of metaState(store).tokenGroups) if (pool.autoAssign !== false) autoAssignTokenGroup(metaState(store), pool); };
+  const management = mountManagementRoutes(app, store, { client, postPreflight, refreshTokenPools });
   app.get("/api/meta/pages/:id/avatar", async (req, res) => {
     const meta = metaState(store);
     const page = meta.pages.find((item) => item.id === String(req.params.id));
@@ -707,7 +745,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
 
   const listTokens = () => metaState(store).tokens.map(publicToken);
   const listTokenGroups = () => metaState(store).tokenGroups.map(publicTokenGroup);
-  const listPageGroups = () => metaState(store).pageGroups.map(publicPageGroup);
+  const listPageGroups = () => { const meta = metaState(store); return meta.pageGroups.map(group => publicPageGroup(group, meta)); };
 
   app.get(["/api/meta/tokens", "/api/tokens"], (req, res) => res.json({ tokens: listTokens() }));
   app.get(["/api/meta/token-groups", "/api/token-groups"], (req, res) => res.json({ groups: listTokenGroups() }));
@@ -855,22 +893,20 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     res.json({ ok: true });
   });
 
+  app.post('/api/meta/token-groups/preview', (req, res) => {
+    const meta = store.state.settings.meta;
+    const group = tokenGroupDraft(meta, req.body || {});
+    autoAssignTokenGroup(meta, group);
+    res.json({ group: publicTokenGroup(group) });
+  });
+
   app.post(["/api/meta/token-groups", "/api/token-groups"], (req, res) => {
     const meta = metaState(store);
-    const body = req.body || {};
-    const name = z.string().trim().min(1).max(120).parse(body.name);
-    const strategy = z.enum(["round_robin", "least_recently_used", "random"]).catch("least_recently_used").parse(body.strategy || "least_recently_used");
-    const tokenIds = [...new Set((Array.isArray(body.tokenIds) ? body.tokenIds : body.token_ids || []).map(String))];
-    if (tokenIds.some((id) => !meta.tokens.some((token) => token.id === id))) throw new StudioError("Nhóm chứa token không tồn tại.", "META_TOKEN_NOT_FOUND", 404);
-    const id = String(body.id || `tgrp_${randomUUID().replaceAll("-", "").slice(0, 12)}`);
-    const now = new Date().toISOString();
-    let group = meta.tokenGroups.find((item) => item.id === id);
-    if (!group) { group = { id, createdAt: now }; meta.tokenGroups.push(group); }
-    const maxPagesPerToken = Math.max(0, Math.min(50, Math.floor(Number(body.maxPagesPerToken ?? body.max_pages_per_token ?? group.maxPagesPerToken ?? 0) || 0)));
-    Object.assign(group, { name, strategy, tokenIds, maxPagesPerToken, autoAssign: body.autoAssign !== false, note: String(body.note || "").slice(0, 2000), pageSourceTokenId: String(body.pageSourceTokenId || body.page_source_token_id || group.pageSourceTokenId || ""), updatedAt: now });
-    if (group.pageSourceTokenId) group.pageIds = meta.pages.filter((page) => page.tokenBindings?.[group.pageSourceTokenId]).map((page) => page.id);
-    else group.pageIds = tokenGroupPageIds(meta, group);
-    const assignment = group.autoAssign ? autoAssignTokenGroup(meta, group, { strategy, maxPagesPerToken }) : null;
+    const group = tokenGroupDraft(meta, req.body || {});
+    group.pageIds = tokenGroupPageIds(meta, group);
+    const assignment = group.autoAssign ? autoAssignTokenGroup(meta, group) : null;
+    const existing = meta.tokenGroups.find(item => item.id === group.id);
+    if (existing) Object.assign(existing, group); else meta.tokenGroups.push(group);
     store.save();
     res.json({ group: publicTokenGroup(group), assignment: assignment ? { assignedCount: assignment.assignedCount, blockedCount: assignment.blockedCount, loads: assignment.loads, blocked: assignment.blocked } : null });
   });
@@ -884,6 +920,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
       ? group.maxPagesPerToken
       : Math.max(0, Math.min(50, Math.floor(Number(req.body?.maxPagesPerToken ?? req.body?.max_pages_per_token) || 0)));
     const requestedPageIds = Array.isArray(req.body?.pageIds) ? req.body.pageIds.map(String) : null;
+    if (requestedPageIds) { group.pageScope = 'selected'; group.selectedPageIds = requestedPageIds; }
     const assignment = autoAssignTokenGroup(meta, group, { strategy, maxPagesPerToken, pageIds: requestedPageIds });
     store.save();
     res.json({ group: publicTokenGroup(group), assignment: { assignedCount: assignment.assignedCount, blockedCount: assignment.blockedCount, loads: assignment.loads, blocked: assignment.blocked } });
@@ -918,9 +955,27 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     const id = String(body.id || `pgrp_${randomUUID().replaceAll("-", "").slice(0, 12)}`);
     const now = new Date().toISOString();
     let group = meta.pageGroups.find((item) => item.id === id);
+    if (body.id && !group) throw new StudioError('Nhóm không còn tồn tại.', 'META_PAGE_GROUP_NOT_FOUND', 404);
+    const previousIds = group?.pageIds || [];
+    const removedIds = previousIds.filter(id => !pageIds.includes(id));
+    if (store.state.socialPosts.some(post => post.automationStatus === 'publishing' && removedIds.includes(store.state.socialPages.find(page => page.id === post.pageId)?.externalId))) throw new StudioError('Page có bài đang đăng. Chờ tác vụ kết thúc rồi gỡ Page.', 'POST_BUSY', 409);
+    if (group?.purpose !== 'review' && !id.startsWith('pgrp_hold_')) {
+      for (const pageId of pageIds.filter(id => !previousIds.includes(id))) {
+        const page = meta.pages.find(page => page.id === pageId);
+        const reason = pageUnavailableReason(meta, page, store.state.socialPages.find(page => page.externalId === pageId));
+        if (reason) throw new StudioError(`${page.name || pageId}: ${reason}. Xử lý trong Quản lý Page trước khi thêm vào nhóm đăng.`, 'META_PAGE_ON_HOLD', 409);
+      }
+    }
     if (!group) { group = { id, createdAt: now }; meta.pageGroups.push(group); }
     Object.assign(group, { name, pageIds, folderBinding: String(body.folderBinding || body.folder_binding || group.folderBinding || ""), scheduleConfig: normalizeScheduleConfig(body.scheduleConfig || body.schedule_config || {}, group.scheduleConfig || {}), updatedAt: now });
-    for (const page of meta.pages) page.groupIds = meta.pageGroups.filter((item) => item.pageIds.includes(page.id)).map((item) => item.id);
+    if (group.purpose === 'review' || id.startsWith('pgrp_hold_')) Object.assign(group.scheduleConfig, { enabled: false, autoPublish: false });
+    for (const page of meta.pages) {
+      page.groupIds = meta.pageGroups.filter((item) => item.pageIds.includes(page.id)).map((item) => item.id);
+      if (previousIds.includes(page.id) !== pageIds.includes(page.id)) { page.management ||= {}; page.management.revision = Number(page.management.revision || 0) + 1; }
+    }
+    for (const pool of meta.tokenGroups.filter(pool => pool.autoAssign !== false && pool.pageScope === 'group' && pool.pageGroupId === group.id)) autoAssignTokenGroup(meta, pool);
+    reconcileGroupQueue(store, group);
+    for (const post of store.state.socialPosts) if (post.pageGroupId === group.id && post.status === 'scheduled' && post.automationStatus !== 'publishing' && !publishedVideo(store, post)) post.tokenGroupId = group.scheduleConfig.tokenGroupId || '';
     store.save();
     try {
       autoScheduleWarehousePosts(store, group.id);
@@ -944,11 +999,24 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     const group = meta.pageGroups.find((item) => item.id === req.params.id);
     if (!group) throw new StudioError("Không tìm thấy nhóm Page.", "META_PAGE_GROUP_NOT_FOUND", 404);
     const before = [...group.pageIds];
-    const healthy = (page) => !page.publishingHealth?.blocked && Object.entries(page.tokenBindings || {}).some(([tokenId, binding]) => {
-      const token = meta.tokens.find((item) => item.id === tokenId);
-      return token?.status === "ACTIVE" && Boolean(binding?.pageToken) && binding.status !== "ERROR";
-    });
-    group.pageIds = group.pageIds.filter((id) => healthy(meta.pages.find((page) => page.id === id) || {}));
+    if (group.purpose === 'review' || group.id.startsWith('pgrp_hold_')) throw new StudioError('Nhóm chờ xử lý giữ các Page cần sửa.', 'GROUP_ON_HOLD', 409);
+    const removed = before.filter(id => pageUnavailableReason(meta, meta.pages.find(page => page.id === id), store.state.socialPages.find(page => page.externalId === id)));
+    if (store.state.socialPosts.some(post => post.automationStatus === 'publishing' && removed.includes(store.state.socialPages.find(page => page.id === post.pageId)?.externalId))) throw new StudioError('Page có bài đang đăng. Chờ tác vụ kết thúc.', 'POST_BUSY', 409);
+    let review = meta.pageGroups.find(item => item.purpose === 'review' || item.id.startsWith('pgrp_hold_'));
+    if (removed.length && !review) { review = { id: `pgrp_hold_${randomUUID().slice(0,8)}`, name: 'Page chờ xử lý', purpose: 'review', pageIds: [], scheduleConfig: normalizeScheduleConfig({ enabled: false, autoPublish: false }), createdAt: new Date().toISOString() }; meta.pageGroups.push(review); }
+    for (const id of removed) {
+      const page = meta.pages.find(page => page.id === id);
+      if (!page) continue;
+      page.management ||= {};
+      page.management.previousGroupIds = [...new Set([...(page.management.previousGroupIds || []), ...meta.pageGroups.filter(g => g !== review && g.pageIds.includes(id)).map(g => g.id)])];
+      page.management.status = 'review';
+      page.management.revision = Number(page.management.revision || 0) + 1;
+      for (const g of meta.pageGroups) if (g !== review) g.pageIds = g.pageIds.filter(value => value !== id);
+      review.pageIds = [...new Set([...review.pageIds, id])];
+    }
+    group.pageIds = group.pageIds.filter(id => !removed.includes(id));
+    for (const g of meta.pageGroups) reconcileGroupQueue(store, g);
+    for (const pool of meta.tokenGroups.filter(pool => pool.autoAssign !== false && pool.pageScope === 'group')) autoAssignTokenGroup(meta, pool);
     for (const page of meta.pages) page.groupIds = meta.pageGroups.filter((item) => item.pageIds.includes(page.id)).map((item) => item.id);
     group.updatedAt = new Date().toISOString();
     store.save();
@@ -1166,7 +1234,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     const externalPostId = String(finish.id || videoId);
     // Persist the published video before checking readiness or sending a comment.
     // A processing delay or process exit must never cause another video upload.
-    const pendingRecord = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, status: "published_comment_error", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus: "error", firstCommentError: "Đang chờ Meta xử lý video trước khi gửi bình luận.", removedFromQueue: false, mediaCleanup: { version: 2, removed: false, lineage: publishedMediaLineage(store, media.id) }, publishedAt: new Date().toISOString() };
+    const pendingRecord = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, pageGroupId: post.pageGroupId || "", tokenGroupId: post.tokenGroupId || "", status: "published_comment_error", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus: "error", firstCommentError: "Đang chờ Meta xử lý video trước khi gửi bình luận.", removedFromQueue: false, mediaCleanup: { version: 2, removed: false, lineage: publishedMediaLineage(store, media.id) }, publishedAt: new Date().toISOString() };
     meta.publications = meta.publications.filter(item => item.idempotencyKey !== parsedKey).concat(pendingRecord);
     store.save();
     let firstCommentStatus = "published";
@@ -1182,7 +1250,7 @@ export function mountMetaRoutes(app, store, { client = createMetaClient(), llm =
     const mediaCleanup = firstCommentError
       ? { ...pendingRecord.mediaCleanup, removed: false, reason: "first_comment_failed" }
       : await cleanupPublishedMedia(store, post.mediaIds?.[0], post.id, pendingRecord.mediaCleanup);
-    const record = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, status: firstCommentError ? "published_comment_error" : "published", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus, ...(firstCommentError ? { firstCommentError, firstCommentErrorDetails } : {}), removedFromQueue: !firstCommentError, mediaCleanup, publishedAt: new Date().toISOString() };
+    const record = { idempotencyKey: parsedKey, postId: post.id, projectId: post.projectId, mediaIds: [...post.mediaIds], title: post.title, contentType: post.contentType, pageGroupId: post.pageGroupId || "", tokenGroupId: post.tokenGroupId || "", status: firstCommentError ? "published_comment_error" : "published", pageId: page.id, pageName: page.name, externalPostId, permalink: finish.permalink || `https://www.facebook.com/${externalPostId}`, firstCommentStatus, ...(firstCommentError ? { firstCommentError, firstCommentErrorDetails } : {}), removedFromQueue: !firstCommentError, mediaCleanup, publishedAt: new Date().toISOString() };
     meta.publications = meta.publications.filter((item) => item.idempotencyKey !== parsedKey).concat(record);
     if (firstCommentError) {
       Object.assign(post, {
