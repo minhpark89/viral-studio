@@ -1,0 +1,390 @@
+{
+  "version": "0.10.2",
+  "at": "2026-11-06T15:55:28.346Z",
+  "passed": true,
+  "automated": {
+    "tests": 444,
+    "passed": 444,
+    "failed": 0
+  },
+  "packagedRuntime": {
+    "asarSha256": "ebf7e5a163f010e756404018adf1fcc086e6c83169ed28e82f7cb9f0ca7e1986",
+    "matchedSourceFiles": 106,
+    "files": [
+      "server/account-health.js",
+      "server/article-text.js",
+      "server/browser-runtime.js",
+      "server/captcha.js",
+      "server/content.js",
+      "server/data-paths.js",
+      "server/dreamface-accounts.js",
+      "server/dreamface-image.js",
+      "server/dreamface-news-result.js",
+      "server/dreamface-quota.js",
+      "server/dreamface-setup.js",
+      "server/history-archive.js",
+      "server/image-search.js",
+      "server/index.js",
+      "server/instance.js",
+      "server/license.js",
+      "server/llm-response.js",
+      "server/llm.js",
+      "server/management.js",
+      "server/mc-image.js",
+      "server/media.js",
+      "server/meta-errors.js",
+      "server/meta-insights.js",
+      "server/meta.js",
+      "server/news-captions.js",
+      "server/news-image-fingerprint.js",
+      "server/news-motion.js",
+      "server/news-plan.js",
+      "server/news-render-common.js",
+      "server/news-render.js",
+      "server/news-typography.js",
+      "server/news-v3-editorial.js",
+      "server/news-v3-motion.js",
+      "server/news-v3-render.js",
+      "server/news-visuals.js",
+      "server/page-routing.js",
+      "server/post-lifecycle.js",
+      "server/preview.js",
+      "server/production.js",
+      "server/profile-measurement.js",
+      "server/profile-storage.js",
+      "server/providers/browser-profiles.js",
+      "server/providers/cookies.js",
+      "server/providers/dola-images.js",
+      "server/providers/dola-status.js",
+      "server/providers/dola.js",
+      "server/providers/dreamface.js",
+      "server/providers/flow-agent-download.js",
+      "server/providers/flow-agent-results.js",
+      "server/providers/flow-agent-settings.js",
+      "server/providers/flow-agent.js",
+      "server/providers/flow-prepare.js",
+      "server/providers/flow-project.js",
+      "server/providers/flow-results.js",
+      "server/providers/flow-rpc.js",
+      "server/providers/generate.js",
+      "server/published-media.js",
+      "server/queue.js",
+      "server/render-hardware.js",
+      "server/render-self-test.js",
+      "server/render.js",
+      "server/research-batches.js",
+      "server/research-discovery.js",
+      "server/research-management.js",
+      "server/research.js",
+      "server/secret-store.js",
+      "server/social-package.js",
+      "server/social-scheduler.js",
+      "server/social.js",
+      "server/state-events.js",
+      "server/store.js",
+      "server/website.js",
+      "shared/account-health.js",
+      "shared/contracts.js",
+      "shared/management.js",
+      "shared/mc-rotation.js",
+      "shared/meta-insights.js",
+      "shared/news-caption-assets.json",
+      "shared/news-format.js",
+      "shared/output-media.js",
+      "shared/production-contracts.js",
+      "shared/production-progress.js",
+      "shared/queue-preparation.js",
+      "shared/research-assembly.js",
+      "shared/research-contracts.js",
+      "shared/research-status.js",
+      "shared/social-contracts.js",
+      "shared/source-context.js",
+      "shared/state-events.js",
+      "desktop/data-directory.cjs",
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "dist/assets/index-DT-KNy4H.js",
+      "dist/assets/index-JxvYzENB.css",
+      "dist/fonts/InterVariable.woff2",
+      "dist/fonts/LICENSE.txt",
+      "dist/fonts/news/Anton-OFL.txt",
+      "dist/fonts/news/Anton-Regular.ttf",
+      "dist/fonts/news/BarlowCondensed-Bold.ttf",
+      "dist/fonts/news/BarlowCondensed-ExtraBold.ttf",
+      "dist/fonts/news/BarlowCondensed-Regular.ttf",
+      "dist/fonts/news/BeVietnamPro-ExtraBold.ttf",
+      "dist/fonts/news/BeVietnamPro-OFL.txt",
+      "dist/fonts/news/OFL.txt",
+      "dist/icon.png",
+      "dist/index.html"
+    ],
+    "credentialsExcluded": true
+  },
+  "assets": [
+    {
+      "name": "Viral.Studio.Setup.0.10.2.exe",
+      "bytes": 304776483,
+      "sha256": "6ee2d4fd778927a9c17417abc61e339fc418baa723252fad8b9f09fbe1095457"
+    },
+    {
+      "name": "Viral.Studio.0.10.2.exe",
+      "bytes": 304514433,
+      "sha256": "eb656bfde681ae09e841dffc3bd0d7ecabb2d2a209cef5106a285d2f77821d5a"
+    }
+  ],
+  "limits": [
+    "No live DreamFace/LLM/Meta submission in QA",
+    "No AMD/Intel GPU hardware available",
+    "Installer payload verified against tested runtime; current production install not replaced"
+  ],
+  "installerPayloadMatchesTestedRuntime": true,
+  "portableDrive": {
+    "passed": true,
+    "checks": [
+      "Fresh portable owns adjacent Viral Data without an environment override",
+      "Desktop profile also resides on selected drive",
+      "Profile slots persist after restart",
+      "Built EXE closes gracefully without a leaked server",
+      "No provider login, generation or publishing"
+    ],
+    "launches": [
+      {
+        "version": "0.10.2",
+        "root": "D:\\DROPSHIP\\APP Dropship\\.maintenance\\release-0102-20261106\\portable-drive-final\\Viral Data",
+        "pid": 21904,
+        "accounts": 0,
+        "freeBytes": 291527557120,
+        "closeMs": 270
+      },
+      {
+        "version": "0.10.2",
+        "root": "D:\\DROPSHIP\\APP Dropship\\.maintenance\\release-0102-20261106\\portable-drive-final\\Viral Data",
+        "pid": 11044,
+        "accounts": 2,
+        "freeBytes": 291526348800,
+        "closeMs": 257
+      }
+    ]
+  },
+  "desktop": {
+    "passed": true,
+    "packaged": true,
+    "system": {
+      "packaged": true,
+      "version": "0.10.2",
+      "userData": "D:\\DROPSHIP\\APP Dropship\\studio\\.verification\\desktop-packaged\\electron-516deeaf-6240-47ec-a2ff-c8aa2d61890a"
+    },
+    "tools": [
+      {
+        "name": "ffmpeg",
+        "available": true,
+        "version": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+        "path": "D:\\DROPSHIP\\APP Dropship\\studio\\release\\win-unpacked\\resources\\bin\\ffmpeg.exe"
+      },
+      {
+        "name": "ffprobe",
+        "available": true,
+        "version": "ffprobe version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers",
+        "path": "D:\\DROPSHIP\\APP Dropship\\studio\\release\\win-unpacked\\resources\\bin\\ffprobe.exe"
+      }
+    ],
+    "browserAvailable": true,
+    "nodeExposed": false,
+    "errors": []
+  },
+  "video": {
+    "at": "2026-11-06T15:49:07.886Z",
+    "passed": true,
+    "output": "D:\\DROPSHIP\\APP Dropship\\.maintenance\\release-0102-20261106\\videos",
+    "variants": [
+      {
+        "style": "v3",
+        "file": "D:\\DROPSHIP\\APP Dropship\\.maintenance\\release-0102-20261106\\videos\\v3.mp4",
+        "metadata": {
+          "kind": "video",
+          "duration": 18.5,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 12320964
+        },
+        "jobSeconds": 16.278,
+        "renderMetrics": {
+          "seconds": 15.9831974,
+          "encodeSeconds": 10.722319099999998,
+          "captionCacheHit": false,
+          "frames": 555
+        },
+        "visualCount": 8,
+        "fullDecode": true,
+        "constant30fps": true,
+        "frames": 555,
+        "sha256": "0c5818f2adb54a44a8722fc410f88855e8d16f8f124b230aeaddae59bf04d94d",
+        "captionTiming": "aligned",
+        "photoOccluders": 0,
+        "textInsideFrame": true,
+        "pcmHash": "SHA256=b69f8df223c199fb9c834855db242e9cda887059356d4f79facae2a28abd8497",
+        "playback": {
+          "ended": true,
+          "duration": 18.5,
+          "width": 1080,
+          "height": 1920,
+          "totalFrames": 555,
+          "droppedFrames": 0,
+          "error": null
+        }
+      },
+      {
+        "style": "v3-fast",
+        "file": "D:\\DROPSHIP\\APP Dropship\\.maintenance\\release-0102-20261106\\videos\\v3-fast.mp4",
+        "metadata": {
+          "kind": "video",
+          "duration": 18.5,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 7918688
+        },
+        "jobSeconds": 8.634,
+        "renderMetrics": {
+          "seconds": 8.6108687,
+          "encodeSeconds": 7.914385099999996,
+          "captionCacheHit": true,
+          "frames": 555
+        },
+        "visualCount": 8,
+        "fullDecode": true,
+        "constant30fps": true,
+        "frames": 555,
+        "sha256": "d1edfeda1b1fae7497e14151cd9cb8af79a7bfa30dd912432643f3232b1b40d8",
+        "captionTiming": "aligned",
+        "photoOccluders": 0,
+        "textInsideFrame": true,
+        "pcmHash": "SHA256=b69f8df223c199fb9c834855db242e9cda887059356d4f79facae2a28abd8497",
+        "playback": {
+          "ended": true,
+          "duration": 18.5,
+          "width": 1080,
+          "height": 1920,
+          "totalFrames": 559,
+          "droppedFrames": 0,
+          "error": null
+        }
+      },
+      {
+        "style": "classic",
+        "file": "D:\\DROPSHIP\\APP Dropship\\.maintenance\\release-0102-20261106\\videos\\classic.mp4",
+        "metadata": {
+          "kind": "video",
+          "duration": 18.5,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 21401452
+        },
+        "jobSeconds": 58.867,
+        "visualCount": 7,
+        "fullDecode": true,
+        "constant30fps": true,
+        "frames": 555,
+        "sha256": "5d1362990849bb473551d88e735b27a5bd4bcc42503ea89a9880ec2e1a5d6793",
+        "playback": {
+          "ended": true,
+          "duration": 18.5,
+          "width": 1080,
+          "height": 1920,
+          "totalFrames": 559,
+          "droppedFrames": 0,
+          "error": null
+        }
+      }
+    ],
+    "liveWorkspaceUnchanged": true
+  },
+  "headline": {
+    "at": "2026-11-06T15:44:28.550Z",
+    "headlineId": "headline1",
+    "fontSize": 51,
+    "lineSpacing": 8,
+    "firstInkRow": 1124,
+    "lastInkRow": 1297,
+    "captionPanelTop": 1408,
+    "headlinePixelsBehindCaptionPanel": 0,
+    "clearancePixels": 110
+  },
+  "offlineRender": {
+    "portable-cpu-final": {
+      "passed": true,
+      "cases": 11,
+      "settings": {
+        "renderConcurrency": 1,
+        "renderThreads": 2,
+        "renderAcceleration": "cpu"
+      },
+      "elapsedMs": 42473
+    },
+    "packaged-gpu-final": {
+      "passed": true,
+      "cases": 11,
+      "settings": {
+        "renderConcurrency": 1,
+        "renderThreads": 2,
+        "renderAcceleration": "gpu"
+      },
+      "elapsedMs": 62778
+    }
+  },
+  "benchmark": {
+    "at": "2026-11-06T15:37:07.889Z",
+    "liveMetadataHash": "a3147fa79664066d3b100e708b8013ce799f74ea4bf179ea32728633a3e5eea0",
+    "slots": [
+      {
+        "count": 1,
+        "ms": 24.67639999999983,
+        "writes": 1
+      },
+      {
+        "count": 18,
+        "ms": 32.58670000000029,
+        "writes": 1
+      },
+      {
+        "count": 50,
+        "ms": 37.12189999999964,
+        "writes": 1
+      }
+    ],
+    "measurement": [
+      {
+        "refresh": true,
+        "ms": 1122.9388999999999,
+        "profileCount": 41,
+        "bytes": 2962757532,
+        "cacheBytes": 2807205180
+      },
+      {
+        "refresh": false,
+        "ms": 615.2479000000001,
+        "profileCount": 41,
+        "bytes": 2962757532,
+        "cacheBytes": 2807205180
+      }
+    ],
+    "events": {
+      "fullBytes": 3450636,
+      "deltaBytes": 1104
+    },
+    "metadataUnchanged": true
+  },
+  "browserSuites": 5,
+  "liveWorkspaceUnchanged": true
+}

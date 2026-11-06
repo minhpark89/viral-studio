@@ -32,9 +32,9 @@ export async function renderNewsV3(store,job,presenter,plan,images,signal,update
   const add=filter=>{const out='layer'+serial++;filters.push(`[${chain}]${filter}[${out}]`);chain=out;};
   const when=(a,b)=>`gte(t,${a.toFixed(6)})*lt(t,${b.toFixed(6)})`;
   const box=(id,x,y,w,h,color)=>{rectangles.push({id,x,y,w,h,color});add(`drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=${color}:t=fill`);};
-  async function text(id,value,x,y,{font='label',size=42,min=size,width=880,lines=1,color='white',start=0,end=duration,fade=false,lineSpacing=8}={}){
+  async function text(id,value,x,y,{font='label',size=42,min=size,width=880,lines=1,height=Infinity,color='white',start=0,end=duration,fade=false,lineSpacing=8}={}){
    if(!String(value||'').trim())return;
-   const t=await typography.fit(id,value,{font,size,min,width,lines});Object.assign(typography.audit.at(-1),{x,y,start,end,color,lineSpacing});
+   const t=await typography.fit(id,value,{font,size,min,width,lines,height,lineSpacing});Object.assign(typography.audit.at(-1),{x,y,start,end,color,lineSpacing});
    const alpha=fade?`:alpha='min(1,max(0,(t-${start.toFixed(6)})/0.12))'`:'';
    add(`drawtext=fontfile=${font}.ttf:textfile=${t.file}:expansion=none:fontcolor=${color}:fontsize=${t.size}:line_spacing=${lineSpacing}:x=${x}:y=${y}${alpha}:enable='${when(start,end)}'`);
   }
@@ -60,7 +60,7 @@ export async function renderNewsV3(store,job,presenter,plan,images,signal,update
   for(const [i,beat]of editorial.beats.entries()){
    const timing={start:beat.start,end:beat.end,fade:true};
    await text('section'+i,beat.title,338,1072,{size:30,min:26,width:606,color:'#ff687b',...timing});
-   await text('headline'+i,beat.headline,338,1124,{font:'headline',size:64,min:36,width:606,lines:4,...timing});
+   await text('headline'+i,beat.headline,338,1124,{font:'headline',size:64,min:36,width:606,lines:4,height:268,...timing});
   }
   box('caption-panel',64,1408,880,132,'#091423');
   for(const [i,cue]of captions.cues.entries())await text('caption'+i,cue.text,90,1428,{size:47,min:34,width:826,lines:2,start:cue.start,end:cue.end});

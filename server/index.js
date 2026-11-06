@@ -36,6 +36,8 @@ import { profileStorage } from './profile-storage.js';
 import { SocialScheduler } from "./social-scheduler.js";
 import { AccountHealthService } from './account-health.js';
 import { PublishedMediaCleanup, deleteLibraryMedia } from './published-media.js';
+import { StateEvents } from './state-events.js';
+import { HistoryArchive, historyStatus, archiveResearch, restoreResearch } from './history-archive.js';
 import {
   createCaptchaClient,
   publicCaptchaSettings,
@@ -78,6 +80,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   const dreamfaceSetup = new DreamFaceSetupQueue({ store, dreamface });
   const accountHealth = new AccountHealthService(store,{dreamface,browsers});
   const publishedMediaCleanup = new PublishedMediaCleanup(store);
+  const historyArchive = new HistoryArchive(store);
   const queue = new JobQueue(store, browsers, {
     generateDreamFace: (currentStore, job, account, signal, update) =>
       job.payload.workflow === "avatar-news"
@@ -114,15 +117,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     dest: path.join(store.root, "temp"),
     limits: { fileSize: 2 * 1024 ** 3, files: 30 },
   });
-  const streams = new Set();
-  let changeTimer;
-  store.on("change", () => {
-    clearTimeout(changeTimer);
-    changeTimer = setTimeout(() => {
-      const event = `data: ${JSON.stringify(store.publicSnapshot())}\n\n`;
-      for (const response of streams) response.write(event);
-    }, 100);
-  });
+  const stateEvents = new StateEvents(store);
 
   app.get("/api/instance", (req, res) => res.json(instance.identity));
 
@@ -142,20 +137,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     removeLicenseToken(store.root);
     res.json(licenseStatus(store.root));
   });
-  app.get("/api/events", (req, res) => {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-    res.write(`data: ${JSON.stringify(store.publicSnapshot())}\n\n`);
-    streams.add(res);
-    const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 20000);
-    req.on("close", () => {
-      clearInterval(heartbeat);
-      streams.delete(res);
-    });
-  });
+  app.get('/api/events', (req,res) => stateEvents.subscribe(req,res));
   app.get("/api/health", async (req, res) => {
     let browser;
     try {
@@ -175,12 +157,19 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   });
   app.get('/api/system/render-hardware', async (req, res) => res.json(await inspectRenderHardware(store.state.settings, { force: req.query.refresh === 'true' })));
   app.get('/api/system/nvidia-driver', async (req, res) => res.json(await nvidiaDriverRecommendation(store.state.settings)));
-  app.get('/api/profiles/storage', async (req, res) => res.json(await profileStorage(store).inspect()));
+  app.get('/api/profiles/storage', async (req, res) => res.json(await profileStorage(store).inspect({refresh:req.query.refresh==='true'})));
   app.post('/api/profiles/storage/clean', async (req, res) => {
     const options = z.object({ mode: z.enum(['clear', 'trim']).default('clear') }).parse(req.body || {});
     res.json(await profileStorage(store).clean(options));
   });
   app.get('/api/storage/published-media', (req, res) => res.json(publishedMediaCleanup.preview()));
+  app.get('/api/storage/history', (req,res)=>res.json(historyStatus(store)));
+  app.post('/api/storage/history/archive', (req,res)=>res.json(archiveResearch(store)));
+  app.post('/api/research/:id/restore', (req,res)=>res.json(restoreResearch(store,req.params.id)));
+  app.get('/api/storage/volume', async(req,res)=>{
+    const info=await fs.promises.statfs(store.root);
+    res.json({dataDir:store.root,totalBytes:info.blocks*info.bsize,freeBytes:info.bavail*info.bsize});
+  });
   app.post('/api/storage/published-media/clean', async (req, res) => res.json(await publishedMediaCleanup.run()));
   app.post('/api/media/delete-bulk', async (req, res) => {
     const input = z.object({ ids: z.array(z.string().min(1).max(100)).min(1).max(10000), preview: z.boolean().default(false) }).parse(req.body);
@@ -733,6 +722,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
         renderThreads: z.number().int().min(1).max(32).optional(),
         renderAcceleration: z.enum(['gpu', 'cpu']).optional(),
         profileStorageOptimization: z.boolean().optional(),
+        historyArchiveEnabled: z.boolean().optional(),
         dreamfaceConcurrency: z.number().int().min(1).max(4).optional(),
         queuePaused: z.boolean().optional(),
         pollSeconds: z.number().int().min(3).max(60).optional(),
@@ -820,6 +810,8 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       listening.once("error", reject);
     });
   } catch (error) {
+    stateEvents.close();
+    historyArchive.close();
     await metaInsights.close();
     await publishedMediaCleanup.close();
     await accountHealth.close();
@@ -832,10 +824,11 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   instance.setAddress(address);
   accountHealth.tick();
   publishedMediaCleanup.run().catch(() => {});
+  historyArchive.run();
   const close = async () => {
     try {
-      for (const stream of streams) stream.end();
-      clearTimeout(changeTimer);
+      stateEvents.close();
+      historyArchive.close();
       await metaInsights.close();
       await publishedMediaCleanup.close();
       await accountHealth.close();

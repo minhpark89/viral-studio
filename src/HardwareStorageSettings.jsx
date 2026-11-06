@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Cpu, HardDrive, RefreshCw, ExternalLink, Trash2 } from 'lucide-react';
 import { api, bytes } from './api.js';
 import { Button, Field, Notice } from './components.jsx';
+import { WorkspaceStorageSettings } from './WorkspaceStorageSettings.jsx';
 
 export function GpuStatus({ mode, onOpen }) {
   const [hardware, setHardware] = useState(null);
@@ -26,18 +27,19 @@ export function HardwareStorageSettings({ settings, setSettings, run, notify }) 
     catch (error) { setError(error.message); }
     finally { setHardwareBusy(false); }
   }
-  async function loadStorage() {
+  async function loadStorage(refresh=false) {
     setStorageBusy(true);
-    try { setStorage(await api('/profiles/storage')); }
+    try { setStorage(await api('/profiles/storage'+(refresh?'?refresh=true':''))); }
     catch (error) { setError(error.message); }
     finally { setStorageBusy(false); }
   }
   useEffect(() => { loadHardware(); loadStorage(); }, []);
   async function save(patch) {
     const result = await run(() => api('/settings', patch, 'PATCH'));
-    if (result) { setSettings(current => ({ ...current, ...patch })); notify('Đã lưu cấu hình GPU/profile.'); }
+    if (result) { setSettings(current => ({ ...current, ...patch })); notify('Đã lưu cấu hình.'); }
   }
   return <>
+    <WorkspaceStorageSettings settings={settings} save={save} run={run} notify={notify}/>
     <section className="panel hardware-settings">
       <div className="panel-heading"><h3><Cpu size={18} /> GPU & bộ mã hóa</h3><Button onClick={() => loadHardware(true)} busy={hardwareBusy}><RefreshCw size={14} /> Kiểm tra GPU</Button></div>
       <Field label="Thiết bị xuất video" hint="Áp dụng cho News và timeline. GPU được thử tạo và giải mã file thật trước khi sử dụng.">
@@ -59,7 +61,7 @@ export function HardwareStorageSettings({ settings, setSettings, run, notify }) 
       {error && <Notice error>{error}</Notice>}
     </section>
     <section className="panel profile-storage-settings">
-      <div className="panel-heading"><h3><HardDrive size={18} /> Dung lượng profile</h3><Button onClick={loadStorage} busy={storageBusy}><RefreshCw size={14} /> Đo dung lượng</Button></div>
+      <div className="panel-heading"><h3><HardDrive size={18} /> Dung lượng profile</h3><Button onClick={()=>loadStorage(true)} busy={storageBusy}><RefreshCw size={14} /> Đo dung lượng</Button></div>
       <label className="toggle-field"><input type="checkbox" checked={settings.profileStorageOptimization !== false} onChange={event => save({ profileStorageOptimization: event.target.checked })} /><span><strong>Tối ưu dung lượng profile</strong><small>Giữ cache trang vừa đủ, hạn chế mô hình AI Chrome tải nền. Có hiệu lực từ lần mở profile tiếp theo.</small></span></label>
       {storage && <>
         <p><strong>{storage.profileCount} profile · {bytes(storage.totalBytes)}</strong></p>

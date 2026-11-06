@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { SecretStore } from "./secret-store.js";
 import { StudioError } from "./store.js";
 
@@ -117,22 +117,38 @@ function proxyForSlot({ proxy = "", proxies = [] }, index, count) {
 }
 
 export function createDreamFaceSlots(store,{count,namePrefix,proxy="",proxies=[]}) {
+  if(!Number.isInteger(count)||count<1||count>1000)throw new StudioError('Số profile phải từ 1 đến 1000.','INVALID_PROFILE_COUNT');
+  const parsedProxies=Array.from({length:count},(_,index)=>proxyForSlot({proxy,proxies},index,count));
   const secrets=new SecretStore(store.root);
   const offset=store.state.accounts.filter(account=>account.provider==="dreamface").length;
   const usedEmails = dreamFaceEmails(store);
-  return Array.from({length:count},(_,index)=>{
+  const prepared=Array.from({length:count},(_,index)=>{
     const credentials=createDreamFaceCredentials("", usedEmails);
     usedEmails.add(credentials.email);
-    const parsedProxy = proxyForSlot({proxy,proxies},index,count);
-    const account=store.add("accounts",{
+    const parsedProxy = parsedProxies[index];
+    const account={
+      id:randomUUID(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),
       name:`${namePrefix} ${String(offset+index+1).padStart(2,"0")}`,provider:"dreamface",loginMethod:"credentials",email:credentials.email,proxy:parsedProxy.server,proxyAuth:Boolean(parsedProxy.username),
       status:"needs_login",hasCredentials:true,gmailStatus:"idle",message:"Email mẫu và mật khẩu đã lưu an toàn. Bấm Đăng nhập & giải CAPTCHA ẩn khi cần.",
       rotationIndex:offset+index+1,rotationEnabled:true,rotationMode:"daily",rotationDay:"",
-    });
-    secrets.set(`dreamface-${account.id}`,credentials);
-    if (parsedProxy.username || parsedProxy.password) secrets.set(proxySecretId(account.id), parsedProxy);
-    return account;
+    };
+    return {account,credentials,parsedProxy};
   });
+  const written=[],before=store.state.accounts;
+  try {
+    for(const {account,credentials,parsedProxy} of prepared) {
+      const id=`dreamface-${account.id}`;written.push(id);secrets.set(id,credentials);
+      if(parsedProxy.username||parsedProxy.password){const key=proxySecretId(account.id);written.push(key);secrets.set(key,parsedProxy);}
+    }
+    const accounts=prepared.map(item=>item.account);
+    store.state.accounts=before.concat(accounts);
+    store.save();
+    return accounts;
+  } catch(error) {
+    store.state.accounts=before;
+    for(const id of written)try{secrets.delete(id);}catch{}
+    throw error;
+  }
 }
 
 export function getDreamFaceCredentials(store, account) {

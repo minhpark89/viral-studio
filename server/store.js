@@ -308,6 +308,7 @@ export class Store extends EventEmitter {
     const entity = this.state[collection].find((item) => item.id === id);
     if (!entity)
       throw new StudioError("Không tìm thấy dữ liệu.", "NOT_FOUND", 404);
+    if(collection==='researchResults'&&entity.archive)throw new StudioError('Tin đã được lưu trữ. Hãy khôi phục tin trong Research trước khi xử lý lại.','RESEARCH_ARCHIVED',409);
     return entity;
   }
 

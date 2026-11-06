@@ -21,6 +21,7 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import { api } from "./api.js";
+import { applyStateEvent } from '../shared/state-events.js';
 import { Button, Modal, Field, Notice } from "./components.jsx";
 import { CreatePage, StoryboardPage } from "./pages/Create.jsx";
 import { AccountsPage } from "./pages/Accounts.jsx";
@@ -126,21 +127,25 @@ function App() {
   );
   useEffect(() => {
     api("/state")
-      .then(setData)
+      .then(initial => setData(current => current ? { ...initial, ...current } : initial))
       .catch((error) => {setStartupError(error.message);notify(error.message, "error");});
-    const events = new EventSource("/api/events");
-    events.onmessage = (event) => {
-      try {
-        const next = JSON.parse(event.data);
-        if (next && typeof next === "object") setData((previous) => ({ ...previous, ...next }));
-        setConnection(true);
-      } catch {
-        setConnection(false);
-        notify("Dữ liệu cập nhật từ máy chủ không hợp lệ; đang thử lại.", "error");
-      }
+    let events, retry, stopped=false, current=null;
+    const connect=()=>{
+      if(stopped)return;
+      current=null;events=new EventSource('/api/events?delta=1');
+      events.onmessage=event=>{
+        try {
+          current=applyStateEvent(current,JSON.parse(event.data));
+          const next=current.data;
+          setData(previous=>({...previous,...next}));setConnection(true);
+        } catch {
+          setConnection(false);events.close();retry=setTimeout(connect,1000);
+        }
+      };
+      events.onerror=()=>setConnection(false);
     };
-    events.onerror = () => setConnection(false);
-    return () => events.close();
+    connect();
+    return ()=>{stopped=true;clearTimeout(retry);events?.close();};
   }, [notify]);
   useEffect(()=>{
     if(!data && !startupError)return;

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runProcess } from './media.js';
 import { StudioError } from './store.js';
+import { measureProfile, mapLimited } from './profile-measurement.js';
 
 const MiB = 1024 ** 2;
 // Deliberately exclude Network/Cookies, Local Storage, IndexedDB, Service Worker,
@@ -61,6 +62,7 @@ export class ProfileStorage {
     this.store = store; this.root = path.resolve(store.root, 'profiles');
     this.active = new Map(); this.maintenance = new Set(); this.runningPaths = runningPaths;
     this.lastCleanup = null;
+    this.measurements=new Map();this.inspectPending=null;
   }
   directory(id) {
     if (!validId(id)) throw new StudioError('Profile không hợp lệ.', 'INVALID_PROFILE');
@@ -123,7 +125,8 @@ export class ProfileStorage {
     this.directory(id);
     if (this.active.has(id) || this.maintenance.has(id)) throw new StudioError('Profile đang mở hoặc đang dọn cache. Hãy chờ thao tác hiện tại hoàn tất.', 'PROFILE_STORAGE_BUSY', 409);
     const token = Symbol(id); this.active.set(id, token);
-    const release = () => { if (this.active.get(id) === token) this.active.delete(id); };
+    this.measurements.delete(id);
+    const release = () => { if (this.active.get(id) === token) this.active.delete(id); this.measurements.delete(id); };
     try {
       if (this.store.state.settings.profileStorageOptimization !== false) {
         await fs.mkdir(this.directory(id), { recursive: true });
@@ -136,19 +139,25 @@ export class ProfileStorage {
     const entries = await fs.readdir(this.root, { withFileTypes: true }).catch(() => []);
     return entries.filter(item => item.isDirectory() && !item.isSymbolicLink() && validId(item.name)).map(item => item.name);
   }
-  async inspect() {
-    const profiles = [], running = await this.runningPaths();
-    for (const id of await this.ids()) {
-      const total = await treeSize(this.directory(id)); let cacheBytes = 0;
-      for (const [relative] of PROFILE_CACHES) {
-        const target = await this.safeTarget(id, relative);
-        if (target) { const info = await treeSize(target); if (!info.unsafe) cacheBytes += info.bytes; }
+  inspect({refresh=false}={}) {
+    if(this.inspectPending)return this.inspectPending;
+    this.inspectPending=this.inspectNow(refresh).finally(()=>{this.inspectPending=null;});
+    return this.inspectPending;
+  }
+  async inspectNow(refresh) {
+    const running = await this.runningPaths(), ids=await this.ids();
+    const accounts=new Map((this.store.state.accounts||[]).map(account=>[account.profileId||account.id,account]));
+    for(const id of this.measurements.keys())if(!ids.includes(id))this.measurements.delete(id);
+    const profiles=await mapLimited(ids,4,async id=>{
+      let total=this.measurements.get(id);
+      if(refresh||!total||Date.now()-total.measuredAt>30000){
+        total={...await measureProfile(this.directory(id),PROFILE_CACHES),measuredAt:Date.now()};
+        this.measurements.set(id,total);
       }
-      const account = this.store.state.accounts?.find(item => (item.profileId || item.id) === id);
-      profiles.push({ id, name: account?.name || 'Profile', bytes: total.bytes, cacheBytes, busy: this.busy(id) || await this.externalBusy(id, running) });
-    }
+      return {id,name:accounts.get(id)?.name||'Profile',bytes:total.bytes,cacheBytes:total.cacheBytes,measuredAt:new Date(total.measuredAt).toISOString(),busy:this.busy(id)||await this.externalBusy(id,running)};
+    });
     return { profiles, totalBytes: profiles.reduce((sum, item) => sum + item.bytes, 0), cacheBytes: profiles.reduce((sum, item) => sum + item.cacheBytes, 0),
-      profileCount: profiles.length, activeCount: profiles.filter(item => item.busy).length, processCheckAvailable: Boolean(running), lastCleanup: this.lastCleanup,
+      profileCount: profiles.length, activeCount: profiles.filter(item => item.busy).length, processCheckAvailable: Boolean(running), lastCleanup: this.lastCleanup, measurementCacheSeconds:30,
       limits: { httpCacheMiB: 64, codeCacheTrimMiB: 32, shaderCacheTrimMiB: 16 }, optimized: this.store.state.settings.profileStorageOptimization !== false };
   }
   async clean({ mode = 'clear' } = {}) {
@@ -159,7 +168,7 @@ export class ProfileStorage {
       this.maintenance.add(id);
       try { results.push(await this.cleanLocked(id, mode, running)); }
       catch (error) { results.push({ id, freedBytes: 0, skipped: 'profile-unavailable', errors: [error.code || 'cleanup-failed'] }); }
-      finally { this.maintenance.delete(id); }
+      finally { this.maintenance.delete(id); this.measurements.delete(id); }
     }
     this.lastCleanup = { finishedAt: new Date().toISOString(), mode, freedBytes: results.reduce((sum, item) => sum + item.freedBytes, 0), skipped: results.filter(item => item.skipped).length, results };
     return this.lastCleanup;

@@ -35,15 +35,21 @@ export async function createNewsTypography(directory, style = 'news') {
     }
     return lines;
   }
-  async function fit(id, value, { font = 'label', size = 48, min = size, width = 880, lines = 2 } = {}) {
+  const heightOf=(count,font,size,lineSpacing=8)=>{
+    const face=fonts[font];
+    const emHeight=Math.max(face.ascent-face.descent+face.lineGap,face.bbox.maxY-face.bbox.minY)/face.unitsPerEm;
+    return Math.max(0,count)*(Math.ceil(emHeight*size)+2)+Math.max(0,count-1)*lineSpacing;
+  };
+  async function fit(id, value, { font = 'label', size = 48, min = size, width = 880, lines = 2, height = Infinity, lineSpacing = 8 } = {}) {
     if (!/^[a-z0-9_-]+$/i.test(id) || !fonts[font]) throw new Error('Invalid text layer');
     const text = String(value || '').split('\n').map(cleanNewsText).join('\n').trim();
     for (let n = size; n >= min; n--) {
       const wrapped = wrap(text, font, n, width), widths = wrapped.map(line => widthOf(line, font, n));
-      if (wrapped.length <= lines && widths.every(w => w <= width - 4)) {
-        const result = { file: id + '.txt', text: wrapped.join('\n'), size: n, font, widths };
+      const measuredHeight=heightOf(wrapped.length,font,n,lineSpacing);
+      if (wrapped.length <= lines && widths.every(w => w <= width - 4) && measuredHeight<=height) {
+        const result = { file: id + '.txt', text: wrapped.join('\n'), size: n, font, widths, measuredHeight };
         await fs.writeFile(path.join(directory, result.file), result.text, 'utf8');
-        audit.push({ id, original: text, ...result, maxWidth: width, maxLines: lines });
+        audit.push({ id, original: text, ...result, maxWidth: width, maxLines: lines, ...(Number.isFinite(height)?{maxHeight:height}:{}) });
         return result;
       }
     }

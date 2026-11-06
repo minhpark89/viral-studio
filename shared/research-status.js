@@ -101,7 +101,7 @@ export function researchProgress(data, projectId) {
 
 export const researchViews = [
   ['work', 'Cần xử lý'], ['not-rendered', 'Chưa có video'], ['running', 'Đang xử lý'],
-  ['rendered', 'Đã có video'], ['failed', 'Lỗi / đã dừng'], ['posted', 'Đã đăng'], ['all', 'Tất cả / lịch sử'],
+  ['rendered', 'Đã có video'], ['failed', 'Lỗi / đã dừng'], ['posted', 'Đã đăng'], ['archived', 'Đã lưu trữ'], ['all', 'Tất cả / lịch sử'],
 ];
 
 export function matchesResearchView(progress, view) {

@@ -2,6 +2,8 @@
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
 
+**0.10.2 performance preview:** [download the trial build](https://github.com/minhpark89/viral-studio/releases/tag/v0.10.2), [dedicated-drive setup](HUONG-DAN-O-DU-LIEU-v0.10.2.md), [changes](RELEASE_NOTES_v0.10.2.md) and [verification](RELEASE_VALIDATION_v0.10.2.json). This preview batches profile creation, streams state changes, speeds up storage measurement, adds restorable old-story archives and fixes long V3 headlines/shutdown. Stable latest remains 0.10.1 during cross-PC testing.
+
 **Version 0.10.1** puts the News style selector beside the render actions in **Research & News**. V3 standard remains the default; choose V3 fast or the previous layout there. Style, font, duration and illustration count are shared with **Dựng video** and saved per project across app restarts. Bulk, individual and LLM-to-render actions keep you in Research with progress, saved batch styles and video previews. The approved V3 composition and bundled offline captions are unchanged. See [release notes](RELEASE_NOTES_v0.10.1.md), [GPU setup and profile storage](WINDOWS_GPU_PROFILE_GUIDE.md) and the [current continuation checkpoint](CHECKPOINT_CURRENT.md).
 
 ## Download for Windows

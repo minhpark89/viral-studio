@@ -145,6 +145,8 @@ function ResultCard({ result, data, notify, accounts, onImport, importing, onUse
   const [accountId, setAccountId] = useState("auto");
   const [autoCreateContent, setAutoCreateContent] = useState(true);
   const feedFallback = isLlmFallback(result);
+  const [restoring,setRestoring]=useState(false);
+  if(result.archive)return <article className="research-result-card" data-research-id={result.id}><h3>{result.headline}</h3><p className="muted">Đã lưu trữ sau khi đăng hơn 30 ngày. Nguồn và lịch sử chống trùng vẫn được giữ.</p><Button busy={restoring} onClick={async()=>{setRestoring(true);try{await api(`/research/${result.id}/restore`,{});notify('Đã khôi phục đầy đủ nội dung tin.');}catch(error){notify(error.message,'error');}finally{setRestoring(false);}}}>Khôi phục tin</Button></article>;
   return (
     <article className={`research-result-card${selected ? " is-selected" : ""}${expanded ? " is-expanded" : " is-compact"}`} data-research-id={result.id}>
       <div className="research-result-select-row"><label><input type="checkbox" checked={selected} onChange={() => onToggleSelect?.(result.id)} /> Chọn tin</label>
@@ -271,7 +273,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
   const progressById = useMemo(() => researchProgress({ ...data, researchResults: projectResults }, project.id), [data.media, data.jobs, data.productionBatches, data.socialPosts, data.settings?.meta?.publications, projectResults, project.id]);
   const visibleResults = useMemo(() => {
     const search = query.trim().toLocaleLowerCase();
-    return projectResults.filter(result => (!selectedResearchBatch || result.batchId === selectedResearchBatch) && matchesResearchView(progressById.get(result.id), researchFilter)
+    return projectResults.filter(result => (researchFilter==='archived'?Boolean(result.archive):researchFilter==='all'||!result.archive) && (!selectedResearchBatch || result.batchId === selectedResearchBatch) && matchesResearchView(progressById.get(result.id), researchFilter)
       && matchesSourceAge(result, sourceAge)
       && (llmFilter === 'all' || isLlmFallback(result) === (llmFilter === 'needs-llm'))
       && (!search || [result.headline, result.topic, result.niche, ...(result.articles || []).flatMap(article => [article.title, article.source])].join(' ').toLocaleLowerCase().includes(search)))
@@ -289,11 +291,11 @@ export function ResearchPage({ data, project, notify, navigate }) {
   const [selectedResearchIds, setSelectedResearchIds] = useState([]);
   const [deletingResearch, setDeletingResearch] = useState(false);
   const selectedResults = visibleResults.filter(result => selectedResearchIds.includes(result.id));
-  const fallbackResults = (selectedResearchIds.length ? selectedResults : visibleResults).filter(isLlmFallback);
+  const fallbackResults = (selectedResearchIds.length ? selectedResults : visibleResults).filter(result=>!result.archive&&isLlmFallback(result));
   const previewVideos = (progressById.get(previewResearchId)?.mediaIds || []).map(id => data.media.find(media => media.id === id)).filter(Boolean);
   const eligibleRenderResults = (selectedResearchIds.length ? selectedResults : visibleResults).filter(result => {
     const progress = progressById.get(result.id);
-    return !progress.completed && !progress.active;
+    return !result.archive && !progress.completed && !progress.active;
   });
   const renderCandidates = eligibleRenderResults.slice(0, Math.floor(MAX_NEWS_VIDEOS / (Number(batchVideoCount) || 1)));
   const actionBusy = deletingResearch || Boolean(autoVideo || dreaming || rerunning) || llmBatch.active || savingRenderOptions;
@@ -543,7 +545,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
     <div><span className="research-kicker">NEWS STUDIO · PROJECT RESULTS</span><h2>Quản lý tin Research</h2></div>
   </div>
   {projectResults.length > 0 && <div className="research-manager">
-    <div className="research-status-tabs" aria-label="Trạng thái render Research">{researchViews.map(([value, label]) => <button key={value} type="button" aria-pressed={researchFilter === value} className={researchFilter === value ? 'active' : ''} onClick={() => setResearchFilter(value)}>{label}<b>{projectResults.filter(result => matchesResearchView(progressById.get(result.id), value)).length}</b></button>)}</div>
+    <div className="research-status-tabs" aria-label="Trạng thái render Research">{researchViews.map(([value, label]) => <button key={value} type="button" aria-pressed={researchFilter === value} className={researchFilter === value ? 'active' : ''} onClick={() => setResearchFilter(value)}>{label}<b>{projectResults.filter(result => (value==='archived'?Boolean(result.archive):value==='all'||!result.archive) && matchesResearchView(progressById.get(result.id), value)).length}</b></button>)}</div>
     <div className="research-manager-filters">
       <Field label="Lượt research"><select value={selectedResearchBatch} onChange={event => { setSelectedResearchBatch(event.target.value); setSelectedResearchIds([]); setPage(1); }}><option value="">Tất cả lượt research</option>{researchBatches.slice().reverse().map(batch => <option key={batch.id} value={batch.id}>{batch.request.topic} · {dateLabel(batch.createdAt)} · {batch.items.filter(item => item.resultId).length} tin</option>)}</select></Field>
       <Field label="Tìm tin Research"><input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Tiêu đề, chủ đề, ngách hoặc nguồn tin…" /></Field>
