@@ -27,23 +27,28 @@ async function fixture(t, options = {}) {
   const context = await browser.newContext();
   const page = await context.newPage();
   t.after(() => context.close());
-  const log = { submits: [], downloads: [], receipts: [] };
+  const log = { submits: [], downloads: [], receipts: [], historyClicks: 0 };
   let polls = 0;
   const success = data => ({ status_code: "THS12140000000", data });
   await page.route("https://www.dreamfaceapp.com/**", async route => {
     const url = new URL(route.request().url());
     let payload;
     if (url.pathname === "/image") {
-      return route.fulfill({ contentType: "text/html", body: `<!doctype html><p>0 credits</p><textarea placeholder="Type or paste text here"></textarea><button id="model" hidden></button><button id="create" disabled>Create</button><img src="data:image/png;base64,AA=="><script>
+      return route.fulfill({ contentType: "text/html", body: `<!doctype html><p>0 credits</p>${options.historyRequiresTab ? '<button id="history-tab">My Image</button>' : ''}<textarea placeholder="Type or paste text here"></textarea><button id="model" hidden></button><button id="create" disabled>Create</button><img src="data:image/png;base64,AA=="><script>
         const input=document.querySelector('textarea'),button=document.querySelector('#create');
         let model=false,history=false,submitted=${Boolean(options.pending)};
         const sync=()=>{button.disabled=!(model&&history&&input.value)};
         input.addEventListener('input',sync);
         fetch('/dw-server/model_config/ai_image/list/en').then(r=>r.json()).then(()=>{model=true;document.querySelector('#model').textContent='Dream Image 2.0';document.querySelector('#model').hidden=false;input.value='';sync()});
         async function poll(){await fetch('/dw-server/work_session/list').then(r=>r.json());if(!history){history=true;input.value='';sync()}}
-        poll();setInterval(()=>{if(submitted)poll()},100);
+        document.querySelector('#history-tab')?.addEventListener('click',()=>{fetch('/history-opened');poll()});
+        if(!${Boolean(options.historyRequiresTab)})poll();setInterval(()=>{if(submitted)poll()},100);
         button.addEventListener('click',async()=>{const response=await fetch('/dw-server/task/v2/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt:input.value})});const data=await response.json();if(data.data?.animate_image_id){submitted=true;poll()}});
       </script>` });
+    }
+    if (url.pathname === '/history-opened') {
+      log.historyClicks++;
+      return route.fulfill({status:200,body:'ok'});
     }
     if (url.pathname.includes("/model_config/")) {
       await new Promise(resolve => setTimeout(resolve, options.modelDelay ?? 300));
@@ -81,6 +86,29 @@ test("an existing MC with the same prompt is recovered without another submissio
   await run();
   assert.equal(log.submits.length, 0);
   assert.deepEqual(log.downloads, [resultUrl]);
+});
+
+test("a fresh Template tab opens My Image before filling and submitting once", async t => {
+  const { run, log } = await fixture(t, {historyRequiresTab:true,modelDelay:650,historyDelay:450});
+  await run();
+  assert.equal(log.historyClicks,1);
+  assert.deepEqual(log.submits,[{prompt}]);
+  assert.deepEqual(log.downloads,[resultUrl]);
+});
+
+test("My Image history recovers an existing matching MC without another generation", async t => {
+  const { run, log } = await fixture(t, {historyRequiresTab:true,existing:true});
+  await run();
+  assert.equal(log.historyClicks,1);
+  assert.equal(log.submits.length,0);
+  assert.deepEqual(log.downloads,[resultUrl]);
+});
+
+test("opening My Image is insufficient until the saved-work response arrives", async t => {
+  const { run, log } = await fixture(t, {historyRequiresTab:true,modelDelay:10,historyDelay:1500});
+  await assert.rejects(run({readyTimeoutMs:450}),error=>error.code==='MC_IMAGE_NOT_READY');
+  assert.equal(log.historyClicks,1);
+  assert.equal(log.submits.length,0);
 });
 
 test("a pending MC receipt resumes polling without spending another generation", async t => {

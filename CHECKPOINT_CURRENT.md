@@ -1,4 +1,10 @@
-# Current: v0.15.0 — News Studio / Product Studio
+# Current: v0.15.1 — Unified News / Product / Windows portability
+
+Start at [CHECKPOINT_v0.15.1.md](CHECKPOINT_v0.15.1.md). This combines the 0.15.0 Product/News workspace with the verified KAD22P5 LLM and DreamFace fixes, bundled Windows prerequisite and automatic GPU/CPU selection for new workspaces. GitHub publication is a separate action; check the accompanying manifest and local Git commit rather than assuming a tag exists.
+
+---
+
+# Historical: v0.15.0 — News Studio / Product Studio
 
 Mốc đồng bộ mới: [CHECKPOINT_v0.15.0.md](CHECKPOINT_v0.15.0.md), [release notes](RELEASE_NOTES_v0.15.0.md), [validation](RELEASE_VALIDATION_v0.15.0.json).
 

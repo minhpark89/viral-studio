@@ -68,6 +68,11 @@ app
   .whenReady()
   .then(async () => {
     if (!locked) return;
+    if (app.isPackaged) {
+      const { ensureWindowsRuntime } = require('./windows-runtime.cjs');
+      if (!selfTestDirectory) await createSplash();
+      await ensureWindowsRuntime(process.resourcesPath, { status: setSplashStatus });
+    }
     if (selfTestDirectory) {
       const { runRenderSelfTest } = await import(pathToFileURL(path.join(__dirname, "../server/render-self-test.js")).href);
       const result = await runRenderSelfTest(selfTestDirectory, { gpu: process.argv.includes('--render-self-test-gpu') });
@@ -75,7 +80,7 @@ app
       return;
     }
     app.setAppUserModelId("local.viral.studio");
-    await createSplash();
+    if (!splash) await createSplash();
     setSplashStatus("Đang chuẩn bị dữ liệu…");
     const { startServer } = await import(
       pathToFileURL(path.join(__dirname, "../server/index.js")).href

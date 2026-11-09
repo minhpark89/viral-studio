@@ -1,0 +1,76 @@
+{
+  "version": "0.15.1",
+  "date": "2026-11-09T09:18:30.624Z",
+  "base": {
+    "tag": "v0.15.0",
+    "commit": "a32e0e2d7e4cc7a4025bcfc6c0f5dc04b7f7d8f0"
+  },
+  "backend": {
+    "passed": 528,
+    "failed": 0
+  },
+  "browser": {
+    "newsStudio": true,
+    "newsStyles": true,
+    "workspaces": true
+  },
+  "desktop": {
+    "newsStudio": true,
+    "productResearchSqlite": true
+  },
+  "packagedSource": {
+    "filesCompared": 10,
+    "passed": true
+  },
+  "render": {
+    "localCpu": {
+      "passed": 11,
+      "failed": 0,
+      "seconds": 36.1
+    },
+    "remoteIntelQsv": {
+      "passed": 11,
+      "failed": 0,
+      "seconds": 30.7
+    }
+  },
+  "windowsPrerequisite": {
+    "version": "14.51.36247.0",
+    "sha256": "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c",
+    "signature": "Microsoft Corporation; Valid",
+    "missingRuntimeFlow": "unit tested with injected native exit codes",
+    "cleanWindowsVmTested": false,
+    "installedPreviouslyOnTarget": true
+  },
+  "limitations": [
+    "No new paid DreamFace generation was submitted for the merge validation. The prior hotfix was verified with a real completed News job.",
+    "No claim of testing every Windows build, GPU or provider account state.",
+    "NSIS payload built and verified; isolated NSIS installation not exercised on this PC."
+  ],
+  "publish": {
+    "github": false,
+    "content": false
+  },
+  "remoteUpgrade": {
+    "machine": "DESKTOP-KAD22P5",
+    "version": "0.15.1",
+    "dataDir": "D:/Viral Studio/Viral Data",
+    "canonicalExe": "D:/Viral Studio/Viral Studio.exe",
+    "records": {
+      "projects": 1,
+      "accounts": 16,
+      "media": 42,
+      "jobs": 13,
+      "researchResults": 10,
+      "productionBatches": 1,
+      "socialPosts": 2
+    },
+    "missingOriginalIds": 0,
+    "llmKeyUnchanged": true,
+    "renderPreferencePreserved": "gpu",
+    "activeJobsAtCheck": 0,
+    "interactiveWindowVerified": true,
+    "desktopSession": 1,
+    "oldExecutablesBackedUp": true
+  }
+}

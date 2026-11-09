@@ -734,7 +734,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
         concurrency: z.number().int().min(1).max(5).optional(),
         renderConcurrency: z.number().int().min(1).max(4).optional(),
         renderThreads: z.number().int().min(1).max(32).optional(),
-        renderAcceleration: z.enum(['gpu', 'cpu']).optional(),
+        renderAcceleration: z.enum(['auto', 'gpu', 'cpu']).optional(),
         profileStorageOptimization: z.boolean().optional(),
         historyArchiveEnabled: z.boolean().optional(),
         dreamfaceConcurrency: z.number().int().min(1).max(4).optional(),

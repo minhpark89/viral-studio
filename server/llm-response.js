@@ -3,6 +3,10 @@ function messageText(content) {
   return content;
 }
 
+function truncatedResponse() {
+  return Object.assign(new Error("LLM response was truncated"), { code: "LLM_OUTPUT_TRUNCATED" });
+}
+
 export async function readChatCompletion(response) {
   const raw = (await response.text()).trim();
   if (raw.length > 4 * 1024 * 1024) throw new Error("LLM response is too large");
@@ -11,7 +15,7 @@ export async function readChatCompletion(response) {
   const plain = raw.replace(/\s*data:\s*\[DONE\]\s*$/, "").trim();
   if (plain.startsWith("{")) {
     const body = JSON.parse(plain);
-    if (body.choices?.[0]?.finish_reason === "length") throw new Error("LLM response was truncated");
+    if (body.choices?.[0]?.finish_reason === "length") throw truncatedResponse();
     return messageText(body.choices?.[0]?.message?.content ?? body.output ?? body);
   }
   let content = "";
@@ -22,7 +26,7 @@ export async function readChatCompletion(response) {
     const body = JSON.parse(data);
     if (body.error) throw new Error("LLM stream failed");
     const choice = body.choices?.[0];
-    if (choice?.finish_reason === "length") throw new Error("LLM response was truncated");
+    if (choice?.finish_reason === "length") throw truncatedResponse();
     if (choice?.message?.content !== undefined) { content = messageText(choice.message.content); received = true; }
     else if (choice?.delta?.content) { content += messageText(choice.delta.content); received = true; }
   }

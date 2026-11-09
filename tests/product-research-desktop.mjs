@@ -5,6 +5,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const root=path.resolve('.verification',`product-research-native-${Date.now()}`);
+const expectedVersion=JSON.parse(await fs.readFile('package.json','utf8')).version;
 const env={...process.env,STUDIO_DATA_DIR:path.join(root,'workspace')};delete env.ELECTRON_RUN_AS_NODE;
 const app=await electron.launch({executablePath:path.resolve('release/win-unpacked/Viral Studio.exe'),args:[`--user-data-dir=${path.join(root,'shell')}`],env,timeout:60000});
 const report={root,checks:[],errors:[],passed:false};
@@ -29,7 +30,7 @@ try {
   await page.getByLabel('Nhập CSV Google Trends US').setInputFiles({name:'trends.csv',mimeType:'text/csv',buffer:Buffer.from('Week,Jesus gifts: (United States)\n2026-10-01,0\n2026-10-08,50\n2026-10-15,100\n')});
   await page.getByRole('img',{name:'Mức quan tâm US: Jesus gifts'}).waitFor();
   report.runtime=await app.evaluate(({app})=>({version:app.getVersion(),packaged:app.isPackaged,node:process.versions.node,sqlite:process.getBuiltinModule('node:sqlite')!==undefined}));
-  assert.equal(report.runtime.version,'0.15.0');assert.ok(report.runtime.sqlite);
+  assert.equal(report.runtime.version,expectedVersion);assert.ok(report.runtime.sqlite);
   report.checks.push('Packaged Node SQLite initializes and persists Product records', 'Missing key shows honest source failure without API calls', 'Real Electron Meta Ads link uses native browser IPC', 'Google CSV chart renders inside packaged app');
   await page.screenshot({path:path.join(root,'research-packaged.png')});assert.deepEqual(report.errors,[]);report.passed=true;
 }catch(error){report.error=error.stack;process.exitCode=1;}finally{await app.close();await fs.writeFile(path.join(root,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));}

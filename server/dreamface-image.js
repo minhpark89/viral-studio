@@ -102,7 +102,20 @@ export async function requestDreamFaceMcImage({ session, prompt, signal, previou
   try {
     update({ status: "generating_mc_image", provider: "dreamface-image", progress: 2, stage: "Đang chuẩn bị ảnh MC trên DreamFace…" });
     await page.goto("https://www.dreamfaceapp.com/image", { waitUntil: "domcontentloaded", timeout: 45000 });
-    await wait(() => models && rows, readyTimeoutMs,
+    let historyOpened = false;
+    await wait(async () => {
+      // New profiles open the Template tab, which does not request saved
+      // works. Open My Image after model hydration so history can load before
+      // checking for an existing submission or spending another generation.
+      if (models && rows === null && !historyOpened) {
+        const history = page.getByText("My Image", { exact: true }).first();
+        if (await history.isVisible()) {
+          await history.click();
+          historyOpened = true;
+        }
+      }
+      return models && rows;
+    }, readyTimeoutMs,
       new StudioError("Trang tạo ảnh DreamFace chưa tải xong. Chưa gửi yêu cầu tạo ảnh MC; hãy kiểm tra kết nối và thử lại.", "MC_IMAGE_NOT_READY", 422));
     const input = page.getByPlaceholder("Type or paste text here");
     await input.waitFor({ state: "visible", timeout: readyTimeoutMs });

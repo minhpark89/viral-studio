@@ -13,8 +13,8 @@ export function GpuStatus({ mode, onOpen }) {
     window.addEventListener('focus', check);
     return () => { live = false; window.removeEventListener('focus', check); };
   }, [mode]);
-  const text = mode === 'cpu' ? 'Xuất bằng CPU' : !hardware ? 'Đang kiểm tra GPU…' : hardware.gpuAvailable ? `GPU · ${hardware.selected.vendor.toUpperCase()}` : 'Cần thiết lập GPU';
-  return <button className={`app-version-pill ${mode !== 'cpu' && hardware && !hardware.gpuAvailable ? 'danger-text' : ''}`} onClick={onOpen} title="Xem GPU, driver phù hợp và dung lượng profile">{text}</button>;
+  const text = mode === 'cpu' ? 'Xuất bằng CPU' : !hardware ? 'Đang kiểm tra GPU…' : hardware.gpuAvailable ? `GPU · ${hardware.selected.vendor.toUpperCase()}` : mode === 'auto' ? 'Tự động · dùng CPU' : 'Cần thiết lập GPU';
+  return <button className={`app-version-pill ${mode === 'gpu' && hardware && !hardware.gpuAvailable ? 'danger-text' : ''}`} onClick={onOpen} title="Xem GPU, driver phù hợp và dung lượng profile">{text}</button>;
 }
 
 export function HardwareStorageSettings({ settings, setSettings, run, notify }) {
@@ -43,12 +43,13 @@ export function HardwareStorageSettings({ settings, setSettings, run, notify }) 
     <section className="panel hardware-settings">
       <div className="panel-heading"><h3><Cpu size={18} /> GPU & bộ mã hóa</h3><Button onClick={() => loadHardware(true)} busy={hardwareBusy}><RefreshCw size={14} /> Kiểm tra GPU</Button></div>
       <Field label="Thiết bị xuất video" hint="Áp dụng cho News và timeline. GPU được thử tạo và giải mã file thật trước khi sử dụng.">
-        <select aria-label="Thiết bị xuất video" value={settings.renderAcceleration || 'gpu'} onChange={event => save({ renderAcceleration: event.target.value })}>
+        <select aria-label="Thiết bị xuất video" value={settings.renderAcceleration || 'auto'} onChange={event => save({ renderAcceleration: event.target.value })}>
+          <option value="auto">Tự động · GPU nếu sẵn sàng, CPU dự phòng</option>
           <option value="gpu">Tự chọn GPU · yêu cầu GPU hoạt động</option><option value="cpu">CPU · chế độ tương thích</option>
         </select>
       </Field>
       {hardware ? <>
-        <Notice error={!hardware.gpuAvailable && settings.renderAcceleration !== 'cpu'}>{hardware.message}</Notice>
+        <Notice error={!hardware.gpuAvailable && settings.renderAcceleration === 'gpu'}>{settings.renderAcceleration === 'auto' && !hardware.gpuAvailable ? 'Sẽ xuất bằng CPU trên máy này. Có thể cài driver để tăng tốc bằng GPU.' : hardware.message}</Notice>
         {hardware.adapters.map((item, index) => <p key={index}><strong>{item.name}</strong><br /><span className="muted small">Driver: {item.driver}</span></p>)}
         {hardware.candidates.map(item => <div className="tool-row" key={item.encoder}>
           <span className={item.available ? 'green-text' : 'danger-text'}>{item.encoder}: {item.available ? 'Đã kiểm tra hoạt động' : 'Chưa hoạt động'}</span>
@@ -56,7 +57,7 @@ export function HardwareStorageSettings({ settings, setSettings, run, notify }) 
         </div>)}
         {hardware.adapters.some(item => item.vendor === 'nvidia') && <Button busy={driverBusy} onClick={async () => { setDriverBusy(true); const result = await run(() => api('/system/nvidia-driver')); if (result) setDriver(result.recommendation); setDriverBusy(false); }}>Tìm bản NVIDIA phù hợp</Button>}
         {driver && <Notice><strong>{driver.version ? `${driver.name} ${driver.version} · WHQL` : driver.gpu}</strong><p>{driver.message}</p><a href={driver.url} target="_blank" rel="noreferrer noopener">Xem bản driver dành cho card này <ExternalLink size={13} /></a></Notice>}
-        <p className="muted small">{hardware.cpuNote} Khi bật chế độ GPU mà GPU lỗi, app báo lỗi và giữ MC/ảnh để thử lại; không tự chuyển sang CPU hoặc tạo MC mới.</p>
+        <p className="muted small">{hardware.cpuNote} Chế độ Tự động dùng CPU nếu GPU chưa sẵn sàng. Nếu chọn yêu cầu GPU, app giữ MC/ảnh và báo lỗi khi GPU không hoạt động.</p>
       </> : <p className="muted">Đang kiểm tra phần cứng…</p>}
       {error && <Notice error>{error}</Notice>}
     </section>

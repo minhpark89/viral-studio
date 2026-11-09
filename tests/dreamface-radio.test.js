@@ -2,9 +2,10 @@ import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { selectDreamFaceRadio } from '../server/providers/dreamface.js';
+import { resolveBrowserExecutable } from '../server/browser-runtime.js';
 
 let browser;
-before(async () => { browser = await chromium.launch({ headless: true, executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' }); });
+before(async () => { browser = await chromium.launch({ headless: true, executablePath: resolveBrowserExecutable({}, process.env.CHROME_PATH) }); });
 after(async () => { await browser?.close(); });
 
 async function fixture(t) {

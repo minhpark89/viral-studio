@@ -92,6 +92,9 @@ export async function selectRenderEncoder(settings = {}, options = {}) {
   // Missing setting retains compatibility for old snapshots and direct renderer callers.
   if ((settings.renderAcceleration || 'cpu') === 'cpu') return { encoder: 'libx264', gpu: false, name: 'CPU' };
   const report = await inspectRenderHardware(settings, options);
+  if (!report.selected && settings.renderAcceleration === 'auto') {
+    return { encoder: 'libx264', gpu: false, name: 'CPU', fallbackReason: report.message };
+  }
   if (!report.selected) throw new StudioError('Chế độ GPU đang bật nhưng GPU/driver chưa sẵn sàng. Mở Cài đặt → GPU để xem driver phù hợp; MC và ảnh đã chuẩn bị được giữ để thử lại.', 'GPU_UNAVAILABLE', 422);
   return { encoder: report.selected.encoder, gpu: true, name: report.selected.name, driver: report.selected.driver };
 }

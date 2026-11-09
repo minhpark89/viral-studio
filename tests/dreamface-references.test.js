@@ -6,10 +6,11 @@ import {randomUUID} from "node:crypto";
 import {chromium} from "playwright";
 import {Store} from "../server/store.js";
 import {prepareDreamFaceReferences} from "../server/providers/dreamface.js";
+import {resolveBrowserExecutable} from "../server/browser-runtime.js";
 
 test("DreamFace uploads selected product images to the visible multi-reference input",async t=>{
   const root=path.resolve(".verification",`dreamface-refs-${randomUUID()}`),store=new Store(root),project=store.createProject("Product");
-  const browser=await chromium.launch({headless:true,executablePath:"C:/Program Files/Google/Chrome/Application/chrome.exe"});
+  const browser=await chromium.launch({headless:true,executablePath:resolveBrowserExecutable({},process.env.CHROME_PATH)});
   t.after(async()=>{await browser.close();await fs.rm(root,{recursive:true,force:true});});
   const page=await browser.newPage();
   await page.setContent(`<button onclick="document.querySelector('#multi').hidden=false">References to Video</button><button>Image or Text</button><div hidden><input type="file"></div><section id="multi" hidden><label><input type="file" multiple></label><img hidden></section>`);
