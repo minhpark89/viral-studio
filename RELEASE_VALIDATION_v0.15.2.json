@@ -1,0 +1,133 @@
+{
+  "version": "0.15.2",
+  "date": "2026-11-09T09:59:36.015Z",
+  "base": {
+    "tag": "v0.15.0",
+    "commit": "a32e0e2d7e4cc7a4025bcfc6c0f5dc04b7f7d8f0",
+    "unifiedCommit": "9b5e914787edcc9f1dce050e178ddfe44d4bf78f"
+  },
+  "backend": {
+    "passed": 532,
+    "failed": 0,
+    "seconds": 89.612
+  },
+  "desktop": {
+    "newsStudio": true,
+    "productResearchSqlite": true,
+    "node": "24.22.0"
+  },
+  "packagedSource": {
+    "version": "0.15.2",
+    "filesCompared": 120,
+    "passed": true
+  },
+  "render": {
+    "localCpu": {
+      "passed": 11,
+      "failed": 0,
+      "seconds": 24.974
+    },
+    "remoteIntelQsv": {
+      "passed": 11,
+      "failed": 0,
+      "seconds": 29.868,
+      "encoder": "h264_qsv"
+    },
+    "realSavedAssets": {
+      "metadata": {
+        "kind": "video",
+        "duration": 15,
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "hasAudio": true,
+        "videoCodec": "h264",
+        "audioCodec": "aac",
+        "bytes": 2705901
+      },
+      "frames": 450,
+      "visuals": 3,
+      "captionTiming": "aligned",
+      "fullyDecoded": true,
+      "beforeAfterFramesInspected": true,
+      "fitModes": [
+        {
+          "fit": "contain",
+          "reason": "portrait-or-square",
+          "background": "same-image-blur"
+        },
+        {
+          "fit": "contain",
+          "reason": "protected-composition",
+          "background": "same-image-blur"
+        },
+        {
+          "fit": "cover",
+          "reason": "bounded-landscape-crop",
+          "background": "photo"
+        }
+      ],
+      "paidGeneration": false,
+      "publishedContent": false
+    }
+  },
+  "remoteUpgrade": {
+    "machine": "DESKTOP-KAD22P5",
+    "version": "0.15.2",
+    "dataDir": "D:\\Viral Studio\\Viral Data",
+    "canonicalExe": "D:\\Viral Studio\\Viral Studio.exe",
+    "sha256": "E3A2C17E3A16D4010638A29D78E0A29BD81FC11D87BB818486BCF8656DE2DD70",
+    "records": {
+      "productionBatches": 1,
+      "socialPosts": 2,
+      "projects": 1,
+      "researchResults": 10,
+      "jobs": 13,
+      "accounts": 16,
+      "media": 42
+    },
+    "missingOriginalIds": 0,
+    "llmKeyUnchanged": true,
+    "renderPreferencePreserved": true,
+    "activeJobs": 0,
+    "session": 1,
+    "backup": "D:\\Viral Studio Support\\2026-11-09\\before-unified-0.15.2",
+    "waitedForPortableWrapper": true,
+    "at": "2026-11-09T16:58:24.4942102+07:00",
+    "interactiveWindowVerified": true,
+    "window": {
+      "title": "Viral Studio",
+      "captured": true,
+      "width": 1440,
+      "height": 950,
+      "session": 1
+    }
+  },
+  "windowsPrerequisite": {
+    "version": "14.51.36247.0",
+    "sha256": "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c",
+    "signature": "Microsoft Corporation; Valid",
+    "missingRuntimeFlow": "unit tested with injected native exit codes",
+    "cleanWindowsVmTested": false,
+    "installedPreviouslyOnTarget": true
+  },
+  "inheritedChecks": {
+    "version": "0.15.1",
+    "browserSuites": [
+      "news-studio-browser",
+      "news-style-browser",
+      "workspaces-browser"
+    ],
+    "note": "Passed on unified base; no frontend behavior changed in 0.15.2. Packaged desktop suites rerun on 0.15.2."
+  },
+  "limitations": [
+    "No clean Windows VM / isolated NSIS installation was exercised. Both release payloads were built; unpacked and Portable executed.",
+    "No new paid LLM/DreamFace generation was submitted for 0.15.2 validation; saved presenter and images were reused.",
+    "Metadata protection is not OCR/face detection; landscape center crop still needs editorial review.",
+    "Not every Windows build, GPU, driver or provider account state was tested."
+  ],
+  "publication": {
+    "content": false,
+    "githubVerification": "See release manifest and SHA256SUMS; release tag must match sourceCommit."
+  }
+}

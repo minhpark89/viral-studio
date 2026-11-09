@@ -1,4 +1,12 @@
-# Current: v0.15.1 — Unified News / Product / Windows portability
+# Current: v0.15.2 — News / Product thống nhất và ảnh V3
+
+Bắt đầu tại [CHECKPOINT_v0.15.2.md](CHECKPOINT_v0.15.2.md), [validation](RELEASE_VALIDATION_v0.15.2.json) và [quy trình phiên bản sau](RELEASE_RUNBOOK.md). [Bộ cài/source chuẩn](https://github.com/minhpark89/viral-studio/releases/tag/v0.15.2). Manifest đi kèm release xác định commit và SHA-256 chính xác.
+
+Bản này gồm Product 0.15.0, sửa lỗi máy mới từ 0.15.1 và ảnh V3 cover/nền mờ theo tỷ lệ. Dùng mốc này để sửa tiếp trên mọi PC; giữ dữ liệu và tài khoản riêng từng máy.
+
+---
+
+# Historical: v0.15.1 — Unified News / Product / Windows portability
 
 Start at [CHECKPOINT_v0.15.1.md](CHECKPOINT_v0.15.1.md). This combines the 0.15.0 Product/News workspace with the verified KAD22P5 LLM and DreamFace fixes, bundled Windows prerequisite and automatic GPU/CPU selection for new workspaces. GitHub publication is a separate action; check the accompanying manifest and local Git commit rather than assuming a tag exists.
 

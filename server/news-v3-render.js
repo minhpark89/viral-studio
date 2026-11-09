@@ -71,7 +71,7 @@ export async function renderNewsV3(store,job,presenter,plan,images,signal,update
   add('format=yuv420p');
   const output=path.join(directory,'output.mp4');
   await fs.writeFile(path.join(directory,'filter.ffgraph'),filters.join(';'));
-  const creditText=credits.map((c,i)=>`${i+1}. ${c.name}\n${c.label}\n${c.fullCredit}\n${c.url}\n${c.licenseUrl}\nDisplay: resized to fit, gentle zoom on selected frames; original composition retained.`).join('\n\n');
+  const creditText=credits.map((c,i)=>`${i+1}. ${c.name}\n${c.label}\n${c.fullCredit}\n${c.url}\n${c.licenseUrl}\nDisplay: ${photo.shots[i].fit==='cover'?'center crop to fill; gentle zoom on selected frames':'full composition over a blurred, darkened copy of the same image'}.`).join('\n\n');
   const args=['-hide_banner','-v','error','-y','-nostdin','-progress','pipe:1',...inputs,'-filter_complex_threads',String(threads),'-filter_complex_script','filter.ffgraph','-map',`[${chain}]`,'-map','[voice]','-t',String(duration),'-r',String(FPS),...videoEncodingArgs(device.encoder,{quality:18,threads}),'-c:a','aac','-b:a','192k','-ar','48000','-ac','2','-metadata','comment='+creditText,'-movflags','+faststart',output];
   update(20,'Đang dựng '+(style==='v3-fast'?'V3 nhanh':'V3 chuẩn'));
   const encodeStarted=performance.now();

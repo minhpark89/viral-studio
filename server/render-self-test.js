@@ -97,7 +97,8 @@ export async function runRenderSelfTest(directory, { gpu = false } = {}) {
     const colors = ['#dc1e1e','#1ed228','#2828d2','#dcd228','#d228d2','#1ed2d2','#a0641e','#6428a0','#e682aa','#64aae6'];
     for (const [index, color] of (gpu ? colors : colors.slice(0, 3)).entries()) {
       const file = path.join(root, `editorial-${index}.png`);
-      await runProcess(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=${color}:s=900x1400`, "-frames:v", "1", "-threads", "1", "-update", "1", file], { signal, timeout: 30000 });
+      const photoSize = ['1600x900', '900x1400', '1200x800'][index % 3];
+      await runProcess(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=${color}:s=${photoSize}`, "-frames:v", "1", "-threads", "1", "-update", "1", file], { signal, timeout: 30000 });
       images.push(await importMedia(store, file, { projectId: project.id, name: path.basename(file), move: true }));
     }
     for (const size of ["540x720", "1056x792"]) {
@@ -138,7 +139,9 @@ export async function runRenderSelfTest(directory, { gpu = false } = {}) {
         assert.deepEqual(photoOrder, expected.map((_, index) => index), 'Every photo must remain in order');
         fs.unlinkSync(sample);
       }
-      report.cases.push({ name: size, type: "full-news", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, meanVolumeDb, fullyDecoded: true, renderDevice: result.renderDevice, renderPipeline: result.renderPipeline, photoOrder, newsRenderStyle: result.newsRenderStyle, captionTiming: result.newsCaptionTiming, captionRuntimeExecuted: true });
+      assert.ok(result.newsLayout.shots.some(shot => shot.fit === 'cover'), 'Landscape photo fill must execute');
+      assert.ok(result.newsLayout.shots.some(shot => shot.background === 'same-image-blur'), 'Portrait background must execute');
+      report.cases.push({ name: size, type: "full-news", passed: true, elapsedMs: Date.now() - start, output: path.basename(output), metadata, meanVolumeDb, fullyDecoded: true, renderDevice: result.renderDevice, renderPipeline: result.renderPipeline, photoOrder, photoFraming: result.newsLayout.shots, newsRenderStyle: result.newsRenderStyle, captionTiming: result.newsCaptionTiming, captionRuntimeExecuted: true });
     }
     save("Rendering timeline with a logo, text and looped music");
     const start = Date.now();
