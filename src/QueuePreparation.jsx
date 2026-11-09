@@ -19,7 +19,7 @@ export function QueuePreparation({ items, data, run, navigate }) {
       <p className="muted small">{entries.length} video chưa vào bước tạo MC/xuất video{avatar ? ` · MC: ${avatar.name}` : ''}</p>
       {failed.length > 0 && <p className="danger-text">{failed.length} video cần xử lý: {failed[0].error || 'Bước chuẩn bị bị gián đoạn.'}</p>}
       {entries.length > 1 && <details><summary>Xem {entries.length} video đang chuẩn bị / lỗi</summary>{entries.map(item => <p key={item.id}>Video {item.index + 1}: {item.name} · {item.error || item.stage}</p>)}</details>}
-      <div className="inline-actions"><Button onClick={() => navigate('editor', { focusBatchId: batchId, researchId: current.researchId })}>Mở lượt render</Button>{failed.length > 0 && <Button onClick={() => run(() => api(`/production/batches/${batchId}/retry`, {}))}>Thử lại bước chuẩn bị</Button>}</div>
+      <div className="inline-actions"><Button onClick={() => navigate('news', { view:'automatic', focusBatchId: batchId, researchId: current.researchId })}>Mở lượt render</Button>{failed.length > 0 && <Button onClick={() => run(() => api(`/production/batches/${batchId}/retry`, {}))}>Thử lại bước chuẩn bị</Button>}</div>
     </article>;
   })}</div>;
 }

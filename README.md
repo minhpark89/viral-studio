@@ -1,3 +1,15 @@
+# Viral Studio v0.15.0
+
+**News Studio** và **Product Studio** là hai luồng tự động chính. News Studio chứa Research, tạo video từ chủ đề/link và cài đặt Output/style/LLM/profile. **Kịch bản** và **Dựng video** nằm trong Công cụ thủ công.
+
+[Tải Installer / Portable](https://github.com/minhpark89/viral-studio/releases/tag/v0.15.0) · [Hướng dẫn tiếp tục sửa lỗi trên máy khác](CHECKPOINT_v0.15.0.md) · [Kiểm chứng bản phát hành](RELEASE_VALIDATION_v0.15.0.json)
+
+Các hướng dẫn và ghi chú phiên bản trước được giữ dưới đây để tra cứu. `npm test` chạy bộ backend; UI mới có `node tests/news-studio-browser.mjs` và `node tests/news-studio-desktop.mjs` (sau khi đóng gói).
+
+---
+
+## Historical notes
+
 # Viral Studio
 
 Viral Studio is a Windows desktop app for research, AI video production, timeline editing, Facebook Page management, post planning and Meta publishing preparation.
@@ -94,5 +106,3 @@ Build outputs are written to `release/`. The installer and portable executable u
 ## Repository
 
 This repository is the dedicated Viral Studio project. The current release is v0.10.1. The GitHub repository is `minhpark89/viral-studio`. See `CHECKPOINT_v0.10.1.md` for implementation, verification and recovery details.
-
-

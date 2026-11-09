@@ -3,13 +3,13 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $AppPath) {
     $candidates = @(
-        (Join-Path $PSScriptRoot 'Viral.Studio.0.10.2.exe'),
+        (Join-Path $PSScriptRoot 'Viral.Studio.0.15.0.exe'),
         (Join-Path $PSScriptRoot 'Viral Studio.exe'),
-        (Join-Path $PSScriptRoot '..\release\Viral.Studio.0.10.2.exe')
+        (Join-Path $PSScriptRoot '..\release\Viral.Studio.0.15.0.exe')
     )
     $AppPath = $candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
-if (-not $AppPath) { throw 'Pass -AppPath with the path to Viral Studio 0.10.2 Portable or the installed EXE.' }
+if (-not $AppPath) { throw 'Pass -AppPath with the path to Viral Studio 0.15.0 Portable or the installed EXE.' }
 $AppPath = (Resolve-Path -LiteralPath $AppPath).Path
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path (Split-Path $AppPath -Parent) 'Render Test Results' }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -39,7 +39,7 @@ while ((Get-Date) -lt $deadline) {
     }
 }
 if (-not $report -or -not $report.finished) { throw "Test did not finish within 32 minutes. Check $runDirectory" }
-if ($report.version -ne '0.10.2') { throw "Wrong app version tested: $($report.version). Use 0.10.2." }
+if ($report.version -ne '0.15.0') { throw "Wrong app version tested: $($report.version). Use 0.15.0." }
 Get-Content -LiteralPath (Join-Path $runDirectory 'RESULT.txt') -Encoding UTF8
 if (-not $report.passed) { exit 1 }
 exit 0

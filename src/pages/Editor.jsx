@@ -30,6 +30,7 @@ import {
   Notice,
 } from "../components.jsx";
 import { Preview } from "./Preview.jsx";
+import { ProductOutputPicker, NewsOutputPicker } from './ProductOutput.jsx';
 
 const number = (value, fallback = 0) =>
   Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -66,6 +67,8 @@ export function EditorPage({ data, project, run, notify, navigate, renderKind = 
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [autoCreateContent, setAutoCreateContent] = useState(true);
+  const [newsOutputDirectory, setNewsOutputDirectory] = useState('');
+  const [productOutputDirectory, setProductOutputDirectory] = useState('');
   const [saved, setSaved] = useState(true);
   const duration = durationOf(timeline);
   const assets = data.media.filter(
@@ -258,7 +261,7 @@ export function EditorPage({ data, project, run, notify, navigate, renderKind = 
     setExporting(true);
     if (await save()) {
       const exportTimeline = fast ? { ...timeline, resolution: 480, quality: "draft", fps: 30 } : timeline;
-      const result = await run(() => api("/jobs/render", { projectId: project.id, name, timeline: exportTimeline, production: { contentType: renderKind, title: name, autoCreateContent } }));
+      const result = await run(() => api("/jobs/render", { projectId: project.id, name, timeline: exportTimeline, production: { contentType: renderKind, title: name, autoCreateContent, ...(renderKind === 'product' ? { productOutputDirectory } : { newsOutputDirectory }) } }));
       if (result) {
         notify(fast ? "Đã thêm render nhanh vào hàng đợi." : "Đã thêm tác vụ xuất video.");
         setModal(null);
@@ -956,6 +959,8 @@ export function EditorPage({ data, project, run, notify, navigate, renderKind = 
           <form
             onSubmit={(event) => { event.preventDefault(); queueRender(false); }}
           >
+            {renderKind === 'product' && <ProductOutputPicker value={productOutputDirectory} onChange={setProductOutputDirectory} notify={notify} label="Nơi lưu video Product từ timeline" />}
+            {renderKind === "news" && <NewsOutputPicker value={newsOutputDirectory} onChange={setNewsOutputDirectory} notify={notify} label="Nơi lưu video News từ timeline" />}
             <Field label="Tên file">
               <input
                 required

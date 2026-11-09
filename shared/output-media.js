@@ -5,7 +5,7 @@ export function isNewsPresenterMedia(media, jobs = []) {
 }
 
 export function isPublishableVideo(media, jobs = []) {
-  return media?.kind === "video" && media?.generated && !isNewsPresenterMedia(media, jobs);
+  return media?.kind === "video" && media?.generated && media?.mediaType !== 'product-clip' && !isNewsPresenterMedia(media, jobs);
 }
 
 export function mediaOutputType(media, jobs = []) {

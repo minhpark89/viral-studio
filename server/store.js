@@ -45,6 +45,11 @@ export class Store extends EventEmitter {
       researchResults: [],
       researchBatches: [],
       productionBatches: [],
+      productRuns: [],
+      productScans: [],
+      productFreeScans: [],
+      productCampaigns: [],
+      productBatches: [],
       settings: {
         concurrency: 2,
         renderConcurrency: 1,
@@ -133,7 +138,7 @@ export class Store extends EventEmitter {
       if (batch.request?.contentType === 'news') preserveNewsStyle(batch.request);
       for (const item of batch.items || []) preserveNewsStyle(item.newsPlan);
     }
-    for (const collection of ["socialPages", "socialPosts", "researchResults", "researchBatches", "productionBatches"]) {
+    for (const collection of ["socialPages", "socialPosts", "researchResults", "researchBatches", "productionBatches", "productRuns", "productScans",'productFreeScans','productCampaigns','productBatches']) {
       if (this.state[collection] === undefined) {
         this.state[collection] = [];
         recovered = true;

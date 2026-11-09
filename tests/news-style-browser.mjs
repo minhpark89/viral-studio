@@ -19,28 +19,28 @@ try{
   const batch=store.add('productionBatches',{projectId:project.id,request,status:'queued',warnings:[],items:[{index:0,status:'queued',jobId:null}]});
   await route.fulfill({status:202,contentType:'application/json',body:JSON.stringify(batch)});
  });
- await page.goto(studio.address);await page.locator('nav').getByRole('button',{name:'Dựng video',exact:true}).click();
- const selector=page.getByLabel('Style render tin tức',{exact:true});await selector.waitFor();
+ await page.goto(studio.address);await page.locator('nav').getByRole('button',{name:'News Studio',exact:true}).click();await page.getByRole('tab',{name:'Tạo video tự động',exact:true}).click();
+ const selector=page.getByRole('tabpanel',{name:'Tạo video tự động'}).getByLabel('Style render tin tức',{exact:true});await selector.waitFor();
  assert.equal(await selector.inputValue(),'v3');assert.deepEqual(await selector.locator('option').evaluateAll(options=>options.map(o=>o.value)),['v3','v3-fast','classic']);
  report.checks.push('Fresh project defaults to V3, with standard/fast/classic choices');
  for(const style of ['v3','v3-fast','classic']){
   await selector.selectOption(style);await page.getByLabel('News niche',{exact:true}).fill('Space research test');
   await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/production/batches')&&r.request().method()==='POST'),page.getByRole('button',{name:'Create 1 video',exact:true}).click()]);
   assert.equal(requests.at(-1).newsRenderStyle,style);assert.equal(requests.at(-1).projectId,project.id);
-  await page.reload();await page.locator('nav').getByRole('button',{name:'Dựng video',exact:true}).click();assert.equal(await selector.inputValue(),style);
+  await page.reload();await page.locator('nav').getByRole('button',{name:'News Studio',exact:true}).click();await page.getByRole('tab',{name:'Tạo video tự động',exact:true}).click();assert.equal(await selector.inputValue(),style);
  }
  report.checks.push('All three selections reach the submitted request and survive reload');
  const legacyProject=store.createProject('Legacy preferences');
  await page.evaluate(({id})=>{localStorage.setItem(`studio-news-format:${id}`,JSON.stringify({newsDuration:20,newsImageCount:8}));localStorage.setItem('studio-project',id);},{id:legacyProject.id});
- await page.reload();await page.locator('nav').getByRole('button',{name:'Dựng video',exact:true}).click();
+ await page.reload();await page.locator('nav').getByRole('button',{name:'News Studio',exact:true}).click();await page.getByRole('tab',{name:'Tạo video tự động',exact:true}).click();
  assert.equal(await selector.inputValue(),'v3');assert.equal(await page.getByLabel('Độ dài clip tóm tắt',{exact:true}).inputValue(),'20');
  await page.waitForFunction(()=>!document.querySelector('.news-options-save-state')?.textContent.includes('Đang lưu'));
  assert.equal(store.require('projects',legacyProject.id).newsVideoOptions.newsImageCount,8);
  report.checks.push('Old saved preferences acquire V3 without resetting duration/image count');
  await page.screenshot({path:root+'/desktop.png',fullPage:true});
- await page.getByRole('button',{name:/Render video sản phẩm/}).click();assert.equal(await selector.count(),0);
+ await page.locator('nav').getByRole('button',{name:'Product Studio',exact:true}).click();await page.getByRole('heading',{name:'Product Studio',exact:true}).waitFor();assert.equal(await selector.count(),0);
  report.checks.push('Product rendering does not receive a news style control');
- await page.getByRole('button',{name:/Render video tin tức/}).click();await page.setViewportSize({width:390,height:844});
+ await page.locator('nav').getByRole('button',{name:'News Studio',exact:true}).click();await page.getByRole('tab',{name:'Tạo video tự động',exact:true}).click();await page.setViewportSize({width:390,height:844});
  const mobileOverflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);await page.screenshot({path:root+'/mobile.png',fullPage:true});
  assert.equal(mobileOverflow,false);assert.deepEqual(errors,[]);
  report.passed=true;Object.assign(report,{requests:requests.map(r=>({newsRenderStyle:r.newsRenderStyle,contentType:r.contentType})),mobileOverflow,errors});

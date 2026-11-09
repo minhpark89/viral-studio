@@ -25,6 +25,7 @@ const nav = async (name) => {
 const report = { checks: [], errors, root, url: studio.address };
 try {
   await page.goto(studio.address);
+  await nav('Tạo bằng AI');
   await page.getByRole('heading', { name: 'Bắt đầu bằng một ý tưởng.' }).waitFor();
   await page.screenshot({ path: path.join(output, 'create.png'), fullPage: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

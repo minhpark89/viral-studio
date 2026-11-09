@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Video } from "lucide-react";
 import { api } from "../api.js";
 import { Badge, Button, Field, Notice } from "../components.jsx";
@@ -6,6 +6,7 @@ import { NewsMcPicker } from "../NewsMcPicker.jsx";
 import { isPageAvatar } from "../../shared/output-media.js";
 import { MAX_NEWS_VIDEOS } from "../../shared/mc-rotation.js";
 import { NewsVideoOptions, NewsFontSelect, useNewsVideoOptions } from '../NewsVideoOptions.jsx';
+import { NewsOutputPicker } from './ProductOutput.jsx';
 import { ProductionBatchRecords } from '../ProductionBatchRecords.jsx';
 
 function batchTitle(batch, research) {
@@ -13,7 +14,9 @@ function batchTitle(batch, research) {
   return research?.headline || batch.sources?.[0]?.title || request.topic || request.sourceUrl || request.productName || "Video trực tiếp";
 }
 
-export function ProductionPanel({ data, project, mode, notify, navigate, focusBatchIds = [], focusResearchId = "" }) {
+export function ProductionPanel({ data, project, mode, notify, navigate, focusBatchIds = [], focusResearchId = "", hideOutput = false, outputDirectory = "" }) {
+  const [newsOutputDirectory, setNewsOutputDirectory] = useState(outputDirectory);
+  useEffect(()=>setNewsOutputDirectory(outputDirectory),[outputDirectory]);
   const [topic, setTopic] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [productName, setProductName] = useState("");
@@ -73,11 +76,11 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
         feeds: feeds.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
         variationPolicy: "visual-unique",
         fontStyle: "news",
-        ...(mode === 'news' ? newsOptions : {}),
+        ...(mode === 'news' ? {...newsOptions, newsOutputDirectory} : {}),
       });
       setRequestId(crypto.randomUUID());
       notify(`${batch.items?.length || count} video${Number(count) === 1 ? "" : "s"} đang được chuẩn bị. Nếu LLM hoặc ảnh lỗi, lỗi sẽ hiện ngay trong bản ghi để Retry.`);
-      navigate?.("editor", { focusBatchId: batch.id, researchId: batch.request?.researchId || "" });
+      navigate?.("news", { view:"automatic", focusBatchId: batch.id, researchId: batch.request?.researchId || "" });
     } catch (error) {
       notify(error.message, "error");
     } finally {
@@ -89,10 +92,12 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
     <div className="hub-panel-heading">
       <div>
         <span className="hub-kicker">BATCH PRODUCTION · ENGLISH (US)</span>
-        <h2>{mode === "news" ? "Turn a niche into news videos" : "Turn products into video variations"}</h2>
-        <p className="muted small">{mode === "news" ? "Research today's reports → create videos → write complete articles in Content." : "Research a product niche or add your own product → create videos → write store-link comments in Content."}</p>
+        <h2>{mode === "news" ? "Tạo News từ chủ đề hoặc link bài viết" : "Turn products into video variations"}</h2>
+        <p className="muted small">{mode === "news" ? "Nhập đầu vào, chọn số lượng và MC. App chuẩn bị kịch bản, tạo video rồi chuyển sang Content." : "Research a product niche or add your own product → create videos → write store-link comments in Content."}</p>
       </div>
     </div>
+
+    {mode === "news" && !hideOutput && <section className="panel"><h3>Output News · Chọn nơi lưu video</h3><NewsOutputPicker value={newsOutputDirectory} onChange={setNewsOutputDirectory} notify={notify} formId="news-production-form" /></section>}
 
     {focusedBatch && <article className="production-focus-card" data-testid="render-record" data-production-batch-id={focusedBatch.id}>
       <div className="production-focus-heading">
@@ -115,7 +120,7 @@ export function ProductionPanel({ data, project, mode, notify, navigate, focusBa
       </div>
     </article>}
 
-    <form onSubmit={start}>
+    <form id={mode === "news" ? "news-production-form" : "legacy-product-production-form"} onSubmit={start}>
       {mode === "product" && <div className="content-filter-tabs production-source-tabs"><button type="button" className={autoResearch ? "active" : ""} onClick={() => setAutoResearch(true)}>Auto research</button><button type="button" className={!autoResearch ? "active" : ""} onClick={() => setAutoResearch(false)}>My product</button></div>}
       <div className="production-inputs">
         {mode === "news" || autoResearch ? <Field label={mode === "news" ? "News niche" : "Product niche"}><input required={mode !== "news" || !sourceUrl} minLength={mode === "news" && sourceUrl ? undefined : 2} maxLength={200} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder={mode === "news" ? "US technology, space, business…" : "Kitchen gadgets, pet accessories…"} /></Field> : <Field label="Product name"><input required maxLength={200} value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Portable blender" /></Field>}

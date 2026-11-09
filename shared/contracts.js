@@ -29,7 +29,7 @@ export const providers = {
     hidden: false,
     models: ["DreamFace video"],
     imageModels: [],
-    durations: [5, 10],
+    durations: [5, 10, 15],
     ratios: ["9:16", "16:9"],
   },
 };
@@ -154,6 +154,8 @@ export function dimensions(timeline) {
 }
 
 export const generationSchema = z.object({
+  workflow: z.enum(['product-video']).optional(),
+  productOptions: z.object({billingMode:z.enum(['free','credits']).default('free'),resolution:z.enum(['480p','720p']).default('720p'),maxCredits:z.number().int().min(0).max(100).default(0)}).optional(),
   projectId: id,
   provider: z.enum(["dola", "flow", "dreamface"]),
   accountId: z.union([id, z.literal("auto")]).default("auto"),

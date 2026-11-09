@@ -1,3 +1,15 @@
+# Current: v0.15.0 — News Studio / Product Studio
+
+Mốc đồng bộ mới: [CHECKPOINT_v0.15.0.md](CHECKPOINT_v0.15.0.md), [release notes](RELEASE_NOTES_v0.15.0.md), [validation](RELEASE_VALIDATION_v0.15.0.json).
+
+Source/tag và bộ cài: https://github.com/minhpark89/viral-studio/releases/tag/v0.15.0
+
+Codex đang sửa lỗi News trên máy khác cần lưu commit/patch trước khi nâng cấp, ghép với source mới và chạy lại ca lỗi trên máy đó. Không chép source hoặc dữ liệu cũ đè cả bản mới. Các checkpoint bên dưới là lịch sử.
+
+---
+
+## Historical notes
+
 # Checkpoint — Viral Studio v0.10.2 bản thử
 
 Bắt đầu tại [CHECKPOINT_v0.10.2.md](CHECKPOINT_v0.10.2.md). Bản này tối ưu profile, truyền dữ liệu giao diện, đo dung lượng và lưu trữ tin đã đăng; sửa tiêu đề V3 và shutdown. [Hướng dẫn ổ dữ liệu/máy mới](HUONG-DAN-O-DU-LIEU-v0.10.2.md).

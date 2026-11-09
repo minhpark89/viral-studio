@@ -8,6 +8,7 @@ import { StudioError } from "../store.js";
 import { ensureNewsMcImage } from "../mc-image.js";
 import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
 import { inspectDreamFaceQuota } from '../dreamface-quota.js';
+import { generateProductVideo } from '../dreamface-product.js';
 import { ensureDreamFaceCredentials, getDreamFaceCredentials, getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
 import { profileStorage, profileLaunchArgs } from '../profile-storage.js';
 import { resolveBrowserExecutable } from '../browser-runtime.js';
@@ -1832,6 +1833,7 @@ export class DreamFaceProvider {
    * endpoints that can change without notice.
    */
   async generate(store, job, account, signal, update) {
+    if (job.payload.workflow === 'product-video') return generateProductVideo(this, store, job, account, signal, update);
     if (job.payload.kind !== "video") throw providerError("DreamFace hiện chỉ hỗ trợ tạo video.", "UNSUPPORTED_KIND");
     if (!["text","reference"].includes(job.payload.mode)) {
       throw providerError("DreamFace supports text and reference images for this workflow.", "UNSUPPORTED_MODE");

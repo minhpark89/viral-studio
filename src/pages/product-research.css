@@ -1,0 +1,339 @@
+.pr-hub {
+  max-width: 1600px;
+  margin-inline: auto;
+}
+.pr-purpose-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.pr-purpose-presets button:first-child {
+  border-color: #b38b62;
+  color: #ffc78b;
+}
+.pr-source-hint {
+  grid-column: 1 / -1;
+  padding: 10px 14px;
+  background: #f4b97c0c;
+  border-left: 2px solid #f4b97c;
+}
+.pr-thumbnail {
+  width: 100%;
+  height: 220px;
+  object-fit: contain;
+  background: #0a1320;
+  border-radius: 9px;
+  margin-top: 14px;
+}
+.pr-video-preview {
+  margin-top: 12px;
+}
+.pr-video-preview video {
+  display: block;
+  width: 100%;
+  max-height: 430px;
+  background: #050a11;
+  border-radius: 9px;
+}
+.pr-video-preview small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.pr-commerce {
+  color: #d9b584;
+}
+.pr-result-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  grid-column: 1 / -1;
+  padding: 12px 0;
+}
+.pr-kind.product {
+  color: #f4c28c;
+}
+.pr-hub .panel {
+  padding: 22px;
+  margin-bottom: 20px;
+}
+.pr-hub h2 {
+  font-size: 19px;
+  margin: 0 0 16px;
+}
+.pr-hub h3 {
+  font-size: 17px;
+  line-height: 1.5;
+  margin: 15px 0 8px;
+}
+.pr-hub p {
+  line-height: 1.6;
+}
+.pr-hub summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pr-hub details[open] > summary {
+  margin-bottom: 14px;
+}
+.pr-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+.pr-fields input,
+.pr-fields select,
+.pr-results-head select {
+  width: 100%;
+  min-width: 0;
+}
+.pr-limits {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 850px;
+}
+.pr-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pr-presets {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.pr-presets button {
+  background: transparent;
+  color: var(--muted, #9daec2);
+  border: 1px solid var(--line, #304051);
+  border-radius: 20px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.pr-presets button:hover {
+  color: #f4b97c;
+  border-color: #f4b97c;
+}
+.pr-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 10px;
+}
+.pr-sources label {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line, #304051);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.pr-sources input,
+.pr-check input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  accent-color: #f4b97c;
+}
+.pr-sources b,
+.pr-sources small {
+  display: block;
+}
+.pr-sources small {
+  margin-top: 6px;
+  line-height: 1.5;
+  color: var(--muted, #9daec2);
+}
+.pr-sources .selected {
+  border-color: #9d7754;
+  background: #f4b97c08;
+}
+.pr-form > details {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line, #304051);
+}
+.pr-results-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.pr-results-head .field {
+  max-width: 620px;
+}
+.pr-results-head select {
+  max-width: 620px;
+}
+.pr-source-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 20px 0;
+}
+.pr-source-results > div {
+  padding: 12px;
+  border-left: 2px solid #7892ad;
+  background: #7892ad0a;
+}
+.pr-source-results p {
+  margin: 6px 0 0;
+  color: var(--muted, #9daec2);
+}
+.pr-manual {
+  border: 1px dashed var(--line, #304051);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 16px 0;
+}
+.pr-selection {
+  margin: 24px 0 16px;
+}
+.pr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.pr-card {
+  border: 1px solid var(--line, #304051);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pr-card.selected {
+  border-color: #f4b97c;
+  background: #f4b97c05;
+}
+.pr-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.pr-kind {
+  font-size: 12px;
+  color: #8ed9cc;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.pr-kind.ad {
+  color: #e8b278;
+}
+.pr-kind.video {
+  color: #a8bafe;
+}
+.pr-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pr-description {
+  font-size: 14px;
+  color: var(--muted, #9daec2);
+  max-height: 125px;
+  overflow: auto;
+}
+.pr-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 12px 0;
+  border-block: 1px solid var(--line, #304051);
+}
+.pr-metrics span {
+  font-size: 12px;
+  color: var(--muted, #9daec2);
+}
+.pr-metrics b {
+  display: block;
+  font-size: 14px;
+  margin-top: 5px;
+  color: var(--text, #dce4ec);
+}
+.pr-label {
+  color: #c7ded9;
+  font-size: 13px;
+}
+.pr-card > .pr-actions {
+  margin-top: 18px;
+  font-size: 13px;
+}
+.pr-chart {
+  margin: 16px 0;
+}
+.pr-chart figcaption {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.pr-chart svg {
+  display: block;
+  width: 100%;
+  max-height: 210px;
+}
+.pr-chart-dates {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted, #9daec2);
+}
+.pr-chart details {
+  margin-top: 12px;
+  font-size: 12px;
+}
+.pr-table-wrap {
+  max-height: 240px;
+  overflow: auto;
+}
+.pr-table-wrap table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+}
+.pr-table-wrap td,
+.pr-table-wrap th {
+  padding: 6px;
+  border-bottom: 1px solid var(--line, #304051);
+}
+.pr-watch {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line, #304051);
+  padding: 16px 0;
+}
+@media (max-width: 800px) {
+  .pr-hub .panel {
+    padding: 16px;
+  }
+  .pr-limits {
+    grid-template-columns: 1fr;
+  }
+  .pr-results-head {
+    display: block;
+  }
+  .pr-results-head select {
+    max-width: 100%;
+  }
+  .pr-grid {
+    grid-template-columns: 1fr;
+  }
+  .pr-watch {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

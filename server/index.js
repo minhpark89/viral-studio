@@ -28,6 +28,13 @@ import { DreamFaceSetupQueue } from "./dreamface-setup.js";
 import { createDreamFaceSlots, ensureDreamFaceCredentials, parseProxy, proxySecretId, saveDreamFaceProxy, saveDreamFaceCredentials } from "./dreamface-accounts.js";
 import { SecretStore } from "./secret-store.js";
 import { mountProductionRoutes } from "./production.js";
+import { mountProductStudio } from './product-studio.js';
+import { mountProductMarket } from './product-market.js';
+import {mountProductCampaigns} from './product-campaigns.js';
+import {mountProductFreeResearch} from './product-free-research.js';
+import { mountProductResearch } from './product-research/service.js';
+import {mountNewsOutput} from './news-output.js';
+import {mountProductOutput} from './product-output.js';
 import { mountContentRoutes } from "./content.js";
 import { mountWebsiteRoutes } from "./website.js";
 import { inspectMcImageSettings } from "./mc-image.js";
@@ -258,6 +265,13 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   const socialScheduler = new SocialScheduler(store, metaService.publishReel);
   const researchBatches = mountResearchRoutes(app, store, { queue });
   const production = mountProductionRoutes(app, store, queue);
+  const productStudio = mountProductStudio(app, store, queue);
+  mountProductOutput(app,store);
+  mountNewsOutput(app,store);
+  const productCampaigns=mountProductCampaigns(app,store,productStudio);
+  const productMarket = mountProductMarket(app, store);
+  const productFreeResearch=mountProductFreeResearch(app,store);
+  const productResearch = mountProductResearch(app, store);
 
   const checkAccount = id => accountHealth.check(id);
   const loginAccount = async (id, credentials) => {
@@ -351,7 +365,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
             projectId: req.body.projectId || undefined,
             name,
             move: true,
-            mediaType: req.body.mediaType === 'news-mc' ? 'news-mc' : 'product',
+            mediaType: req.body.mediaType === 'news-mc' ? 'news-mc' : req.body.mediaType==='product-reference-video'?'product-reference-video':'product',
           });
           results.push({ ok: true, id: media.id, name: media.name });
         } catch (error) {
@@ -836,6 +850,11 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       await metaService.close();
       await researchBatches.close();
       await production.close();
+      productCampaigns.close();
+      await productStudio.close();
+      await productMarket.close();
+      await productFreeResearch.close();
+      await productResearch.close();
       await queue.close();
       dreamfaceSetup.stop();
       await browsers.closeAll();
@@ -849,7 +868,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
       instance.release();
     }
   };
-  return { app, server, store, browsers, queue, socialScheduler, accountHealth, publishedMediaCleanup, metaInsights, address, close };
+  return { app, server, store, browsers, queue, socialScheduler, accountHealth, publishedMediaCleanup, metaInsights, productResearch, address, close };
 }
 
 if (

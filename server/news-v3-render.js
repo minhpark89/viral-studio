@@ -80,7 +80,7 @@ export async function renderNewsV3(store,job,presenter,plan,images,signal,update
   const metadata=await probe(output,store.state.settings);
   if(metadata.width!==1080||metadata.height!==1920||metadata.fps!==FPS||!metadata.hasAudio||Math.abs(metadata.duration-duration)>.1)throw new StudioError('Video V3 không đạt kiểm tra đầu ra.','NEWS_OUTPUT_VALIDATION_FAILED',500);
   update(98,'Đang kiểm tra video V3');
-  const media=await importMedia(store,output,{projectId:job.projectId,name:safeName(job.name||'News broadcast')+'.mp4',generated:true,move:true,jobId:job.id,mediaType:'news-video'});
+  const media=await importMedia(store,output,{projectId:job.projectId,name:safeName(job.name||'News broadcast')+'.mp4',generated:true,move:true,jobId:job.id,mediaType:'news-video',newsOutputDirectory:job.production?.newsOutputDirectory||null});
   const result=store.patch('media',media.id,{newsPresenterMediaId:presenter.id,newsVisualCount:usable.length,newsImageMediaIds:usable.map(i=>i.id),newsTargetDuration:plan.newsDuration||'auto',newsRenderStyle:style,renderDevice:device,renderPipeline:'v3-single-pass',newsCaptionTiming:captions.method,newsCaptionWarning:captions.warning,newsCaptionCues:captions.cues,newsPhotoCredits:credits,newsRenderMetrics:{seconds:(performance.now()-started)/1000,encodeSeconds,captionCacheHit:Boolean(captions.cached),frames:photo.totalFrames},newsLayout:{hero:HERO,rectangles,text:typography.audit,shots:photo.shots,transitions:photo.transitions}});
   if(store.state.jobs.some(j=>j.id===job.id))store.patch('jobs',job.id,{newsRenderStyle:style,newsCaptionTiming:captions.method,newsCaptionWarning:captions.warning});
   return result;

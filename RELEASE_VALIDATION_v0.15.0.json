@@ -1,0 +1,108 @@
+{
+  "version": "0.15.0",
+  "date": "2026-11-09T08:24:29.301Z",
+  "scope": "News Studio UI plus accumulated Product/Research/Output features from local 0.14.0; reported issues on the other News PC are not independently verified",
+  "backend": {
+    "passed": 511,
+    "failed": 0,
+    "command": "npm test"
+  },
+  "browser": {
+    "passed": true,
+    "checks": [
+      "News Studio opens by default; automatic workflows stay out of manual editor; settings persist and Research selection survives internal tabs",
+      "Automatic topic/link batch stays in News Studio with a focused progress record and selected output",
+      "Manual timeline and storyboard contain no batch automation; Product Studio remains reachable; inline LLM test uses current form values; responsive layouts fit"
+    ],
+    "errors": []
+  },
+  "newsStyles": {
+    "passed": true,
+    "checks": [
+      "Fresh project defaults to V3, with standard/fast/classic choices",
+      "All three selections reach the submitted request and survive reload",
+      "Old saved preferences acquire V3 without resetting duration/image count",
+      "Product rendering does not receive a news style control"
+    ],
+    "errors": []
+  },
+  "workspaces": {
+    "passed": true,
+    "checks": [
+      "Research & News stays visible with an existing result and has no blank-screen error",
+      "Settings Test LLM sends the current unsaved endpoint and API key",
+      "Research retains the selected source and visible render record without leaving the Research workspace",
+      "Left navigation has an independent mouse-scroll region on short windows",
+      "Channels workspace imports a local Page through the current ID/CSV/JSON dialog",
+      "Post management opens in its own tab without duplicate warehouse rows",
+      "News Content stores first comment and source link",
+      "Product Studio sends URL-only research with a free 15-second plan",
+      "Manual editor has no automated production; News automatic creation lives in News Studio",
+      "Bulk DreamFace slots create local rotation profiles without external email creation",
+      "Separated workspaces have no console errors or horizontal overflow"
+    ],
+    "errors": []
+  },
+  "desktop": {
+    "passed": true,
+    "checks": [
+      "Packaged 0.15.0 opens News Studio; native folder choose/save/open works; style persists into automatic News; manual editor and Product remain independent"
+    ],
+    "errors": []
+  },
+  "productResearchDesktop": {
+    "passed": true,
+    "checks": [
+      "Packaged Node SQLite initializes and persists Product records",
+      "Missing key shows honest source failure without API calls",
+      "Real Electron Meta Ads link uses native browser IPC",
+      "Google CSV chart renders inside packaged app"
+    ],
+    "errors": []
+  },
+  "productOutputDesktop": {
+    "passed": true,
+    "checks": [
+      "Actual Electron click forwards YouTube to OS browser, opens no app popup, allows FastMoss, rejects file URLs and surfaces browser errors",
+      "Native folder dialog IPC supports choose/cancel; custom default persists, folder opening targets correct path and reset restores Product-only app folder",
+      "Product timeline export exposes native folder selection and freezes it on the queued job"
+    ],
+    "errors": []
+  },
+  "portableSelfTest": {
+    "passed": true,
+    "cases": 11,
+    "elapsedSeconds": 43.3,
+    "mode": "CPU",
+    "scope": "Bundled tools, eight presenter geometries, two full News renders, timeline with logo/text/music"
+  },
+  "sourceAudit": {
+    "files": 93,
+    "forbidden": [],
+    "secrets": [],
+    "packedFileCount": 131,
+    "packedMismatches": [],
+    "version": "0.15.0",
+    "passed": true
+  },
+  "liveProviderRenderTested": false,
+  "publishingServiceContactedDuringTests": false,
+  "limitations": [
+    "Other PC News fixes must be merged and checked on that PC.",
+    "UI tests stub external generation; no DreamFace credits were used.",
+    "AI/CGI reference labels describe source metadata, not verified provenance/virality.",
+    "Installer was built; packaged runtime and Portable were executed in isolated data roots."
+  ],
+  "artifacts": [
+    {
+      "name": "Viral.Studio.Setup.0.15.0.exe",
+      "bytes": 304925839,
+      "sha256": "9a1bb997016696cc476838790119d67954f18161fd6fc695df186415a5e8133a"
+    },
+    {
+      "name": "Viral.Studio.0.15.0.exe",
+      "bytes": 304663891,
+      "sha256": "b0ce6a19bc890ab7cdf34dd473fe087c39726b661598c79017599eb2852a8618"
+    }
+  ]
+}

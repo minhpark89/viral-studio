@@ -309,7 +309,7 @@ export function QueuePage({ data, project, run, navigate }) {
                       job.status,
                     ) && (
                       <>
-                        {job.type === "news" && job.status === "interrupted" && job.submittedAt && (
+                        {((job.type === "news" && job.status === "interrupted" && job.submittedAt) || (job.payload?.workflow === 'product-video' && job.payload.productRequest?.id)) && (
                           <button
                             className="icon-button"
                             title="Khôi phục kết quả đã gửi"

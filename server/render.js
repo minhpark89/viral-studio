@@ -345,6 +345,7 @@ export async function renderTimeline(store, job, signal, progress) {
       move: true,
       generated: true,
       jobId: job.id,
+      ...(job.production?.contentType === 'product' ? {mediaType:'product-video',outputDirectory:job.production.productOutputDirectory||null} : job.production?.contentType === 'news' ? {mediaType:'news-video',newsOutputDirectory:job.production.newsOutputDirectory||null} : {}),
     });
     return store.patch('media', media.id, { renderDevice: device });
   } finally {

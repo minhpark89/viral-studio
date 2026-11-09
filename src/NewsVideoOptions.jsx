@@ -16,7 +16,7 @@ export function NewsFontSelect({ value, onChange, disabled = false }) {
 
 export function NewsOptionsSaveState({ state }) {
   return <div className="news-options-save-state" aria-live="polite">
-    {state?.error ? <span role="alert">Chưa lưu lựa chọn: {state.error} <Button type="button" onClick={state.retry}>Lưu lại lựa chọn</Button></span> : state?.saving ? 'Đang lưu lựa chọn…' : 'Style, font, độ dài và số ảnh dùng chung với Dựng video theo dự án. Chỉ áp dụng cho lượt mới.'}
+    {state?.error ? <span role="alert">Chưa lưu lựa chọn: {state.error} <Button type="button" onClick={state.retry}>Lưu lại lựa chọn</Button></span> : state?.saving ? 'Đang lưu lựa chọn…' : 'Style, font, độ dài và số ảnh dùng chung trong News Studio theo dự án. Chỉ áp dụng cho lượt mới.'}
   </div>;
 }
 

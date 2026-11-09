@@ -92,6 +92,8 @@ async function articleFromUrl(fetchImpl, sourceUrl) {
   return { title, summary, source, url: sourceUrl, publishedAt: null, imageUrl };
 }
 
+import { checkNewsOutput } from './news-output.js';
+
 export class ProductionService {
   constructor(store, queue, { fetchImpl = globalThis.fetch, research, llm, imageSearch = searchImageQueries, downloadImage = downloadImageAsset, sourceCard = createNewsSourceCard } = {}) {
     this.store = store;
@@ -226,7 +228,9 @@ export class ProductionService {
       if (request.contentType !== "news" || avatar.kind !== "image" || isPageAvatar(avatar, this.store.state) || avatar.projectId && avatar.projectId !== request.projectId)
         throw new StudioError("Chọn ảnh MC trong thư viện của dự án này.", "INVALID_AVATAR_IMAGE", 422);
     }
+    const outputDirectory = request.contentType === "news" ? checkNewsOutput(this.store, request.newsOutputDirectory) : null;
     const batch = this.store.add("productionBatches", {
+      ...(outputDirectory ? { outputDirectory } : {}),
       projectId: request.projectId, request, status: "pending", sources: [], warnings: [],
       items: Array.from({length:request.count}, (_, index) => ({index,status:"pending",jobId:null,researchId:request.researchIds[index] || request.researchId,avatarMediaId:mcForVideo(request,index),error:null})),
     });
@@ -426,6 +430,7 @@ export class ProductionService {
       avatarMediaId: item.avatarMediaId,
       visualMode: newsPlan?.visualMode || null,
       contentType: request.contentType,
+      ...(request.contentType === "news" ? { newsOutputDirectory: batch.outputDirectory || checkNewsOutput(this.store, request.newsOutputDirectory || "") } : {}),
       researchId: item.researchId,
       topic: request.topic,
       sourceUrl: request.sourceUrl,

@@ -1,27 +1,15 @@
-import { useState } from "react";
-import { FileVideo, Newspaper, Package, Zap } from "lucide-react";
-import { Button } from "../components.jsx";
-import { EditorPage } from "./Editor.jsx";
-import { ProductionPanel } from "./ProductionPanel.jsx";
-
-const modes = [
-  { id: "news", label: "Render video tin tức", hint: "Hook, nguồn và headline dọc", icon: Newspaper },
-  { id: "product", label: "Render video sản phẩm", hint: "Demo, UGC và CTA bán hàng", icon: Package },
-];
+import { useState } from 'react';
+import { EditorPage } from './Editor.jsx';
+import { Button, Field } from '../components.jsx';
+import './news-studio.css';
 
 export function RenderPage(props) {
-  const [mode, setMode] = useState("news");
-  const selected = modes.find((item) => item.id === mode) || modes[0];
-  const focus = props.renderFocus || { batchIds: [], researchId: "" };
-  return <div className="render-hub">
-    <section className="render-switcher">
-      <div><div className="eyebrow">RENDER WORKSPACE</div><h1>Render nhanh, đúng loại video.</h1><p>Chọn News hoặc Product trước khi dựng. Timeline và preset xuất được giữ nguyên trong project.</p></div>
-      <div className="render-mode-tabs">{modes.map(({ id, label, hint, icon: Icon }) => <button key={id} className={mode === id ? "active" : ""} onClick={() => setMode(id)}><span><Icon size={18} /></span><strong>{label}</strong><small>{hint}</small></button>)}</div>
-      <div className="render-fast-note"><Zap size={15} /><span>{mode === 'news' ? <><strong>V3 chuẩn</strong> là mặc định. V3 nhanh giữ Full HD, dùng ảnh tĩnh và hòa cảnh để xuất nhanh hơn.</> : <><strong>Xuất nhanh</strong> dùng 480p, draft và preset FFmpeg tốc độ cao.</>}</span></div>
+  const [kind,setKind]=useState('news');
+  return <div className="manual-render">
+    <section className="manual-render-heading"><h1>Dựng video thủ công</h1><p>Ghép và chỉnh media có sẵn trên timeline. Luồng tạo video tự động nằm trong News Studio và Product Studio.</p>
+      <div className="inline-actions"><Button onClick={()=>props.navigate('news')}>Mở News Studio</Button><Button onClick={()=>props.navigate('product')}>Mở Product Studio</Button></div>
+      <div className="manual-kind"><Field label="Loại video xuất từ timeline"><select value={kind} onChange={e=>setKind(e.target.value)}><option value="news">News · Output News</option><option value="product">Product · Output Product</option></select></Field></div>
     </section>
-    <ProductionPanel key={`production:${props.project.id}:${mode}`} {...props} mode={mode} focusBatchIds={focus.batchIds} focusResearchId={focus.researchId} />
-    <div className="render-selected-line"><span><FileVideo size={15} /> {selected.label}</span><Button onClick={() => props.navigate?.("content")}>Mở Content</Button></div>
-    <div className="render-editor-note"><FileVideo size={15} /><span><strong>Timeline thủ công</strong> bên dưới dùng media đã có trong Library. News đã bấm Render sẽ chạy theo <em>Bản ghi render</em> và theo dõi ở Queue; timeline này không thay thế batch đó.</span></div>
-    <EditorPage key={`editor:${props.project.id}:${mode}`} {...props} renderKind={mode} />
+    <EditorPage {...props} renderKind={kind} />
   </div>;
 }

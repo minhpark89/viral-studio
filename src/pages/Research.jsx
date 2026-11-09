@@ -182,7 +182,7 @@ function ResultCard({ result, data, notify, accounts, onImport, importing, onUse
   );
 }
 
-function DreamFacePanel({ data, notify }) {
+export function DreamFacePanel({ data, notify }) {
   const accounts = (data.accounts || []).filter((account) => account.provider === "dreamface");
   const [selectedId, setSelectedId] = useState(accounts[0]?.id || "");
   const [loginAccount, setLoginAccount] = useState(null);
@@ -224,7 +224,7 @@ function DreamFacePanel({ data, notify }) {
   );
 }
 
-export function ResearchPage({ data, project, notify, navigate }) {
+export function ResearchPage({ data, project, notify, navigate, embedded = false, newsOutputDirectory = "", onOpenSettings }) {
   const [results, setResults] = useState(data.researchResults || []);
   const [researchInputOpen, setResearchInputOpen] = useState(() => !(data.researchResults || []).some(result => result.projectId === project.id));
   const [view, setView] = useState("research");
@@ -448,6 +448,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
         variationPolicy: "visual-unique",
         fontStyle: "news",
         ...newsOptions,
+        newsOutputDirectory,
       });
       notify(`Đã đưa ${batch.items?.length || count} video vào hàng đợi. ${mcRotation.length ? 'MC xoay theo số video đã nhập.' : selectedAvatarMediaId ? 'Dùng ảnh MC đã chọn.' : 'Dùng MC theo profile.'}${readyCount ? ` ${readyCount} profile sẵn sàng.` : ' Hãy đăng nhập DreamFace để chạy.'}`);
       rememberRender(batch);
@@ -500,6 +501,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
       variationPolicy: "visual-unique",
       fontStyle: "news",
       ...newsOptions,
+      newsOutputDirectory,
     });
     notify(`Đã đưa ${selected.length} tin · ${batch.items.length} video vào lượt ${currentStyle}. Theo dõi ngay bên dưới trong Research.`);
     rememberRender(batch);
@@ -540,7 +542,7 @@ export function ResearchPage({ data, project, notify, navigate }) {
       notify(error.message, "error");
     }
   };
-      return <div className="page research-page"><div className="page-heading research-heading"><div><div className="eyebrow">RESEARCH WORKSPACE</div><h1>Từ chủ đề đến góc kể chuyện.</h1><p>News Studio là luồng riêng: research → ảnh editorial → MC DreamFace → bài website → first comment.</p></div><div className="research-heading-actions"><Button variant="primary" disabled={!projectResults.length} onClick={() => { setView("research"); requestAnimationFrame(() => document.getElementById("research-render-controls")?.scrollIntoView({ behavior: "smooth", block: "center" })); }}><Newspaper size={15} /> Chọn tin &amp; render</Button><div className="research-heading-mark"><Newspaper size={20} /><span>{projectResults.length} kết quả</span></div></div></div><div className="research-tabs research-primary-tabs"><button className={view === "research" ? "active" : ""} onClick={() => setView("research")}><Search size={15} /> Research &amp; News</button><button className={view === "dreamface" ? "active" : ""} onClick={() => setView("dreamface")}><Sparkles size={15} /> DreamFace profiles</button></div>{view === "research" && <><section className="research-card research-run-card"><div className="research-card-heading"><div><span className="research-kicker">EDITORIAL INPUT</span><h2><Search size={19} /> Nghiên cứu chủ đề</h2><p>RSS/Atom được giới hạn và deduplicate trước khi tổng hợp.</p></div><span className="research-step"><span>01</span> INPUT</span></div><details className="research-input-details" open={researchInputOpen} onToggle={event => setResearchInputOpen(event.currentTarget.open)}><summary>Research tin mới</summary><ResearchForm key={project.id} project={project} notify={notify} active={researchBatches.some(batch => ['pending', 'running'].includes(batch.status))} /></details><ResearchBatchProgress batches={researchBatches} results={projectResults} notify={notify} onSelect={ids => { setSelectedResearchBatch(projectResults.find(result => ids.includes(result.id))?.batchId || ''); setResearchFilter('work'); setQuery(''); setLlmFilter('all'); setSourceAge('all'); setSelectedResearchIds([]); }} /></section><section className="research-results">
+      return <div className="page research-page">{!embedded && <><div className="page-heading research-heading"><div><div className="eyebrow">RESEARCH WORKSPACE</div><h1>Từ chủ đề đến góc kể chuyện.</h1><p>News Studio là luồng riêng: research → ảnh editorial → MC DreamFace → bài website → first comment.</p></div><div className="research-heading-actions"><Button variant="primary" disabled={!projectResults.length} onClick={() => { setView("research"); requestAnimationFrame(() => document.getElementById("research-render-controls")?.scrollIntoView({ behavior: "smooth", block: "center" })); }}><Newspaper size={15} /> Chọn tin &amp; render</Button><div className="research-heading-mark"><Newspaper size={20} /><span>{projectResults.length} kết quả</span></div></div></div><div className="research-tabs research-primary-tabs"><button className={view === "research" ? "active" : ""} onClick={() => setView("research")}><Search size={15} /> Research &amp; News</button><button className={view === "dreamface" ? "active" : ""} onClick={() => setView("dreamface")}><Sparkles size={15} /> DreamFace profiles</button></div></>}{view === "research" && <><section className="research-card research-run-card"><div className="research-card-heading"><div><span className="research-kicker">EDITORIAL INPUT</span><h2><Search size={19} /> Nghiên cứu chủ đề</h2><p>Tìm tin theo chủ đề, kiểm tra nguồn rồi chọn các tin muốn tạo video.</p></div><span className="research-step"><span>01</span> INPUT</span></div><details className="research-input-details" open={researchInputOpen} onToggle={event => setResearchInputOpen(event.currentTarget.open)}><summary>Research tin mới</summary><ResearchForm key={project.id} project={project} notify={notify} active={researchBatches.some(batch => ['pending', 'running'].includes(batch.status))} /></details><ResearchBatchProgress batches={researchBatches} results={projectResults} notify={notify} onSelect={ids => { setSelectedResearchBatch(projectResults.find(result => ids.includes(result.id))?.batchId || ''); setResearchFilter('work'); setQuery(''); setLlmFilter('all'); setSourceAge('all'); setSelectedResearchIds([]); }} /></section><section className="research-results">
   <div className="research-section-heading">
     <div><span className="research-kicker">NEWS STUDIO · PROJECT RESULTS</span><h2>Quản lý tin Research</h2></div>
   </div>

@@ -30,10 +30,11 @@ import { RenderPage } from "./pages/Render.jsx";
 import { QueuePage, SettingsPage } from "./pages/Manage.jsx";
 import { GpuStatus } from './HardwareStorageSettings.jsx';
 import { SocialPage } from "./pages/Social.jsx";
-import { ResearchPage } from "./pages/Research.jsx";
+import { NewsStudioPage } from "./pages/NewsStudio.jsx";
 import { PagesPage } from "./pages/Pages.jsx";
 import { ContentPage } from "./pages/Content.jsx";
 import { ProductPage } from "./pages/Product.jsx";
+import { ProductResearchPage } from "./pages/ProductResearch.jsx";
 import { OverviewPage } from './pages/Overview.jsx';
 import packageInfo from "../package.json";
 import "./style.css";
@@ -43,17 +44,18 @@ const APP_VERSION = packageInfo.version;
 
 const navGroups = [
   {
-    label: "BẮT ĐẦU",
+    label: "STUDIO",
     tabs: [
       ["overview", "Tổng quan Meta", LayoutDashboard],
-      ["create", "Tạo bằng AI", Sparkles],
-      ["research", "Research & News", Search],
+      ["news", "News Studio", Newspaper],
       ["product", "Product Studio", ShoppingBag],
+      ["product-research", "AI Research · US", Search],
     ],
   },
   {
-    label: "DỰNG VIDEO",
+    label: "CÔNG CỤ THỦ CÔNG",
     tabs: [
+      ["create", "Tạo bằng AI", Sparkles],
       ["storyboard", "Kịch bản", Clapperboard],
       ["editor", "Dựng video", Scissors],
     ],
@@ -81,8 +83,9 @@ const navGroups = [
 ];
 const pages = {
   overview: OverviewPage,
-  research: ResearchPage,
+  news: NewsStudioPage,
   product: ProductPage,
+  'product-research': ProductResearchPage,
   content: ContentPage,
   pages: PagesPage,
   create: CreatePage,
@@ -101,7 +104,7 @@ function App() {
   const [selected, setSelected] = useState(
     localStorage.getItem("studio-project") || "",
   );
-  const [tab, setTab] = useState("create");
+  const [tab, setTab] = useState("news");
   const [toast, setToast] = useState(null);
   const [connection, setConnection] = useState(true);
   const [projectModal, setProjectModal] = useState(false);
@@ -179,10 +182,12 @@ function App() {
     ).length || 0;
   const Page = pages[tab];
   const navigate = async (destination, options = {}) => {
+    if (destination === "research") { destination = "news"; options = {...options, view:"research"}; }
+    if (destination === "editor" && (options.focusBatchId || options.focusBatchIds?.length || options.researchId)) { destination = "news"; options = {...options, view:"automatic"}; }
     const state = await run(() => api("/state"));
     if (state) setData(state);
     setRenderFocus(
-      destination === "editor"
+      destination === "news"
         ? {
             batchIds: Array.isArray(options.focusBatchIds)
               ? options.focusBatchIds.filter(Boolean)
@@ -190,6 +195,7 @@ function App() {
                 ? [options.focusBatchId]
                 : [],
             researchId: options.researchId || "",
+            view: options.view || "",
           }
         : { batchIds: [], researchId: "" },
     );
@@ -204,7 +210,7 @@ function App() {
           href="#"
           onClick={(event) => {
             event.preventDefault();
-            navigate("create");
+            navigate("news");
           }}
         >
           <span className="brand-mark"><img src="/icon.png" alt="" /></span>
@@ -311,7 +317,7 @@ function App() {
               notify={notify}
               run={run}
               navigate={navigate}
-              renderFocus={tab === "editor" ? renderFocus : undefined}
+              renderFocus={tab === "news" ? renderFocus : undefined}
             />
           ) : (
             <div className="loading-screen">

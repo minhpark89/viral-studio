@@ -1,3 +1,4 @@
+import { checkNewsOutput } from './news-output.js';
 import { randomUUID } from "node:crypto";
 import {
   generationSchema,
@@ -11,6 +12,8 @@ import { renderNewsBroadcast } from "./news-render.js";
 import { isPageAvatar, isMcImage } from "../shared/output-media.js";
 import { selectRenderEncoder } from './render-hardware.js';
 import { accountQuotaBlocked, quotaFailureState } from '../shared/account-health.js';
+import {productOverlayText} from './product-overlay.js';
+import { checkProductOutput } from './product-output.js';
 
 function elapsedMs(job, finishedAt) {
   const started = Date.parse(job.startedAt || job.createdAt || "");
@@ -18,6 +21,14 @@ function elapsedMs(job, finishedAt) {
   return Number.isFinite(started) && Number.isFinite(finished)
     ? Math.max(0, finished - started)
     : null;
+}
+
+export function productQuotaBlocked(account,payload,now=Date.now()) {
+  const q=account.productQuota;
+  if(payload.productRequest?.id||q?.state!=='exhausted'||!q.nextCheckAt||Date.parse(q.nextCheckAt)<=now)return false;
+  const options=payload.productOptions||{billingMode:'free'};
+  if(options.billingMode==='free')return q.kind==='daily';
+  return q.billingMode==='credits'&&q.duration===payload.duration&&q.resolution===options.resolution&&q.maxCredits===options.maxCredits;
 }
 
 export class JobQueue {
@@ -139,6 +150,11 @@ export class JobQueue {
       this.store,
       input.timeline || project.timeline,
     );
+    if (production?.contentType === 'product') production = {
+      ...production,
+      productOutputDirectory: checkProductOutput(this.store, production.productOutputDirectory || ''),
+    };
+    if (production?.contentType === "news") production = { ...production, newsOutputDirectory: checkNewsOutput(this.store, production.newsOutputDirectory || "") };
     return this.store.add("jobs", {
       type: "render",
       ...(production ? { production } : {}),
@@ -161,6 +177,7 @@ export class JobQueue {
     }
     const images = (imageMediaIds || []).map((id) => this.store.require("media", id));
     if (!images.length || images.some((media) => media.kind !== "image" || media.projectId && media.projectId !== projectId || isPageAvatar(media, this.store.state) || isMcImage(media, this.store.state) || media.id === plan?.avatarMediaId)) throw new StudioError("News presenter needs editorial images from the same project, separate from MC and Page avatars.", "INVALID_EDITORIAL_IMAGE", 422);
+    production = { ...production, contentType: "news", newsOutputDirectory: checkNewsOutput(this.store, production?.newsOutputDirectory || "") };
     return this.store.add("jobs", {
       type: "news",
       ...(production ? { production } : {}),
@@ -225,8 +242,10 @@ export class JobQueue {
       const accounts = this.store.state.accounts.filter(
         (account) =>
           account.provider === job.payload.provider &&
-          account.status === "ready" &&
-          !accountQuotaBlocked(account) &&
+          (job.payload.workflow === 'product-video'
+            ? (account.status === 'ready' || account.status === 'error' && accountQuotaBlocked(account)) &&
+              !productQuotaBlocked(account,job.payload,this.now())
+            : account.status === "ready" && !accountQuotaBlocked(account)) &&
           !this.browsers?.isProfileLocked?.(account) &&
           !this.store.state.accounts.some((other) =>
             (other.profileId || other.id) === (account.profileId || account.id) &&
@@ -265,6 +284,7 @@ export class JobQueue {
       type: job.type === "render" || job.type === "news" && job.payload.presenterMediaId ? "render" : "provider",
       accountId: account?.id,
       profileId: account?.profileId || account?.id,
+      priorAccountStatus: account?.status,
     };
     this.running.set(job.id, entry);
     this.store.patch("jobs", job.id, {
@@ -315,7 +335,7 @@ export class JobQueue {
       if (job.production) {
         this.store.patch("media", media.id, {
           production: job.production,
-          mediaType: job.production.contentType === "news" ? "news-video" : "product-video",
+          mediaType: job.payload.workflow === 'product-video' ? 'product-clip' : job.production.contentType === "news" ? "news-video" : "product-video",
         });
       }
       if (job.production?.autoCreateContent === true && job.type === "news" && this.newsAutomation) {
@@ -349,6 +369,10 @@ export class JobQueue {
       });
     } catch (error) {
       const cancelled = controller.signal.aborted;
+      if (!cancelled && job.payload.workflow === 'product-video' && error.code === 'PRODUCT_QUOTA' && !job.submittedAt) {
+        update({status:'queued',stage:error.message,progress:0,error:null,errorCode:null});
+        return;
+      }
       const finishedAt = new Date().toISOString();
       update({
         status: cancelled ? "cancelled" : "failed",
@@ -372,9 +396,9 @@ export class JobQueue {
     } finally {
       if (account?.status === "busy" && (!this.running.has(job.id) || this.running.get(job.id).accountId === account.id))
         this.store.patch("accounts", account.id, {
-          status: "ready",
+          status: job.payload.workflow === 'product-video' ? (this.running.get(job.id)?.priorAccountStatus || 'ready') : "ready",
           lastUsedAt: new Date().toISOString(),
-          ...(account.provider === "dreamface" && account.rotationEnabled !== false
+          ...(job.payload.workflow !== 'product-video' && account.provider === "dreamface" && account.rotationEnabled !== false
             ? { rotationDay: new Date().toISOString().slice(0, 10), rotationMode: account.rotationMode || "daily" }
             : {}),
         });
@@ -468,13 +492,26 @@ export class JobQueue {
         id: randomUUID(),
         mediaId: media.id,
         inSec: 0,
-        outSec: media.duration,
+        outSec: item.payload.workflow === 'product-video' ? Math.min(media.duration,item.payload.duration) : media.duration,
         speed: 1,
         zoom: 1,
         fit: "cover",
         volume: 1,
       };
     });
+    if (job.payload.workflow === 'product-video') {
+      timeline.resolution = job.payload.productOptions?.resolution === '480p' ? 480 : 720;
+      let elapsed = 0;
+      timeline.texts = timeline.clips.flatMap((clip,index) => {
+        const startSec = elapsed;
+        elapsed += clip.outSec - clip.inSec;
+        const text = productOverlayText(job.production?.productCaptions?.[index]);
+        const endSec = elapsed - (index===timeline.clips.length-1 && job.production?.cta?.trim()?2:0);
+        return text ? [{id:randomUUID(),text,startSec,endSec,x:.5,y:.78,size:Math.round(timeline.resolution*.044),color:'#ffffff',background:true}] : [];
+      });
+      const cta = productOverlayText(job.production?.cta);
+      if (cta) timeline.texts.push({id:randomUUID(),text:cta,startSec:Math.max(0,elapsed-2),endSec:elapsed,x:.5,y:.78,size:Math.round(timeline.resolution*.044),color:'#ffffff',background:true});
+    }
     return validateTimeline(this.store, timeline);
   }
 
@@ -515,6 +552,7 @@ export class JobQueue {
     const project = this.store.state.projects.find((item) => item.id === job.projectId);
     const render = this.store.add("jobs", {
       type: "render",
+      ...(job.production?.productRunId ? {production:{...job.production,autoCreateContent:false}} : {}),
       projectId: job.projectId,
       assemblyBatchId: job.batchId,
       sourceJobIds: batch.map((item) => item.id),
@@ -548,7 +586,7 @@ export class JobQueue {
 
   recoverSubmitted(id) {
     const job = this.store.require("jobs", id);
-    if (job.type !== "news")
+    if (job.type !== "news" && job.payload.workflow !== 'product-video')
       throw new StudioError("Chỉ có tác vụ News đã gửi mới có thể khôi phục từ Creations.");
     if (!job.submittedAt)
       throw new StudioError("Tác vụ này chưa gửi lên DreamFace.");
@@ -596,6 +634,7 @@ export class JobQueue {
       scheduledAt: null,
     };
     delete payload.recoverSubmitted;
+    if (job.payload.workflow === 'product-video') delete payload.productRequest;
     if (job.type === "generate") payload.autoAssemble = original.payload.autoAssemble;
     if (job.type === "news" && original.payload.presenterMediaId) payload.presenterMediaId = original.payload.presenterMediaId;
     if (job.type === "render" && job.assemblyBatchId) {

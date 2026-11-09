@@ -26,6 +26,7 @@ export const productionRequestSchema = z.object({
   ratio: z.enum(["9:16", "16:9"]).default("9:16"),
   variationPolicy: z.enum(["visual-unique"]).default("visual-unique"),
   fontStyle: z.enum(["news", "viral", "minimal"]).default("news"),
+  newsOutputDirectory: z.string().trim().max(2048).default(""),
   newsDuration: newsDurationSchema.default('auto'),
   newsImageCount: newsImageCountSchema.default('auto'),
   newsRenderStyle: newsRenderStyleSchema.default(DEFAULT_NEWS_RENDER_STYLE),

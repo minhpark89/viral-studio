@@ -160,7 +160,7 @@ export async function probe(file, settings) {
 export async function importMedia(
   store,
   input,
-  { projectId, name, move = false, generated = false, jobId = null, mediaType = "general" } = {},
+  { projectId, name, move = false, generated = false, jobId = null, mediaType = "general", outputDirectory = null, newsOutputDirectory = null } = {},
 ) {
   if (projectId) store.require("projects", projectId);
   const extension = path.extname(name || input).toLowerCase();
@@ -182,12 +182,20 @@ export async function importMedia(
   ) {
     throw new StudioError("Không đọc được thời lượng media.", "INVALID_MEDIA");
   }
-  const file = path.join(
+  const routedProduct = generated && mediaType === 'product-video' && outputDirectory;
+  if(routedProduct && !path.isAbsolute(outputDirectory))throw new StudioError('Thư mục Product phải là đường dẫn đầy đủ.','PRODUCT_OUTPUT_INVALID');
+  const routedNews = generated && mediaType === 'news-video' && newsOutputDirectory;
+  if(routedNews && (!path.isAbsolute(newsOutputDirectory) || newsOutputDirectory.includes('\0')))throw new StudioError('Thư mục News phải là đường dẫn đầy đủ.','NEWS_OUTPUT_INVALID');
+  const file = (routedProduct || routedNews) ? path.join(routedNews || outputDirectory,`${safeName(path.basename(name||'Product',extension)).slice(0,70)}-${randomUUID()}${extension}`) : path.join(
     store.root,
     generated ? "exports" : "media",
+    ...(/^product-(?:clip|video)$/.test(mediaType) ? ['products',mediaType==='product-clip'?'clips':'final'] : []),
     `${randomUUID()}${extension}`,
   );
-  if (move) await fs.rename(source, file);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  if (move) {
+    try{await fs.rename(source,file);}catch(e){if(e.code!=='EXDEV')throw e;await fs.copyFile(source,file);await fs.unlink(source);}
+  }
   else await fs.copyFile(source, file);
   let thumbnail = null;
   if (metadata.kind !== "audio") {

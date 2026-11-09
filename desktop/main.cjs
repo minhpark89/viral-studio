@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { dataDirectory } = require("./data-directory.cjs");
 const { pathToFileURL } = require("node:url");
+const {externalWebUrl,openExternalWeb}=require('./external-links.cjs');
 
 // Windows display drivers can present a black GPU surface before Chromium's
 // first composed frame, even after ready-to-show. Use software compositing for
@@ -123,7 +124,7 @@ app
         webSecurity: true,
       },
     });
-    ipcMain.handle("studio:open-data-folder", async (event) => {
+    const requireStudioFrame=(event)=>{
       if (
         event.sender !== window.webContents ||
         event.senderFrame !== window.webContents.mainFrame ||
@@ -131,17 +132,52 @@ app
       ) {
         throw new Error("Yêu cầu không thuộc cửa sổ Viral Studio.");
       }
+    };
+    ipcMain.handle("studio:open-data-folder", async (event) => {
+      requireStudioFrame(event);
       return openDataFolder();
     });
+    ipcMain.handle('studio:open-external',async(event,url)=>{
+      requireStudioFrame(event);
+      return openExternalWeb(shell,url);
+    });
+    ipcMain.handle('studio:choose-product-output',async(event)=>{
+      requireStudioFrame(event);
+      const result=await dialog.showOpenDialog(window,{title:'Chọn thư mục lưu video Product',properties:['openDirectory','createDirectory']});
+      return {cancelled:result.canceled,directory:result.canceled?null:result.filePaths[0]};
+    });
+    ipcMain.handle('studio:open-product-output',async(event,requested)=>{
+      requireStudioFrame(event);
+      // Resolve and validate through the connected server, including when this
+      // shell attached to a server started by another local process.
+      const response=await fetch(`${studio.address}/api/product-output/resolve`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({directory:requested||''})});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'Không xác định được thư mục Product.');
+      const error=await shell.openPath(result.directory);if(error)throw new Error(error);
+      return {opened:true,directory:result.directory};
+    });
+    ipcMain.handle('studio:choose-news-output',async(event)=>{
+      requireStudioFrame(event);
+      const result=await dialog.showOpenDialog(window,{title:'Chọn thư mục lưu video News',properties:['openDirectory','createDirectory']});
+      return {cancelled:result.canceled,directory:result.canceled?null:result.filePaths[0]};
+    });
+    ipcMain.handle('studio:open-news-output',async(event,requested)=>{
+      requireStudioFrame(event);
+      // Resolve and validate through the connected server, including when this
+      // shell attached to a server started by another local process.
+      const response=await fetch(`${studio.address}/api/news-output/resolve`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({directory:requested||''})});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||'Không xác định được thư mục News.');
+      const error=await shell.openPath(result.directory);if(error)throw new Error(error);
+      return {opened:true,directory:result.directory};
+    });
     window.webContents.setWindowOpenHandler(({ url }) => {
-      if (
-        /^https:\/\/(?:www\.|m\.)?(?:dola\.com|flow\.google\.com|facebook\.com)(?:\/|$)/.test(url)
-      )
-        shell.openExternal(url);
+      if(externalWebUrl(url))openExternalWeb(shell,url).catch(error=>dialog.showErrorBox('Không mở được liên kết',error.message));
       return { action: "deny" };
     });
     window.webContents.on("will-navigate", (event, url) => {
-      if (!url.startsWith(`${studio.address}/`)) event.preventDefault();
+      if (!url.startsWith(`${studio.address}/`)) {
+        event.preventDefault();
+        if(externalWebUrl(url))openExternalWeb(shell,url).catch(error=>dialog.showErrorBox('Không mở được liên kết',error.message));
+      }
     });
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
