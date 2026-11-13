@@ -20,6 +20,15 @@ test('a matching title and an old video URL cannot substitute for the receipt ID
  assert.equal(matchingNewsWork([fresh],null),null);
 });
 
+test('a changed submit URL is correlated by narration; an incomplete success is never permission to resubmit',async t=>{
+ const page=await browser.newPage();t.after(()=>page.close());let saved,diagnostic;
+ await page.route('https://fixture.test/**',route=>route.request().url().endsWith('/avatar/v9/generate')?route.fulfill({json:{status_code:'THS12140000000',data:{}}}):route.fulfill({contentType:'text/html',body:`<button onclick='fetch("/avatar/v9/generate",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:${JSON.stringify(narration)}})})'>Generate</button>`}));
+ await page.goto('https://fixture.test/avatar');
+ await assert.rejects(submitNewsAvatar({page,narration,profileId:'profile',signal:new AbortController().signal,click:()=>page.locator('button').click(),saveReceipt:value=>saved=value,timeoutMs:200,onFailure:(_error,signals)=>{diagnostic=signals}}),{code:'PROVIDER_SUBMISSION_UNCONFIRMED'});
+ assert.equal(saved.id,null);assert.equal(saved.scriptMismatch,false);assert.notEqual(saved.rejected,true);
+ assert.deepEqual(diagnostic,{requestObserved:true,receiptConfirmed:false,rejected:false});
+});
+
 test('submission is acknowledged exactly once and the receipt survives the UI changing routes',async t=>{
  const page=await browser.newPage();t.after(()=>page.close());let submits=0;const saved=[];
  await page.route('https://fixture.test/**',route=>route.request().url().endsWith('/task/v2/submit')?(submits++,route.fulfill({json:{status_code:'THS12140000000',data:{animate_image_id:'new-task'}}})):route.fulfill({contentType:'text/html',body:`<button onclick='fetch("/task/v2/submit",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({media:{text:${JSON.stringify(narration)}}})})'>Generate</button>`}));

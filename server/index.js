@@ -28,6 +28,7 @@ import { DreamFaceSetupQueue } from "./dreamface-setup.js";
 import { createDreamFaceSlots, ensureDreamFaceCredentials, parseProxy, proxySecretId, saveDreamFaceProxy, saveDreamFaceCredentials } from "./dreamface-accounts.js";
 import { SecretStore } from "./secret-store.js";
 import { mountProductionRoutes } from "./production.js";
+import { mountQueueRetry } from './queue-retry.js';
 import { mountProductStudio } from './product-studio.js';
 import { mountProductMarket } from './product-market.js';
 import {mountProductCampaigns} from './product-campaigns.js';
@@ -265,6 +266,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   const socialScheduler = new SocialScheduler(store, metaService.publishReel);
   const researchBatches = mountResearchRoutes(app, store, { queue });
   const production = mountProductionRoutes(app, store, queue);
+  mountQueueRetry(app, store, queue, production);
   const productStudio = mountProductStudio(app, store, queue);
   mountProductOutput(app,store);
   mountNewsOutput(app,store);

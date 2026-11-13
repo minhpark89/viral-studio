@@ -9,13 +9,15 @@ export function newsVisualQueries(research, narration = {}) {
   ].filter(([pattern]) => pattern.test(text)).map(([, query]) => query);
   // Commons searches AND the words. "city view" needlessly excludes most
   // photos of a correctly named city; retain the full city/state instead.
-  const context = (narration.contextImageQueries || []).map(query => String(query).replace(/\s+(?:city|town)\s+view\s*$/i, ''));
+  const context = (narration.contextImageQueries || []).map(query => String(query).replace(/\s+(?:(?:city|town)\s+view|(?:official\s+)?portrait|photograph|photo)\s*$/i, ''));
   const short = [...context, ...(narration.imageQueries || []), ...(research.imageQueries || [])]
     .map(query => String(query).replace(/[^\p{L}\p{N} -]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100)).filter(Boolean);
   const words = value => ' ' + String(value||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim() + ' ';
   const titles = words([research.headline,...(research.articles||[]).map(article=>article.title)].join(' '));
   const publishers = ['BBC','CBS','CNN','Reuters','Associated Press',...(research.articles||[]).map(article=>article.source).filter(Boolean)].map(words);
-  return [...new Set([...named, ...short])].filter(query=>!publishers.some(publisher=>words(query).includes(publisher)&&!titles.includes(publisher))).slice(0, 6);
+  const grounded = words([text, ...(research.articles || []).map(article => article.text || article.summary)].join(' '));
+  const literal = short.filter(query => query.split(' ').length <= 5 && grounded.includes(words(query)));
+  return [...new Set([...named, ...literal, ...short])].filter(query=>!publishers.some(publisher=>words(query).includes(publisher)&&!titles.includes(publisher))).slice(0, 6);
 }
 
 function metaAttributes(tag) {
@@ -103,8 +105,14 @@ export async function discoverArticleImages(articles, { fetchImpl = globalThis.f
   const warnings = [];
   for (const article of (articles || []).slice(0, 3)) {
     if (!isPublicImageUrl(article.url)) continue;
-    // Google RSS wrappers expose a Google News logo, not the publisher's photo.
-    if (new URL(article.url).hostname === 'news.google.com') continue;
+    if (article.sourceImages?.length) { found.push(...article.sourceImages); continue; }
+    if (new URL(article.url).hostname === 'news.google.com') {
+      const { loadNewsSource } = await import('./news-source.js');
+      const source = await loadNewsSource(article, { fetchImpl });
+      found.push(...source.sourceImages);
+      if (source.sourceRead?.warning) warnings.push(source.sourceRead.warning);
+      continue;
+    }
     try {
       const response = await fetchImpl(article.url, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);

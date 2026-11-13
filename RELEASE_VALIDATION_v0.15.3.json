@@ -1,0 +1,472 @@
+{
+  "version": "0.15.3",
+  "verifiedAt": "2026-11-13T09:22:48.448417+00:00",
+  "baseCommit": "b8caa9535684b811f3fdf0f216b2b35345c39da4",
+  "branch": "fix/news-quality-0.15.3",
+  "published": false,
+  "deployedToKAD22P5": false,
+  "unit": {
+    "tests": 547,
+    "pass": 547,
+    "fail": 0
+  },
+  "focusedAfterTimingFix": {
+    "tests": 28,
+    "pass": 28,
+    "fail": 0
+  },
+  "preparationTimingTests": {
+    "tests": 27,
+    "pass": 27,
+    "fail": 0
+  },
+  "browser": [
+    {
+      "passed": true,
+      "report": ".verification\\news-retry-ui-report.json",
+      "checks": [
+        "Errors show latest attempts in the active project and selected content type",
+        "Selected retry creates exactly one queued job and keeps the existing MC",
+        "One click retries all filtered errors; repeated requests do not duplicate jobs",
+        "Ambiguous provider submission stays failed with an actionable review result",
+        "Missing photos have their own filter with explicit retry or fewer-photo choice"
+      ]
+    },
+    {
+      "passed": true,
+      "report": ".verification\\queue-preparation-ui-report.json",
+      "checks": [
+        "Preparing and pending items appear immediately in Active, scoped to project, without contradictory empty state",
+        "Preparation stage updates live over SSE",
+        "Historical error shows its original date; today filter uses actual latest attempt and updates over SSE",
+        "Failure before a render job is visible in Errors and retry targets the exact batch",
+        "Search and content-type filters apply to preparation failures",
+        "Queued job replaces preparation without duplicate cards",
+        "Open render navigates to the correct preparation batch"
+      ]
+    }
+  ],
+  "desktop": [
+    {
+      "passed": true,
+      "report": ".verification\\news-studio-desktop-1794561596439\\report.json",
+      "checks": [
+        "Packaged app opens News Studio; native folder choose/save/open works; style persists into automatic News; manual editor and Product remain independent"
+      ]
+    },
+    {
+      "passed": true,
+      "report": ".verification\\product-research-native-1794561617346\\report.json",
+      "checks": [
+        "Packaged Node SQLite initializes and persists Product records",
+        "Missing key shows honest source failure without API calls",
+        "Real Electron Meta Ads link uses native browser IPC",
+        "Google CSV chart renders inside packaged app"
+      ]
+    }
+  ],
+  "packageSourceMatches": true,
+  "cpu": {
+    "report": ".verification\\package-cpu\\run-20261113-162033-12ae9966\\report.json",
+    "version": "0.15.3",
+    "passed": true,
+    "machine": {
+      "platform": "win32",
+      "arch": "x64",
+      "osRelease": "10.0.19045",
+      "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+      "logicalCpus": 16,
+      "memoryGiB": 23.8
+    },
+    "settings": {
+      "renderConcurrency": 1,
+      "renderThreads": 2,
+      "renderAcceleration": "cpu"
+    },
+    "cases": [
+      {
+        "name": "portrait-3-4",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 55
+      },
+      {
+        "name": "portrait-9-16",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 48
+      },
+      {
+        "name": "landscape-4-3",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 59
+      },
+      {
+        "name": "landscape-16-9",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 55
+      },
+      {
+        "name": "square",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 57
+      },
+      {
+        "name": "small",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 45
+      },
+      {
+        "name": "non-square-pixels",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 49
+      },
+      {
+        "name": "odd-dimensions",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 48
+      },
+      {
+        "name": "540x720",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 9683,
+        "metadata": {
+          "kind": "video",
+          "duration": 15,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 972724
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "libx264",
+          "gpu": false,
+          "name": "CPU"
+        },
+        "newsRenderStyle": "v3",
+        "captionRuntimeExecuted": true
+      },
+      {
+        "name": "1056x792",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 8575,
+        "metadata": {
+          "kind": "video",
+          "duration": 15,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 908864
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "libx264",
+          "gpu": false,
+          "name": "CPU"
+        },
+        "newsRenderStyle": "v3-fast",
+        "captionRuntimeExecuted": true
+      },
+      {
+        "name": "logo-and-looped-music",
+        "type": "timeline",
+        "passed": true,
+        "elapsedMs": 1314,
+        "metadata": {
+          "kind": "video",
+          "duration": 5,
+          "width": 480,
+          "height": 854,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 258574
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "libx264",
+          "gpu": false,
+          "name": "CPU"
+        }
+      }
+    ]
+  },
+  "gpu": {
+    "report": ".verification\\package-gpu\\run-20261113-162102-b8c8d3d5\\report.json",
+    "version": "0.15.3",
+    "passed": true,
+    "machine": {
+      "platform": "win32",
+      "arch": "x64",
+      "osRelease": "10.0.19045",
+      "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+      "logicalCpus": 16,
+      "memoryGiB": 23.8
+    },
+    "settings": {
+      "renderConcurrency": 1,
+      "renderThreads": 2,
+      "renderAcceleration": "gpu"
+    },
+    "cases": [
+      {
+        "name": "portrait-3-4",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 47
+      },
+      {
+        "name": "portrait-9-16",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 44
+      },
+      {
+        "name": "landscape-4-3",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 56
+      },
+      {
+        "name": "landscape-16-9",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 60
+      },
+      {
+        "name": "square",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 47
+      },
+      {
+        "name": "small",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 51
+      },
+      {
+        "name": "non-square-pixels",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 65
+      },
+      {
+        "name": "odd-dimensions",
+        "type": "geometry",
+        "passed": true,
+        "elapsedMs": 48
+      },
+      {
+        "name": "540x720",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 16412,
+        "metadata": {
+          "kind": "video",
+          "duration": 25,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 1891056
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "h264_qsv",
+          "gpu": true,
+          "name": "Intel(R) UHD Graphics",
+          "driver": "27.20.100.9415"
+        },
+        "newsRenderStyle": "v3",
+        "captionRuntimeExecuted": true
+      },
+      {
+        "name": "1056x792",
+        "type": "full-news",
+        "passed": true,
+        "elapsedMs": 14228,
+        "metadata": {
+          "kind": "video",
+          "duration": 25,
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 1910031
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "h264_qsv",
+          "gpu": true,
+          "name": "Intel(R) UHD Graphics",
+          "driver": "27.20.100.9415"
+        },
+        "newsRenderStyle": "v3-fast",
+        "captionRuntimeExecuted": true
+      },
+      {
+        "name": "logo-and-looped-music",
+        "type": "timeline",
+        "passed": true,
+        "elapsedMs": 2081,
+        "metadata": {
+          "kind": "video",
+          "duration": 5,
+          "width": 480,
+          "height": 854,
+          "fps": 30,
+          "hasAudio": true,
+          "videoCodec": "h264",
+          "audioCodec": "aac",
+          "bytes": 172573
+        },
+        "fullyDecoded": true,
+        "renderDevice": {
+          "encoder": "h264_qsv",
+          "gpu": true,
+          "name": "Intel(R) UHD Graphics",
+          "driver": "27.20.100.9415"
+        }
+      }
+    ]
+  },
+  "liveSources": [
+    {
+      "title": "Trump set to lurch further right, claiming US took ‘giant step back’ in elections - The Guardian",
+      "url": "https://www.theguardian.com/us-news/2026/nov/08/trump-midterm-elections-loss-democrats-immigration",
+      "status": "full",
+      "characters": 6272,
+      "photos": 6,
+      "seconds": 1.2723748999999998
+    },
+    {
+      "title": "Republicans took big hits in the U.S. midterms. Does that mean Trump's political era is over? - CBC",
+      "url": "https://www.cbc.ca/news/politics/midterms-end-of-maga-trump-republicans-9.7414220",
+      "status": "full",
+      "characters": 8539,
+      "photos": 5,
+      "seconds": 1.6313292
+    },
+    {
+      "title": "Democrats Win US Midterms, Take Senate and House With 54 Senate Seats, 237 House Seats: 7 outlets compared - NewsCord",
+      "url": "https://newscord.org/article/democrats-win-us-midterms-take-senate-and-house-with-54-senate-seats-237-house-s--Story_20261108_Minoriasvencerammidt2cbb160f",
+      "status": "full",
+      "characters": 3951,
+      "photos": 3,
+      "seconds": 1.6785569
+    },
+    {
+      "title": "Healthcare, tariffs – but not Trump impeachment: Democrats chart next two years of power - The Guardian",
+      "url": "https://www.theguardian.com/us-news/2026/nov/08/democrats-congress-trump-midterms",
+      "status": "full",
+      "characters": 8265,
+      "photos": 7,
+      "seconds": 0.7530156000000002
+    },
+    {
+      "title": "Rep.-elect says Democratic majority is an ‘opportunity’ for Trump - The Hill",
+      "url": "https://thehill.com/homenews/house/6207130-ojeda-urges-trump-cooperation/amp/",
+      "status": "full",
+      "characters": 1824,
+      "photos": 2,
+      "seconds": 0.5195897
+    }
+  ],
+  "realMediaRetry": {
+    "passed": true,
+    "providerCalls": 0,
+    "note": "Copied existing MC and two photos from KAD22P5 into an isolated local workspace. Preserved narration to verify local retry/MC reuse; script diversity and 12-photo selection are covered separately by tests.",
+    "outputs": [
+      {
+        "variation": 1,
+        "file": "E:\\OPENCLAW\\VIRAL STUDIO\\.maintenance\\news-quality-v0.15.3\\.verification\\live-news-1794561331165\\exports\\b94896ea-10be-403d-a45a-1ab0e54c7334.mp4",
+        "contact": "E:\\OPENCLAW\\VIRAL STUDIO\\.maintenance\\news-quality-v0.15.3\\.verification\\live-news-1794561331165\\variant-1.jpg",
+        "width": 1080,
+        "height": 1920,
+        "duration": 20.366667,
+        "fps": 30,
+        "audio": true,
+        "encoder": "h264_qsv",
+        "photos": 2,
+        "cards": 0,
+        "imageOrder": [
+          "15be6249-2ee6-4e41-8e1e-17b8faf104f3",
+          "4ccec137-b6a4-40c3-adc2-138d0425a514"
+        ],
+        "captionTiming": "aligned",
+        "phaseTimings": {
+          "render": 7778,
+          "captions": 4325,
+          "content": 1
+        },
+        "renderMetrics": {
+          "seconds": 9.991860100000002,
+          "encodeSeconds": 5.4415249,
+          "captionCacheHit": false,
+          "frames": 611
+        }
+      },
+      {
+        "variation": 2,
+        "file": "E:\\OPENCLAW\\VIRAL STUDIO\\.maintenance\\news-quality-v0.15.3\\.verification\\live-news-1794561331165\\exports\\fee86db4-a27a-4acc-901e-7ca60d56e5bf.mp4",
+        "contact": "E:\\OPENCLAW\\VIRAL STUDIO\\.maintenance\\news-quality-v0.15.3\\.verification\\live-news-1794561331165\\variant-2.jpg",
+        "width": 1080,
+        "height": 1920,
+        "duration": 20.366667,
+        "fps": 30,
+        "audio": true,
+        "encoder": "h264_qsv",
+        "photos": 2,
+        "cards": 0,
+        "imageOrder": [
+          "4ccec137-b6a4-40c3-adc2-138d0425a514",
+          "15be6249-2ee6-4e41-8e1e-17b8faf104f3"
+        ],
+        "captionTiming": "aligned",
+        "phaseTimings": {
+          "render": 5660,
+          "content": 2
+        },
+        "renderMetrics": {
+          "seconds": 5.6554621,
+          "encodeSeconds": 5.416542399999998,
+          "captionCacheHit": true,
+          "frames": 611
+        }
+      }
+    ]
+  },
+  "visualInspection": [
+    "Error filter and fixed checkbox/title layout at 1440px; no horizontal overflow at 1280px",
+    "Missing photo filter and explicit policy choices",
+    "Packaged News settings",
+    "Both real-media A/B contact sheets: different first photo, same preserved MC, readable text"
+  ],
+  "limits": [
+    "No paid DreamFace MC creation was submitted during verification",
+    "Photo approval still uses metadata/source text, not computer vision",
+    "Limited source photos can prevent 50% visual difference; the job records a warning",
+    "No installation or migration was performed on KAD22P5"
+  ]
+}

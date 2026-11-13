@@ -3,10 +3,10 @@ import { v3PhotoFit } from './news-v3-photo-fit.js';
 export const NEWS_FPS = 30;
 export const NEWS_PHOTO_RECT = { x: 0, y: 272, w: 1080, h: 720 };
 
-export function v3PhotoFilter(input, output, { frames, motion = 'smooth', fit = 'contain', width = NEWS_PHOTO_RECT.w, height = NEWS_PHOTO_RECT.h }) {
+export function v3PhotoFilter(input, output, { frames, motion = 'smooth', direction = 'in', fit = 'contain', width = NEWS_PHOTO_RECT.w, height = NEWS_PHOTO_RECT.h }) {
   const amount = motion === 'smooth' && fit === 'cover' ? Math.min(.018, frames / NEWS_FPS * .0045) : 0;
   const p = `min(1,max(0,on/${Math.max(1, frames - 1)}))`, ease = `(3*pow(${p},2)-2*pow(${p},3))`;
-  const z = `(1+${amount.toFixed(6)}*${ease})`, x = `(W-W/${z})/2`, y = `(H-H/${z})/2`;
+  const z = `(1+${amount.toFixed(6)}*${direction === 'out' ? `(1-${ease})` : ease})`, x = `(W-W/${z})/2`, y = `(H-H/${z})/2`;
   const transform = amount ? `,perspective=x0='${x}':y0='${y}':x1='W-${x}':y1='${y}':x2='${x}':y2='H-${y}':x3='W-${x}':y3='H-${y}':sense=source:eval=frame:interpolation=cubic` : '';
   const fill = fit === 'cover'
     ? `[${input}:v]scale=${width}:${height}:force_original_aspect_ratio=increase:force_divisible_by=2:reset_sar=1:flags=lanczos,crop=${width}:${height},setsar=1,format=yuv420p`
@@ -18,12 +18,12 @@ export function v3PhotoFilter(input, output, { frames, motion = 'smooth', fit = 
   return `${fill},loop=loop=-1:size=1:start=0,setpts=N/(${NEWS_FPS}*TB),trim=end_frame=${frames}${transform},settb=1/${NEWS_FPS},setpts=PTS-STARTPTS[${output}]`;
 }
 
-export function v3PhotoGraph(images, duration, { style = 'v3', visualMode = 'photo', transitionFrames = 9 } = {}) {
+export function v3PhotoGraph(images, duration, { style = 'v3', visualMode = 'photo', transitionFrames = 9, visualVariant = 1 } = {}) {
   if (!images.length || images.length > 10 || !Number.isFinite(duration) || duration < 1 || duration > 600) throw new StudioError('Ảnh/thời lượng V3 không hợp lệ.', 'NEWS_VISUALS_INVALID', 422);
   const totalFrames = Math.round(duration * NEWS_FPS), distributed = totalFrames + (images.length - 1) * transitionFrames;
   const shots = images.map((image, index) => {
     const framing = v3PhotoFit(image, { visualMode });
-    return { index, ...framing, frames: Math.floor(distributed / images.length) + (index < distributed % images.length ? 1 : 0), motion: style === 'v3-fast' || framing.fit === 'contain' || index % 2 ? 'static' : 'smooth' };
+    return { index, ...framing, frames: Math.floor(distributed / images.length) + (index < distributed % images.length ? 1 : 0), direction: visualVariant % 2 ? 'in' : 'out', motion: style === 'v3-fast' || framing.fit === 'contain' || (index + visualVariant - 1) % 2 ? 'static' : 'smooth' };
   });
   if (shots.some(s => s.frames - transitionFrames < 45)) throw new StudioError('Quá nhiều ảnh cho thời lượng clip.', 'NEWS_TOO_MANY_IMAGES', 422);
   const inputs = images.flatMap(image => ['-framerate', String(NEWS_FPS), '-i', image.file]);

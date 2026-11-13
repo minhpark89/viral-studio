@@ -1,4 +1,4 @@
-const failed = new Set(['failed', 'cancelled', 'interrupted']);
+const failed = new Set(['failed', 'cancelled', 'interrupted', 'needs_assets']);
 const active = new Set(['pending', 'preparing', 'queued', 'scheduled', 'submitting', 'rendering', 'downloading', 'generating_mc_image']);
 
 // Both Research and Render use the same latest job for each production slot.
@@ -20,6 +20,6 @@ export function productionBatchProgress(batch, allJobs = []) {
     complete: slots.filter(slot => slot.status === 'completed').length,
     active: slots.filter(slot => active.has(slot.status)).length,
     failed: slots.filter(slot => failed.has(slot.status)).length,
-    canRetryPreparation: slots.some(slot => !slot.job && ['failed', 'interrupted'].includes(slot.item.status)),
+    canRetryPreparation: slots.some(slot => !slot.job && ['failed', 'interrupted', 'needs_assets'].includes(slot.item.status)),
   };
 }

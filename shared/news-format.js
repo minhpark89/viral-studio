@@ -12,10 +12,12 @@ export const NEWS_RENDER_STYLES = [
 export const newsRenderStyleLabel = style => NEWS_RENDER_STYLES.find(item => item.id === style)?.label || NEWS_RENDER_STYLES[0].label;
 export const newsDurationSchema = z.union([z.literal('auto'), z.literal(15), z.literal(20), z.literal(30)]);
 export const newsImageCountSchema = z.union([z.literal('auto'), z.literal(6), z.literal(8), z.literal(10)]);
+export const newsVisualPolicySchema = z.enum(['require-photos', 'allow-fewer', 'allow-source-card']);
 export const newsVideoOptionsSchema = z.object({
   newsRenderStyle: newsRenderStyleSchema.default(DEFAULT_NEWS_RENDER_STYLE),
   newsDuration: newsDurationSchema.default('auto'),
   newsImageCount: newsImageCountSchema.default('auto'),
+  newsVisualPolicy: newsVisualPolicySchema.default('require-photos'),
   fontStyle: z.enum(['news', 'viral', 'minimal']).default('news'),
 });
 
@@ -33,4 +35,8 @@ export function newsScriptBudget(duration = 'auto') {
 
 export function newsImageTarget(duration = 'auto', count = 'auto') {
   return count === 'auto' ? (duration === 'auto' ? 8 : Math.min(NEWS_MAX_IMAGES, Math.max(6, Math.round(newsScriptBudget(duration).seconds / 2.5)))) : Number(count);
+}
+
+export function newsMinimumPhotos(policy = 'require-photos', target = 8) {
+  return policy === 'allow-source-card' ? 0 : policy === 'allow-fewer' ? 1 : Math.min(6, target);
 }

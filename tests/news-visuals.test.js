@@ -44,7 +44,7 @@ test('rejected cached imagery triggers fresh search, labeled context images, and
   assert.equal(job.status, 'queued');
 });
 
-test('zero usable downloads yields a reusable source card, never an unrelated photo', async t => {
+test('explicit source-card opt-in yields a reusable card after zero usable downloads', async t => {
   const root = path.resolve('.verification', 'visual-card-' + randomUUID()); const store = new Store(root); const project = store.createProject('News');
   const queue = new JobQueue(store, {}, { intervalMs: 0 }); let cards = 0;
   const service = new ProductionService(store, queue, {
@@ -55,7 +55,7 @@ test('zero usable downloads yields a reusable source card, never an unrelated ph
   t.after(async () => { await service.close(); await queue.close(); await fs.rm(root, { recursive: true, force: true }); });
   const research = store.add('researchResults', { projectId: project.id, headline: 'Bitcoin report: 10% change under review', topic: 'Bitcoin', articles: [], imageSearchResults: [{ id: 'btc', title: 'Bitcoin token', imageUrl: 'https://images.test/coin.jpg' }] });
   const batch = store.add('productionBatches', { projectId: project.id, items: [], request: {}, warnings: [] });
-  const request = { projectId: project.id }; const narration = { headline: research.headline, narration: 'A verified report.', imageQueries: ['Bitcoin'] };
+  const request = { projectId: project.id, newsVisualPolicy: 'allow-source-card' }; const narration = { headline: research.headline, narration: 'A verified report.', imageQueries: ['Bitcoin'] };
   const llm = async () => ({ selectedImageIds: ['btc'] });
   const result = await service.prepareNewsMedia(batch, request, research, narration, llm);
   assert.equal(result.visualMode, 'source-card'); assert.equal(result.diagnostics.downloadErrors.length, 1);

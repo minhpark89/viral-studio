@@ -236,7 +236,7 @@ export async function renderNewsBroadcast(store, job, presenter, plan, images, s
       mediaType: "news-video",
       newsOutputDirectory: job.production?.newsOutputDirectory || null,
     });
-    return store.patch('media', media.id, { newsPresenterMediaId: presenter.id, newsVisualCount: usable.length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', newsRenderStyle: 'classic', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
+    return store.patch('media', media.id, { newsPresenterMediaId: presenter.id, newsVisualCount: usable.length, newsPhotoCount: usable.filter(image => image.visualRole !== 'source-card').length, newsSourceCardCount: usable.filter(image => image.visualRole === 'source-card').length, newsImageMediaIds: usable.map(image => image.id), newsTargetDuration: plan.newsDuration || 'auto', newsRenderStyle: 'classic', renderDevice: device, renderPipeline: direct ? 'direct' : 'bounded' });
   } finally {
     const resolved = path.resolve(directory);
     if (resolved.startsWith(path.resolve(tempRoot) + path.sep)) await fsPromises.rm(resolved, { recursive: true, force: true }).catch(() => {});

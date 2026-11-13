@@ -31,7 +31,7 @@ export function ProductionBatchRecords({ batches, data, notify, navigate, focuse
       const sources = new Set([request.researchId, ...(request.researchIds || []), ...(batch.items || []).map(item => item.researchId)].filter(Boolean));
       const available = videos(batch);
       const status = progress.failed ? `${progress.failed} video cần xử lý` : progress.active ? `${progress.active} video đang xử lý` : progress.complete === progress.total ? 'Đã hoàn tất' : 'Đang chuẩn bị';
-      const errors = progress.slots.filter(slot => slot.error && ['failed', 'interrupted', 'cancelled'].includes(slot.status));
+      const errors = progress.slots.filter(slot => slot.error && ['failed', 'interrupted', 'cancelled', 'needs_assets'].includes(slot.status));
       return <article className={`production-batch${focusedIds.includes(batch.id) ? ' is-focused' : ''}`} data-production-batch-id={batch.id} key={batch.id}>
         <div className="production-batch-copy">
           <strong><Video size={15} /> {title}</strong>

@@ -7,6 +7,7 @@ import { importMedia, probe, binary, runProcess } from "../media.js";
 import { StudioError } from "../store.js";
 import { ensureNewsMcImage } from "../mc-image.js";
 import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
+import { captureNewsFailure } from '../dreamface-diagnostics.js';
 import { inspectDreamFaceQuota } from '../dreamface-quota.js';
 import { generateProductVideo } from '../dreamface-product.js';
 import { ensureDreamFaceCredentials, getDreamFaceCredentials, getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
@@ -1812,6 +1813,7 @@ export class DreamFaceProvider {
     if (await prompt.inputValue() !== narration) throw providerError("DreamFace reset the news narration before submission. Please retry.", "PROVIDER_NOT_READY");
     update({ status: "submitting", workflow: "avatar-news", progress: 5 });
     const receipt = await submitNewsAvatar({ page, narration, profileId: accountId(account), signal,
+      onFailure:(error, signals)=>captureNewsFailure(store, job, page, error, signals),
       click: () => generate.click({ timeout: 15000 }),
       saveReceipt: receipt => {
         store.patch('jobs', job.id, { payload: { ...job.payload, accountId: account.id, newsAvatarRequest: receipt } });

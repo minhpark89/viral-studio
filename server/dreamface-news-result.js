@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { StudioError } from './store.js';
+import { safeProviderMessage } from './dreamface-diagnostics.js';
 
 export const newsNarrationHash = value => createHash('sha256').update(String(value || '').replace(/\s+/g, ' ').trim()).digest('hex');
 const submission = value => /\/task(?:_v\d+)?\/(?:v\d+\/)?(?:submit|create_web_task)(?:[/?]|$)/i.test(value);
@@ -18,26 +19,27 @@ export function matchingNewsWork(rows, receipt) {
     && [row.id, row.animate_id, row.work_id, row.task_id].filter(Boolean).includes(receipt.id)) || null;
 }
 
-export async function submitNewsAvatar({ page, narration, profileId, signal, click, saveReceipt, timeoutMs = 30000 }) {
+export async function submitNewsAvatar({ page, narration, profileId, signal, click, saveReceipt, timeoutMs = 30000, onFailure = async () => {} }) {
   let receipt; let rejected; let submittedRequest;
   const onRequest = request => {
-    if (request.method() !== 'POST' || !submission(request.url())) return;
+    if (request.method() !== 'POST') return;
     if (receipt) return;
-    submittedRequest = request;
     let payload; try { payload = request.postDataJSON(); } catch {}
+    if (!submission(request.url()) && !containsNarration(payload, newsNarrationHash(narration))) return;
+    submittedRequest = request;
     receipt = { id: null, profileId, promptHash: newsNarrationHash(narration), submittedAt: new Date().toISOString() };
     receipt.scriptMismatch = !containsNarration(payload, receipt.promptHash);
     saveReceipt(receipt);
   };
   const onResponse = async response => {
-    if (!submission(response.url()) || response.request() !== submittedRequest) return;
+    if (response.request() !== submittedRequest) return;
     try {
       const body = await response.json();
       if (!receipt) return;
       const id = body.data?.animate_image_id || body.data?.animate_id || body.data?.task_id || body.data?.work_id || body.data?.id;
       if (id && response.ok() && (!body.status_code || body.status_code === 'THS12140000000')) { receipt = { ...receipt, id: String(id) }; saveReceipt(receipt); }
-      else {
-        rejected = String(body.status_msg || body.message || `HTTP ${response.status()}`).slice(0, 220);
+      else if (!response.ok() || (body.status_code && body.status_code !== 'THS12140000000')) {
+        rejected = safeProviderMessage(body.status_msg || body.message || `HTTP ${response.status()}`).slice(0, 220);
         receipt = { ...receipt, rejected: true }; saveReceipt(receipt);
       }
     } catch { /* An unconfirmed submit is never permission to submit again. */ }
@@ -65,6 +67,9 @@ export async function submitNewsAvatar({ page, narration, profileId, signal, cli
       : 'DreamFace chưa gửi yêu cầu MC sau khi bấm Generate. Kiểm tra thông báo trên profile rồi thử lại; app không lấy video cũ thay thế.');
     if (receipt.scriptMismatch) throw failure('DreamFace gửi lời đọc khác bản tóm tắt đã chọn. Đã lưu mã tác vụ để kiểm tra; không dùng video đó cho tin này.', 'PROVIDER_SCRIPT_MISMATCH');
     return receipt;
+  } catch(error) {
+    await Promise.resolve().then(() => onFailure(error, { requestObserved:Boolean(submittedRequest), receiptConfirmed:Boolean(receipt?.id), rejected:Boolean(rejected) })).catch(()=>{});
+    throw error;
   } finally { page.off('request', onRequest); page.off('response', onResponse); }
 }
 

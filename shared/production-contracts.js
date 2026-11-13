@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MAX_NEWS_VIDEOS } from "./mc-rotation.js";
-import { newsDurationSchema, newsImageCountSchema, newsRenderStyleSchema, DEFAULT_NEWS_RENDER_STYLE } from './news-format.js';
+import { newsDurationSchema, newsImageCountSchema, newsRenderStyleSchema, newsVisualPolicySchema, DEFAULT_NEWS_RENDER_STYLE } from './news-format.js';
 
 export const productionRequestSchema = z.object({
   requestId: z.string().uuid(),
@@ -29,6 +29,7 @@ export const productionRequestSchema = z.object({
   newsOutputDirectory: z.string().trim().max(2048).default(""),
   newsDuration: newsDurationSchema.default('auto'),
   newsImageCount: newsImageCountSchema.default('auto'),
+  newsVisualPolicy: newsVisualPolicySchema.default('require-photos'),
   newsRenderStyle: newsRenderStyleSchema.default(DEFAULT_NEWS_RENDER_STYLE),
 }).superRefine((value, context) => {
   if ((value.contentType === "news" || value.autoResearch) && value.topic.length < 2 && !value.sourceUrl)

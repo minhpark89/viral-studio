@@ -16,7 +16,7 @@ test('project News choices persist across restart, reject invalid values and lea
   const timeline = structuredClone(project.timeline);
   const batch = store.add('productionBatches', { projectId: project.id, request: { contentType: 'news', newsRenderStyle: 'classic', count: 1 }, status: 'completed', items: [{ index: 0, status: 'completed' }] });
   const savedBatch = structuredClone(batch);
-  const options = { newsRenderStyle: 'v3-fast', newsDuration: 20, newsImageCount: 10, fontStyle: 'viral' };
+  const options = { newsRenderStyle: 'v3-fast', newsDuration: 20, newsImageCount: 10, newsVisualPolicy: 'require-photos', fontStyle: 'viral' };
   const patch = value => fetch(server.address + '/api/projects/' + project.id, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ newsVideoOptions: value }) });
   assert.equal((await patch(options)).status, 200);
   assert.equal((await patch({ ...options, newsRenderStyle: 'unknown' })).status, 400);

@@ -1979,6 +1979,10 @@ nav button b {
   align-items: center;
   gap: 16px;
 }
+.queue-page input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 18px; margin: 0; accent-color: #ffad73; }
+.queue-retry-bar label, .preparation-card .inline-actions label { display: inline-flex; align-items: center; gap: 8px; }
+.queue-retry-bar .inline-actions, .preparation-card .inline-actions { flex-wrap: wrap; }
+.queue-retry-bar > p { margin: 10px 0; }
 .job-type {
   display: grid;
   place-items: center;

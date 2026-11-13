@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { chromium } from 'playwright';
+import { startServer } from '../server/index.js';
+
+const root=path.resolve('.verification',`news-retry-ui-${Date.now()}`);
+const studio=await startServer({port:0,dataDir:root}),store=studio.store,project=store.state.projects[0];
+store.state.settings.queuePaused=true;
+const file=path.join(root,'existing-mc.mp4');await fs.writeFile(file,'Paused fixture; renderer must not run');
+const mc=store.add('media',{projectId:project.id,kind:'video',file});
+const add=(name,extra={})=>store.add('jobs',{projectId:project.id,type:'news',name,status:'failed',payload:{provider:'dreamface',accountId:'auto'},logs:[],...extra});
+const existing=add('Existing MC render',{payload:{presenterMediaId:mc.id,provider:'dreamface',accountId:'auto'},submittedAt:new Date().toISOString()});
+const fresh=add('Fresh failed news');
+const unknown=add('Unconfirmed MC',{payload:{newsAvatarRequest:{submittedAt:new Date().toISOString()}}});
+add('Product failure',{type:'generate',production:{contentType:'product'}});
+const old=add('Superseded old failure');add('Successful retry',{status:'completed',retryOf:old.id});
+add('Foreign project failure',{projectId:store.createProject('Other').id});
+const batch=store.add('productionBatches',{projectId:project.id,status:'failed',request:{topic:'Missing editorial images',contentType:'news',count:1},items:[{index:0,status:'needs_assets',error:'Only three photos',imagePreparation:{photoCount:3,target:8}}]});
+const browser=await chromium.launch({headless:true}),page=await browser.newPage({viewport:{width:1440,height:1000}});
+page.setDefaultTimeout(12000);const report={passed:false,root,checks:[],errors:[]};page.on('pageerror',e=>report.errors.push(e.message));
+const tab=name=>page.locator('.queue-page .segmented').getByRole('button',{name,exact:true});
+const card=job=>page.locator(`[data-job-id="${job.id}"]`);
+try {
+ await page.goto(studio.address);await page.locator('nav').getByRole('button',{name:'Hàng đợi',exact:true}).click();
+ await tab('Có lỗi').click();await tab('News').click();await card(existing).waitFor();
+ assert.ok((await card(existing).boundingBox()).height<300,'Checkbox must not collapse the title column');
+ assert.ok((await card(existing).locator('.job-details').boundingBox()).width>300);
+ assert.equal((await card(existing).getByRole('checkbox').boundingBox()).width,18);
+ assert.equal(await card(old).count(),0);assert.equal(await page.getByText('Foreign project failure',{exact:true}).count(),0);assert.equal(await page.getByText('Product failure',{exact:true}).count(),0);
+ await page.screenshot({path:path.join(root,'filter-errors.png'),fullPage:true});
+ report.checks.push('Errors show latest attempts in the active project and selected content type');
+ await page.getByRole('checkbox',{name:'Chọn thử lại Existing MC render',exact:true}).check();
+ await page.getByRole('button',{name:'Thử lại 1 mục đã chọn',exact:true}).click();
+ await card(existing).waitFor({state:'detached'});
+ const child=store.state.jobs.find(job=>job.retryOf===existing.id);assert.ok(child);assert.equal(child.payload.presenterMediaId,mc.id);assert.equal(child.status,'queued');
+ assert.equal(fresh.status,'failed');assert.equal(unknown.status,'failed');assert.equal(batch.items[0].status,'needs_assets');
+ report.checks.push('Selected retry creates exactly one queued job and keeps the existing MC');
+ await page.getByLabel('Tìm tác vụ').fill('Fresh failed news');
+ await page.getByRole('button',{name:'Thử lại tất cả đang lọc (1)',exact:true}).click();await card(fresh).waitFor({state:'detached'});
+ assert.equal(store.state.jobs.filter(job=>job.retryOf===fresh.id).length,1);
+ const duplicate=await fetch(studio.address+'/api/jobs/retry-failed',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId:project.id,jobIds:[fresh.id,existing.id]})}).then(r=>r.json());
+ assert.equal(duplicate.queued,0);assert.equal(duplicate.skipped,2);
+ report.checks.push('One click retries all filtered errors; repeated requests do not duplicate jobs');
+ await page.getByLabel('Tìm tác vụ').fill('Unconfirmed MC');await page.getByRole('button',{name:'Thử lại tất cả đang lọc (1)',exact:true}).click();
+ await page.locator('.queue-retry-bar').getByText(/1 mục cần kiểm tra/).waitFor();assert.equal(unknown.status,'failed');
+ report.checks.push('Ambiguous provider submission stays failed with an actionable review result');
+ await page.getByLabel('Tìm tác vụ').fill('');await tab('Thiếu ảnh').click();
+ await page.getByRole('button',{name:'Dùng số ảnh hiện có',exact:true}).waitFor();
+ assert.equal(await page.locator('.job-card').count(),0);assert.equal(await page.getByRole('checkbox',{name:'Chọn chuẩn bị video 1',exact:true}).count(),1);
+ await page.screenshot({path:path.join(root,'missing-photos.png'),fullPage:true});
+ report.checks.push('Missing photos have their own filter with explicit retry or fewer-photo choice');
+ await page.setViewportSize({width:1280,height:800});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ assert.deepEqual(report.errors,[]);report.passed=true;
+}catch(error){report.failure=error.stack;process.exitCode=1;await page.screenshot({path:path.join(root,'failure.png'),fullPage:true}).catch(()=>{});}
+finally{await fs.writeFile('.verification/news-retry-ui-report.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));await browser.close();await studio.close();}

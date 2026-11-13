@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from 'node:crypto';
 import { productionRequestSchema } from "../shared/production-contracts.js";
 import { defaultTimeline } from "../shared/contracts.js";
 import { buildResearchAssemblyTimeline } from "../shared/research-assembly.js";
@@ -11,8 +12,11 @@ import { isPageAvatar, isMcImage } from "../shared/output-media.js";
 import { mcForVideo } from "../shared/mc-rotation.js";
 import { discoverArticleImages, newsVisualQueries } from './news-visuals.js';
 import { createNewsSourceCard } from './news-render.js';
-import { newsImageTarget } from '../shared/news-format.js';
+import { newsImageTarget, newsMinimumPhotos, newsVisualPolicySchema } from '../shared/news-format.js';
 import { newsImageFingerprint, sameNewsImage } from './news-image-fingerprint.js';
+import { loadNewsSources } from './news-source.js';
+import { newsStoryKey, newsVariantContext, selectNewsVariant, imageOverlap } from './news-variants.js';
+import { changePhase, preparationPhase } from '../shared/job-timing.js';
 
 const productOutput = z.object({ productName: z.string().trim().min(1).max(200), productBrief: z.string().trim().min(1).max(4000), prompt: z.string().trim().min(20).max(16000) });
 
@@ -26,14 +30,6 @@ const VISUAL_VARIATION_DIRECTIVES = [
 
 function productVariationDirective(index, total) {
   return `Render variation ${index} of ${total}. ${VISUAL_VARIATION_DIRECTIVES[(index - 1) % VISUAL_VARIATION_DIRECTIVES.length]} Keep the same verified content facts, but change the visual opening, shot order, camera path, background framing and pacing so this output is visibly different from the other variations.`;
-}
-
-function selectNewsVariant(ids, variation) {
-  const source = [...new Set((ids || []).filter(Boolean))];
-  if (source.length <= 1) return source;
-  const offset = (Math.max(1, Number(variation) || 1) - 1) % source.length;
-  const rotated = [...source.slice(offset), ...source.slice(0, offset)];
-  return Math.max(1, Number(variation) || 1) % 2 === 0 ? rotated.reverse() : rotated;
 }
 
 function preparationMessage(error, fallback) {
@@ -95,7 +91,7 @@ async function articleFromUrl(fetchImpl, sourceUrl) {
 import { checkNewsOutput } from './news-output.js';
 
 export class ProductionService {
-  constructor(store, queue, { fetchImpl = globalThis.fetch, research, llm, imageSearch = searchImageQueries, downloadImage = downloadImageAsset, sourceCard = createNewsSourceCard } = {}) {
+  constructor(store, queue, { fetchImpl = globalThis.fetch, research, llm, imageSearch = searchImageQueries, downloadImage = downloadImageAsset, sourceCard = createNewsSourceCard, sourceLoader = loadNewsSources } = {}) {
     this.store = store;
     this.queue = queue;
     this.controller = new AbortController();
@@ -106,6 +102,9 @@ export class ProductionService {
     this.downloadImage = downloadImage;
     this.sourceCard = sourceCard;
     this.imageSearchCache = new Map();
+    this.sourceCache = new Map();
+    this.imageReviewCache = new Map();
+    this.sourceLoader = (research, force = false) => sourceLoader(research, { cache: this.sourceCache, force, signal: this.controller.signal, ...(fetchImpl !== globalThis.fetch ? { fetchImpl } : {}) });
     this.worker = null;
     this.newsMediaPromises = new Map();
     this.syncTimer = null;
@@ -153,7 +152,7 @@ export class ProductionService {
       }
       if (interrupted) batch.status = "interrupted";
       else if (batch.items.every(item => item.status === "completed")) batch.status = "completed";
-      else if (batch.items.some(item => ["failed", "interrupted"].includes(item.status))) batch.status = batch.items.some(item => item.jobId && !["failed", "interrupted"].includes(item.status)) ? "partial" : "failed";
+      else if (batch.items.some(item => ["failed", "interrupted", "needs_assets"].includes(item.status))) batch.status = batch.items.some(item => item.jobId && !["failed", "interrupted", "needs_assets"].includes(item.status)) ? "partial" : "failed";
       else if (batch.items.some(item => item.status === "preparing")) batch.status = "preparing";
       else if (batch.items.some(item => item.status === "queued")) batch.status = "queued";
     }
@@ -189,8 +188,8 @@ export class ProductionService {
         ? "interrupted"
         : batch.items.every((item) => item.status === "completed")
           ? "completed"
-          : batch.items.some((item) => ["failed", "interrupted"].includes(item.status))
-            ? batch.items.some((item) => item.jobId && !["failed", "interrupted"].includes(item.status)) ? "partial" : "failed"
+          : batch.items.some((item) => ["failed", "interrupted", "needs_assets"].includes(item.status))
+            ? batch.items.some((item) => item.jobId && !["failed", "interrupted", "needs_assets"].includes(item.status)) ? "partial" : "failed"
             : batch.items.some((item) => item.status === "preparing")
               ? "preparing"
               : batch.items.some((item) => item.status === "queued")
@@ -238,11 +237,15 @@ export class ProductionService {
     return batch;
   }
 
-  retry(id) {
+  retry(id, { indexes, visualPolicy } = {}) {
     const batch = this.store.require("productionBatches", id);
+    if (visualPolicy !== undefined) newsVisualPolicySchema.parse(visualPolicy);
     let requested = false;
     for (const item of batch.items) {
-      if (!item.jobId && ["failed", "interrupted"].includes(item.status)) {
+      if (!item.jobId && (!indexes || indexes.includes(item.index)) && ["failed", "interrupted", "needs_assets"].includes(item.status)) {
+        if (visualPolicy !== undefined) item.visualPolicy = visualPolicy;
+        item.refreshAssets = !visualPolicy;
+        if (item.researchId && !visualPolicy && batch.newsMediaByResearch) delete batch.newsMediaByResearch[item.researchId];
         item.status = "pending";
         item.stage = 'Đang chờ chuẩn bị lại';
         item.error = null;
@@ -257,6 +260,21 @@ export class ProductionService {
     batch.errorCode = null;
     if (batch.items.some(item => item.status === "pending")) batch.status = "pending";
     this.store.save();
+    this.kick();
+    return batch;
+  }
+
+  refreshJobImages(id) {
+    const job = this.store.require('jobs', id);
+    if (job.type !== 'news' || !['completed', 'failed', 'interrupted'].includes(job.status)) throw new StudioError('Chỉ bổ sung ảnh cho video News đã dừng hoặc hoàn tất.', 'NEWS_REPAIR_INVALID', 409);
+    const research = this.store.require('researchResults', job.production?.researchId);
+    if (research.projectId !== job.projectId) throw new StudioError('Nguồn tin không thuộc dự án.', 'RESEARCH_PROJECT_MISMATCH', 409);
+    const existing = this.store.state.productionBatches.find(batch => batch.repairOfJobId === id && batch.items.some(item => ['pending', 'preparing', 'queued', 'needs_assets'].includes(item.status)));
+    if (existing) return existing;
+    const plan = job.payload.newsPlan;
+    const request = productionRequestSchema.parse({ ...plan, projectId:job.projectId, requestId:randomUUID(), contentType:'news', researchId:research.id, topic:research.topic || plan.headline, count:1, autoCreateContent:false, newsVisualPolicy:'require-photos', accountId:job.payload.accountId || 'auto', avatarMediaId:job.payload.avatarMediaId || null, newsOutputDirectory:job.production?.newsOutputDirectory || '' });
+    const batch = this.store.add('productionBatches', { projectId:job.projectId, request, repairOfJobId:id, outputDirectory:checkNewsOutput(this.store, request.newsOutputDirectory), status:'pending', sources:research.articles || [], warnings:[], items:[{ index:0, status:'pending', jobId:null, researchId:research.id, avatarMediaId:request.avatarMediaId, title:plan.headline, narrationDraft:structuredClone(plan), preserveVariation:plan.variation, refreshAssets:true,
+      reusePayload: { presenterMediaId:job.payload.presenterMediaId, newsAvatarRequest:job.payload.newsAvatarRequest, mcImageRequest:job.payload.mcImageRequest, avatarMediaId:job.payload.avatarMediaId, accountId:job.payload.accountId }, submittedAt:job.submittedAt, error:null }] });
     this.kick();
     return batch;
   }
@@ -296,10 +314,13 @@ export class ProductionService {
           if (batch.sources.length < request.count) batch.warnings.push(`${batch.sources.length} current stories found; extra videos use different versions of these stories.`);
           this.store.save();
         }
+        for (const item of batch.items) item.storyKey ||= newsStoryKey(batch, item);
+        const preparingStories = new Set();
         const work = async () => {
           while (!this.controller.signal.aborted) {
-            const item = batch.items.find(item => item.status === "pending");
+            const item = batch.items.find(item => item.status === "pending" && !preparingStories.has(item.storyKey));
             if (!item) return;
+            preparingStories.add(item.storyKey);
             item.status = "preparing";
             item.stage = 'Đang chuẩn bị nội dung';
             item.error = null;
@@ -308,19 +329,20 @@ export class ProductionService {
             this.store.save();
             try { await this.prepareItem(batch, item); }
             catch (error) {
-              item.status = this.controller.signal.aborted ? "interrupted" : "failed";
+              item.status = this.controller.signal.aborted ? "interrupted" : error?.code === 'NEWS_IMAGES_INSUFFICIENT' ? 'needs_assets' : "failed";
               item.errorCode = error?.code || "PREPARATION_FAILED";
               item.error = preparationMessage(error, "Could not prepare this video. Check the sources and LLM, then retry.");
             }
             item.preparationFinishedAt = touchPreparation(batch, item);
+            changePhase(item, null);
+            if (item.jobId) this.store.patch('jobs', item.jobId, { preparationTimings: { ...item.phaseTimings } });
+            preparingStories.delete(item.storyKey);
             this.store.save();
           }
         };
-        // Keep News preparation's LLM calls in order. The provider render
-        // jobs still run concurrently once queued, while this avoids sending
-        // two long JSON generations and the shared image ranking request at
-        // the same time to a gateway that may reject one of them.
-        await Promise.all(request.contentType === "news" ? [work()] : [work(), work()]);
+        // Different stories may prepare concurrently; variants of one story
+        // are serialized so each sees the earlier narration and photo choices.
+        await Promise.all([work(), work()]);
       } catch (error) {
         for (const item of batch.items.filter(item => item.status === "pending")) {
           item.status = this.controller.signal.aborted ? "interrupted" : "failed";
@@ -338,8 +360,11 @@ export class ProductionService {
   }
 
   async prepareItem(batch, item) {
-    const request = batch.request;
-    const stage = message => { item.stage = message; item.stageUpdatedAt = touchPreparation(batch, item); this.store.save(); };
+    const request = { ...batch.request, newsVisualPolicy: item.visualPolicy || batch.request.newsVisualPolicy || 'require-photos' };
+    const stage = message => { changePhase(item, preparationPhase(message)); item.stage = message; item.stageUpdatedAt = touchPreparation(batch, item); this.store.save(); };
+    item.storyKey ||= newsStoryKey(batch, item);
+    const variant = newsVariantContext(batch, item);
+    if (!item.researchId && batch.newsResearchBySource?.[item.storyKey]) item.researchId = batch.newsResearchBySource[item.storyKey];
     if (item.avatarMediaId === undefined) item.avatarMediaId = mcForVideo(request, item.index);
     let research = item.researchId
       ? this.store.require("researchResults", item.researchId)
@@ -349,6 +374,7 @@ export class ProductionService {
     const source = research?.articles?.[item.index % (research.articles.length || 1)] || (batch.sources.length ? batch.sources[item.index % batch.sources.length] : null);
     if (research && !item.researchId) {
       item.researchId = research.id;
+      batch.newsResearchBySource = { ...batch.newsResearchBySource, [item.storyKey]: research.id };
       this.store.save();
     }
     if (request.contentType === "news" && !research) {
@@ -356,18 +382,23 @@ export class ProductionService {
       research = await this.research.research({projectId:request.projectId,topic:source.title.slice(0,200),niche:`${request.topic} · video ${item.index + 1}`,language:"en",maxArticles:1},this.store,{articles:[source]});
       if (research.warnings?.some(warning=>warning.includes("LLM"))) throw new StudioError("Research LLM failed. Test the saved model, then retry.","LLM_FAILED",502);
       item.researchId = research.id;
+      batch.newsResearchBySource = { ...batch.newsResearchBySource, [item.storyKey]: research.id };
       this.store.save();
     }
     let newsPlan = null;
     if (request.contentType === "news" && request.engine !== "preview") {
       const callLlm = (_store, system, input, options) => this.llm(system, input, options);
+      stage('Đang đọc bài báo gốc và ảnh trong bài');
+      const sources = await this.sourceLoader(research, Boolean(item.refreshAssets));
+      this.store.patch('researchResults', research.id, { articles: sources.articles, sourceWarnings: sources.warnings });
+      research = this.store.require('researchResults', research.id);
+      batch.warnings = [...new Set([...(batch.warnings || []), ...sources.warnings])];
       let narration;
       stage('Đang viết lời đọc cho MC');
       try {
-        narration = await writeNewsNarration(this.store, research, {
+        narration = item.narrationDraft || await writeNewsNarration(this.store, research, {
           llm: callLlm,
-          variation: item.index + 1,
-          total: request.count,
+          ...variant,
           newsDuration: request.newsDuration,
           newsImageCount: request.newsImageCount,
         });
@@ -379,20 +410,33 @@ export class ProductionService {
         await new Promise(resolve => setTimeout(resolve, 1200));
         narration = await writeNewsNarration(this.store, research, {
           llm: callLlm,
-          variation: item.index + 1,
-          total: request.count,
+          ...variant,
           newsDuration: request.newsDuration,
           newsImageCount: request.newsImageCount,
         });
       }
-      const sharedMedia = await this.prepareNewsMedia(batch, request, research, narration, callLlm, stage);
+      item.narrationDraft = narration;
+      const perVideo = newsImageTarget(request.newsDuration, request.newsImageCount);
+      const poolTarget = Math.min(30, perVideo + Math.min(3, variant.total - 1) * Math.ceil(perVideo / 2));
+      const sharedMedia = await this.prepareNewsMedia(batch, { ...request, newsPoolTarget: poolTarget }, research, narration, callLlm, stage);
+      item.imagePreparation = sharedMedia.diagnostics;
+      const selected = selectNewsVariant(sharedMedia.imageMediaIds, variant.variation, { target: perVideo, previous: variant.previous });
+      const photos = selected.filter(id => this.store.require('media', id).visualRole !== 'source-card').length;
+      const minimum = newsMinimumPhotos(request.newsVisualPolicy, perVideo);
+      if (photos < minimum || !selected.length) {
+        item.refreshAssets = false;
+        throw new StudioError(`Chọn được ${photos}/${perVideo} ảnh thật; cần ít nhất ${minimum}. Bổ sung ảnh hoặc chủ động cho phép ít ảnh/thẻ tin. MC chưa được tạo.`, 'NEWS_IMAGES_INSUFFICIENT', 422);
+      }
       newsPlan = newsPlanSchema.parse({
         ...narration,
-        imageMediaIds: selectNewsVariant(sharedMedia.imageMediaIds, item.index + 1),
-        selectedImageIds: sharedMedia.selectedImageIds,
+        imageMediaIds: selected,
+        selectedImageIds: selected.map(id => sharedMedia.selectedImageIds[sharedMedia.imageMediaIds.indexOf(id)]).filter(Boolean),
         visualMode: sharedMedia.visualMode,
-        variation: item.index + 1,
-        visualVariant: item.index + 1,
+        variation: item.preserveVariation || variant.variation,
+        visualVariant: item.preserveVariation || variant.variation,
+        photoCount: photos,
+        sourceCardCount: selected.length - photos,
+        variantWarning: imageOverlap(selected, variant.previous) > .5 ? 'Nguồn ảnh chưa đủ để hai bản khác ít nhất 50% ảnh. Đã ưu tiên ảnh mới và đổi cảnh mở; có thể bổ sung ảnh rồi dựng lại.' : '',
         fontStyle: request.fontStyle,
         newsRenderStyle: request.newsRenderStyle,
         reportDate: research.articles?.[0]?.publishedAt || '',
@@ -401,6 +445,7 @@ export class ProductionService {
       item.title = newsPlan.headline;
       item.newsPlan = newsPlan;
       item.imagePreparation = sharedMedia.diagnostics;
+      item.refreshAssets = false;
       this.store.save();
     } else if (!item.prompt) {
       if (research) {
@@ -460,6 +505,7 @@ export class ProductionService {
       job = this.queue.enqueueRender({projectId:request.projectId,name:`News · ${item.title}`,timeline:assembly.timeline},{production});
     } else if (request.contentType === "news") {
       job = this.queue.enqueueNews({ projectId: request.projectId, accountId: request.accountId, name: `News · ${newsPlan.headline}`, plan: newsPlan, imageMediaIds: newsPlan.imageMediaIds, production });
+      if (item.reusePayload) this.store.patch('jobs', job.id, { payload: { ...job.payload, ...item.reusePayload }, submittedAt:item.submittedAt || null, repairOfJobId:batch.repairOfJobId });
     } else {
       job = this.queue.enqueueGeneration({projectId:request.projectId,provider:"dreamface",accountId:request.accountId,kind:"video",mode:request.references.length?"reference":"text",model:"DreamFace video",duration:request.duration,ratio:request.ratio,prompts:[item.prompt],references:request.references,autoAssemble:request.count === 1},{production})[0];
     }
@@ -472,13 +518,14 @@ export class ProductionService {
   async prepareNewsMedia(batch, request, research, narration, callLlm, stage = () => {}) {
     // A batch can contain different stories. Neither its cache nor its in-flight
     // promise may be shared between research IDs.
-    const target = newsImageTarget(request.newsDuration, request.newsImageCount);
+    const target = request.newsPoolTarget || newsImageTarget(request.newsDuration, request.newsImageCount);
     const key = batch.id + ':' + research.id + ':' + target;
     const usable = media => media?.kind === 'image' && media.projectId === request.projectId
       && media.id !== request.avatarMediaId && !request.mcRotation?.some(entry => entry.avatarMediaId === media.id)
       && !isPageAvatar(media, this.store.state) && !isMcImage(media, this.store.state);
     const scoped = batch.newsMediaByResearch?.[research.id];
-    if (scoped?.revision >= 5 && scoped.target === target && scoped.imageMediaIds?.length
+    if (scoped?.revision >= 6 && scoped.target === target && scoped.imageMediaIds?.length
+      && (scoped.visualMode !== 'source-card' || request.newsVisualPolicy === 'allow-source-card')
       && scoped.imageMediaIds.every(id => usable(this.store.state.media.find(media => media.id === id)))) {
       return { imageMediaIds: [...scoped.imageMediaIds], selectedImageIds: [...scoped.selectedImageIds], visualMode: scoped.visualMode || 'photo', diagnostics: scoped.diagnostics };
     }
@@ -491,7 +538,7 @@ export class ProductionService {
         ...(batch.newsImageResearchId === research.id ? batch.newsImageMediaIds || [] : []),
       ])];
       const saved = savedIds.map(id => this.store.state.media.find(media => media.id === id)).filter(media => usable(media) && media.visualRole !== 'source-card');
-      let candidates = newsImageCandidates(research.articles, research.imageSearchResults || []);
+      let candidates = newsImageCandidates([...(research.articles || []), ...(research.articles || []).flatMap(article => article.sourceImages || [])], research.imageSearchResults || []);
       const addSavedCandidates = () => {
         for (const media of saved) {
           if (media.sourceImageUrl && candidates.some(image => image.imageUrl === media.sourceImageUrl)) continue;
@@ -513,7 +560,7 @@ export class ProductionService {
           this.store.patch('researchResults', research.id, { imageSearchResults: candidates.filter(image => image.imageUrl && !image.id.startsWith('article:')), imageSearchWarnings: diagnostics.warnings });
         } catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
       };
-      if (candidates.filter(image => image.id.startsWith('article:')).length < target) {
+      if (candidates.filter(image => image.id.startsWith('article:')).length < target && !(research.articles || []).some(article => article.sourceRead)) {
         const source = await discoverArticleImages(research.articles, { fetchImpl: this.fetch });
         merge(newsImageCandidates(source.articles));
         diagnostics.warnings.push(...source.warnings);
@@ -534,7 +581,7 @@ export class ProductionService {
         let ranked = [];
         const available = candidates.filter(image => !reviewed.has(image.id) && !selectedCandidateIds.has(image.id) && !downloadFailed.has(image.id) && !assetKeys.has(newsImageKey(image)));
         if (!available.length) break;
-        try { ranked = await rankNewsImages(this.store, { ...research, headline: narration.headline, script: narration.narration }, available, { llm: callLlm, allowIllustrations, maxImages: target - assets.length + 6, alreadySelected: assets.map(media => ({title:media.name,description:media.imageDescription})), onReviewed: ids => ids.forEach(id => reviewed.add(id)), onWarning: warning => diagnostics.warnings.push(warning) }); }
+        try { ranked = await rankNewsImages(this.store, { ...research, headline: research.headline || narration.headline, script: narration.narration }, available, { llm: callLlm, allowIllustrations, maxImages: target - assets.length + 6, reviewCache: this.imageReviewCache, onDecision: decision => { (diagnostics.decisions ||= []).push(decision); }, alreadySelected: assets.map(media => ({title:media.name,description:media.imageDescription})), onReviewed: ids => ids.forEach(id => reviewed.add(id)), onWarning: warning => diagnostics.warnings.push(warning) }); }
         catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
         diagnostics.attempts.push({ mode: allowIllustrations ? 'illustration' : 'photo', candidates: available.length, selected: ranked.length });
         if (!ranked.length) break;
@@ -584,7 +631,7 @@ export class ProductionService {
         } catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(`Không mở rộng được tìm ảnh: ${String(error.message).slice(0, 180)}`); }
       }
       if (selectedIds.some(id => !id.startsWith('article:'))) visualMode = 'illustration';
-      if (!assets.length) {
+      if (!assets.length && request.newsVisualPolicy === 'allow-source-card') {
         this.controller.signal.throwIfAborted();
         stage('Đang dựng thẻ tin từ tiêu đề và nguồn');
         assets.push(await this.sourceCard(this.store, research, this.controller.signal));
@@ -596,9 +643,10 @@ export class ProductionService {
       diagnostics.warnings = [...new Set(diagnostics.warnings)];
       if (assets.length < target && diagnostics.warnings.some(item => /Không kiểm tra được|Không xác minh được/.test(item))) warning += ' Một số ảnh chưa kiểm tra được vì lỗi LLM; có thể thử lại bước chuẩn bị để bổ sung ảnh.';
       if (warning) batch.warnings = [...new Set([...(batch.warnings || []), warning])];
-      Object.assign(diagnostics, { visualMode, warning, downloaded: assets.length, updatedAt: new Date().toISOString() });
+      const photoCount = assets.filter(media => media.visualRole !== 'source-card').length;
+      Object.assign(diagnostics, { visualMode, warning, downloaded: assets.length, photoCount, sourceCardCount: assets.length - photoCount, status: photoCount >= newsMinimumPhotos(request.newsVisualPolicy) ? 'ready' : 'partial', updatedAt: new Date().toISOString() });
       const result = { imageMediaIds: assets.map(media => media.id), selectedImageIds: selectedIds, visualMode, diagnostics };
-      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, target, revision: 5 } };
+      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, target, revision: 6 } };
       this.store.patch('researchResults', research.id, { imageMediaIds: result.imageMediaIds, imagePreparation: diagnostics });
       this.store.save();
       return result;
@@ -615,12 +663,15 @@ export class ProductionService {
     if (this.syncTimer) clearTimeout(this.syncTimer);
     this.newsMediaPromises.clear();
     this.imageSearchCache.clear();
+    this.sourceCache.clear();
+    this.imageReviewCache.clear();
   }
 }
 
 export function mountProductionRoutes(app, store, queue, options = {}) {
   const service = new ProductionService(store,queue,options);
   app.post("/api/production/batches",(req,res)=>res.status(202).json(service.create(req.body)));
-  app.post("/api/production/batches/:id/retry",(req,res)=>res.status(202).json(service.retry(req.params.id)));
+  app.post("/api/production/batches/:id/retry",(req,res)=>res.status(202).json(service.retry(req.params.id, z.object({ indexes:z.array(z.number().int().min(0)).max(2000).optional(), visualPolicy:newsVisualPolicySchema.optional() }).parse(req.body))));
+  app.post('/api/news/jobs/:id/refresh-images', (req,res)=>res.status(202).json(service.refreshJobImages(req.params.id)));
   return service;
 }

@@ -33,13 +33,18 @@ export function NewsVideoOptions({ value, onChange, showStyle = true, showFont =
           <option value="15">Khoảng 15 giây</option><option value="20">Khoảng 20 giây</option><option value="30">Khoảng 30 giây</option>
         </select>
       </Field>
-      <Field label="Ảnh minh họa" hint="Ưu tiên đúng nội dung và khác nhau; nếu nguồn thiếu, dùng ít ảnh hơn và báo số thực tế.">
+      <Field label="Ảnh minh họa" hint="Tìm ảnh đúng nội dung và khác nhau; hiển thị số ảnh thực tế trước khi tạo MC.">
         <select aria-label="Ảnh minh họa" disabled={disabled} value={value.newsImageCount} onChange={event => change('newsImageCount', event.target.value)}>
           <option value="auto">Theo tin · thường 8 ảnh, khoảng 6–10 ảnh</option>
           <option value="6">Tối đa 6 ảnh</option><option value="8">Tối đa 8 ảnh</option><option value="10">Tối đa 10 ảnh</option>
         </select>
       </Field>
     </div>
+    <Field label="Khi thiếu ảnh"><select aria-label="Khi thiếu ảnh" disabled={disabled} value={value.newsVisualPolicy || 'require-photos'} onChange={event => onChange({ ...value, newsVisualPolicy: event.target.value })}>
+      <option value="require-photos">Dừng để bổ sung nếu chưa đủ 6 ảnh</option>
+      <option value="allow-fewer">Cho phép ít ảnh hơn, tối thiểu 1 ảnh thật</option>
+      <option value="allow-source-card">Cho phép thẻ tin khi không có ảnh phù hợp</option>
+    </select></Field>
     <p className="muted small">Clip chỉ nêu ý chính và mời xem bài đầy đủ qua link ở bình luận đầu tiên. Không kéo dài lời đọc bằng chi tiết ngoài nguồn.</p>
     <p className="muted small">Theo tin nhắm khoảng 24 giây, lời đọc tối đa 500 ký tự. DreamFace Free tiêu chuẩn giới hạn 30 giây; Avatar 3.0 Fast có lượt miễn phí riêng, hết lượt cần credits.</p>
   </div>;

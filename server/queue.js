@@ -14,6 +14,8 @@ import { selectRenderEncoder } from './render-hardware.js';
 import { accountQuotaBlocked, quotaFailureState } from '../shared/account-health.js';
 import {productOverlayText} from './product-overlay.js';
 import { checkProductOutput } from './product-output.js';
+import { changePhase } from '../shared/job-timing.js';
+import { latestJobs } from '../shared/queue-retry.js';
 
 function elapsedMs(job, finishedAt) {
   const started = Date.parse(job.startedAt || job.createdAt || "");
@@ -290,6 +292,7 @@ export class JobQueue {
     this.store.patch("jobs", job.id, {
       status: "preparing",
       startedAt: new Date().toISOString(),
+      queueWaitMs: Math.max(0, Date.now() - Date.parse(job.queuedAt || job.createdAt)),
       accountId: account?.id || null,
     });
     if (account) this.store.patch("accounts", account.id, { status: "busy" });
@@ -300,7 +303,16 @@ export class JobQueue {
   }
 
   async execute(job, account, controller) {
-    const update = (patch) => this.store.patch("jobs", job.id, patch);
+    const update = (patch) => {
+      let phase = patch.phase;
+      if (!phase && patch.status === 'generating_mc_image') phase = 'mc_image';
+      if (!phase && patch.status === 'downloading') phase = 'download';
+      if (!phase && ['submitting', 'configured'].includes(patch.status)) phase = 'mc';
+      if (!phase && job.type === 'news' && patch.status === 'rendering' && this.running.get(job.id)?.type === 'render') phase = /căn phụ đề|tạo phụ đề|align.*caption|whisper/i.test(patch.stage || '') ? 'captions' : 'render';
+      if (phase) changePhase(job, phase);
+      return this.store.patch('jobs', job.id, patch);
+    };
+    changePhase(job, job.type === 'render' || job.payload.presenterMediaId ? 'render' : 'mc');
     try {
       const media =
         job.type === "render"
@@ -330,6 +342,7 @@ export class JobQueue {
                 update,
               );
       const running = this.running.get(job.id);
+      changePhase(job, 'content');
       if (running) running.type = "postprocess";
       this.tick();
       if (job.production) {
@@ -359,6 +372,7 @@ export class JobQueue {
         }
       }
       const finishedAt = new Date().toISOString();
+      changePhase(job, null);
       update({
         status: "completed",
         progress: 100,
@@ -368,6 +382,7 @@ export class JobQueue {
         durationMs: elapsedMs(job, finishedAt),
       });
     } catch (error) {
+      changePhase(job, null);
       const cancelled = controller.signal.aborted;
       if (!cancelled && job.payload.workflow === 'product-video' && error.code === 'PRODUCT_QUOTA' && !job.submittedAt) {
         update({status:'queued',stage:error.message,progress:0,error:null,errorCode:null});
@@ -437,6 +452,7 @@ export class JobQueue {
       entry.profileId = null;
       entry.type = "render-wait";
       update({ status: "preparing", stage: "Chờ lượt xuất video", progress: 0 });
+      changePhase(job, 'render_wait');
       await new Promise((resolve, reject) => {
         const cleanup = () => { signal.removeEventListener("abort", abort); delete entry.resumeRender; };
         const abort = () => { cleanup(); reject(new StudioError("Đã hủy tác vụ.", "CANCELLED")); };
@@ -588,11 +604,11 @@ export class JobQueue {
     const job = this.store.require("jobs", id);
     if (job.type !== "news" && job.payload.workflow !== 'product-video')
       throw new StudioError("Chỉ có tác vụ News đã gửi mới có thể khôi phục từ Creations.");
-    if (!job.submittedAt)
+    if (!job.submittedAt && !job.payload.newsAvatarRequest?.id && !job.payload.productRequest?.id)
       throw new StudioError("Tác vụ này chưa gửi lên DreamFace.");
     if (!["failed", "cancelled", "interrupted"].includes(job.status))
       throw new StudioError("Tác vụ này chưa ở trạng thái có thể khôi phục.");
-    if (this.store.state.jobs.some((item) => item.id !== job.id && item.retryOf === job.id))
+    if (!latestJobs(this.store.state.jobs).some(item => item.id === job.id))
       throw new StudioError("Tác vụ này đã có lần thử lại. Hãy dùng lần thử mới nhất.", "ALREADY_RETRIED", 409);
     const payload = {
       ...structuredClone(job.payload),
@@ -608,6 +624,11 @@ export class JobQueue {
       errorCode: null,
       finishedAt: null,
       startedAt: null,
+      durationMs: null,
+      phaseTimings: {},
+      phase: null,
+      phaseStartedAt: null,
+      queuedAt: new Date().toISOString(),
     });
     this.store.log(recovered, "Attempting to recover the submitted DreamFace result from Creations without resubmitting it.");
     this.tick();
@@ -619,10 +640,13 @@ export class JobQueue {
     if (!["failed", "cancelled", "interrupted"].includes(job.status))
       throw new StudioError("Chỉ thử lại tác vụ đã dừng hoặc có lỗi.");
     this.store.require("projects", job.projectId);
-    if (this.store.state.jobs.some((item) => item.retryOf === job.id)) {
+    if (!latestJobs(this.store.state.jobs).some(item => item.id === job.id)) {
       throw new StudioError("Tác vụ này đã có lần thử lại. Hãy mở lần thử mới nhất.", "ALREADY_RETRIED", 409);
     }
-    if (job.submittedAt && !confirmResubmit)
+    const canRenderExisting = job.type === 'news' && job.payload.presenterMediaId;
+    const rejected = job.type === 'news' && job.payload.newsAvatarRequest?.rejected;
+    const priorSubmission = job.submittedAt || job.payload.newsAvatarRequest?.submittedAt || job.payload.newsAvatarRequest?.id || job.payload.productRequest?.submittedAt || job.payload.productRequest?.id;
+    if (priorSubmission && !canRenderExisting && !rejected && !confirmResubmit)
       throw new StudioError(
         "Yêu cầu trước đã gửi. Kiểm tra kết quả trong tài khoản trước; tạo lại có thể tốn thêm lượt.",
         "CONFIRM_RESUBMIT",
@@ -636,7 +660,8 @@ export class JobQueue {
     delete payload.recoverSubmitted;
     if (job.payload.workflow === 'product-video') delete payload.productRequest;
     if (job.type === "generate") payload.autoAssemble = original.payload.autoAssemble;
-    if (job.type === "news" && original.payload.presenterMediaId) payload.presenterMediaId = original.payload.presenterMediaId;
+    // A later attempt may have finished the MC even when the first one did not.
+    if (job.type === 'news' && (rejected || confirmResubmit) && !payload.presenterMediaId) delete payload.newsAvatarRequest;
     if (job.type === "render" && job.assemblyBatchId) {
       const batch = this.batchEntries(job.assemblyBatchId);
       if (!batch.length || batch.some((item) => item.status !== "completed")) {

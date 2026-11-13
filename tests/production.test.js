@@ -15,7 +15,7 @@ async function fixture(t, options={}) {
   store.state.settings.llm.enabled=true;
   const project=store.createProject("Batch QA");
   const queue=new JobQueue(store,{}, {intervalMs:0});
-  const service=new ProductionService(store,queue,{imageSearch:async()=>({images:[],warnings:[]}),fetchImpl:async()=>{throw new Error('No external requests expected');},...options});
+  const service=new ProductionService(store,queue,{sourceLoader:async research=>({articles:research.articles || [],warnings:[]}),imageSearch:async()=>({images:[],warnings:[]}),fetchImpl:async()=>{throw new Error('No external requests expected');},...options});
   t.after(async()=>{await service.close();await queue.close();await fs.rm(root,{recursive:true,force:true});});
   return {store,project,queue,service,root};
 }
@@ -46,7 +46,7 @@ test("retry queues all six news items after an overlong summary without duplicat
   const summary = "Officials published the transport review, but the next decision remains unknown. ".repeat(8);
   assert.ok(summary.length > 400);
   const { store, project, service } = await fixture(t, {
-    llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.slice(0, 5).map(image => image.id) } : ({ headline: "City transport review remains open", summary, imageQueries: ["city transport"] }),
+    llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.slice(0, 5).map(image => image.id) } : ({ headline: "City transport review remains open", summary: ["Officials published the transport review, but the next decision remains unknown. ", "The document examines how city passengers reach their destinations. ", "Public consultations will help guide the council through its next meeting. ", "Road maintenance forms another section of this newly released assessment. ", "Bus routes feature prominently in proposals awaiting local approval. ", "Residents can read the findings before any final policy is adopted. "][input.variation - 1].repeat(10), imageQueries: ["city transport"] }),
     fetchImpl: async () => { throw new Error("No external requests expected"); },
   });
   const images = Array.from({ length: 5 }, (_, i) => store.add("media", { projectId: project.id, kind: "image", file: `editorial-${i}.jpg`, duration: 5 }));
@@ -58,7 +58,7 @@ test("retry queues all six news items after an overlong summary without duplicat
   });
   const batch = store.add("productionBatches", {
     projectId: project.id,
-    request: { requestId: randomUUID(), projectId: project.id, contentType: "news", researchId: research.id, count: 6, engine: "dreamface", accountId: "auto", avatarMediaId: mc.id, fontStyle: "news" },
+    request: { requestId: randomUUID(), projectId: project.id, contentType: "news", researchId: research.id, newsVisualPolicy: 'allow-fewer', count: 6, engine: "dreamface", accountId: "auto", avatarMediaId: mc.id, fontStyle: "news" },
     status: "failed", sources: research.articles, warnings: [],
     items: Array.from({ length: 6 }, (_, index) => ({ index, status: "failed", jobId: null, researchId: research.id, error: "Too big: expected string to have <=400 characters", errorCode: "PREPARATION_FAILED" })),
   });
@@ -194,7 +194,7 @@ test("news broadcast uses the research result selected in the UI", async t => {
     },
     llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.map(image => image.id) } : ({
       headline: "A verified Washington development",
-      summary: "A verified development is drawing attention today. Officials say more details are expected as the debate continues.",
+      summary: ["A verified development is drawing attention today. Officials say more details are expected as the debate continues.", "Lawmakers are reviewing a proposal discussed at the public meeting. The report describes their next procedural steps.", "Washington residents can now read the published document. It outlines several questions awaiting a decision."][input.variation - 1],
       imageQueries: ["Washington development"],
     }),
     imageSearch: async () => ({ images: [], warnings: [] }),
@@ -239,6 +239,7 @@ test("news broadcast uses the research result selected in the UI", async t => {
     contentType: "news",
     autoResearch: true,
     researchId: selected.id,
+    newsVisualPolicy: 'allow-fewer',
     newsRenderStyle: 'v3-fast',
     topic: "Washington news",
     engine: "dreamface",
@@ -306,7 +307,7 @@ test("news batch rotates the same story's editorial visuals and records each var
   const { store, project, service } = await fixture(t, {
     llm: async (_system, input) => input.candidates ? { selectedImageIds: input.candidates.map(image => image.id) } : ({
       headline: "A verified development remains unresolved",
-      summary: "Officials confirmed the development today, while the available report leaves the next step open for now.",
+      summary: ["Officials confirmed the development today, while the available report leaves the next step open for now.", "The published document offers context for residents following this issue. A public meeting will discuss the proposals.", "City council members are examining the latest findings. Their review covers several outstanding questions from the community."][input.variation - 1],
       imageQueries: ["city meeting", "official document", "public building"],
     }),
   });
@@ -344,6 +345,7 @@ test("news batch rotates the same story's editorial visuals and records each var
     engine: "dreamface",
     count: 3,
     variationPolicy: "visual-unique",
+    newsVisualPolicy: 'allow-fewer',
   });
   await service.worker;
   const jobs = batch.items.map((item) => store.require("jobs", item.jobId));

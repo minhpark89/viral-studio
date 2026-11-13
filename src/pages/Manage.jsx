@@ -33,6 +33,9 @@ import { outputContext, sourceDateLabel, formatDateTime } from "../../shared/sou
 import { productionPreparations } from '../../shared/queue-preparation.js';
 import { QueuePreparation } from '../QueuePreparation.jsx';
 import { HardwareStorageSettings } from '../HardwareStorageSettings.jsx';
+import { latestJobs, retryAction } from '../../shared/queue-retry.js';
+import { QueueRetryBar } from '../QueueRetryBar.jsx';
+import { JobTimings } from '../JobTimings.jsx';
 
 function jobElapsedSeconds(job) {
   if (Number.isFinite(Number(job.durationMs))) return Math.max(0, Number(job.durationMs) / 1000);
@@ -57,18 +60,19 @@ export function QueuePage({ data, project, run, navigate }) {
   const [preview, setPreview] = useState(null);
   const [period, setPeriod] = useState('all');
   const [search, setSearch] = useState('');
+  const [selectedErrors, setSelectedErrors] = useState(new Set());
   const allPreparations = productionPreparations(data, project.id);
   const preparations = allPreparations.filter(item => (typeFilter === 'all' || item.contentType === typeFilter)
     && (!search.trim() || `${item.name} ${item.batchId}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
     && (period === 'all' || Date.parse(item.activityAt) >= (period === 'today' ? new Date().setHours(0, 0, 0, 0) : Date.now() - 7 * 86400000))
-    && (filter === 'all' || filter === 'active' && ['pending', 'preparing'].includes(item.status) || filter === 'failed' && ['failed', 'interrupted'].includes(item.status)));
+    && (filter === 'all' || filter === 'active' && ['pending', 'preparing'].includes(item.status) || filter === 'failed' && ['failed', 'interrupted', 'needs_assets'].includes(item.status) || filter === 'needs_assets' && item.status === 'needs_assets'));
   const projectJobs = data.jobs.filter(job => job.projectId === project.id);
   const contentType = (job) => job.type === "news" || job.production?.contentType === "news"
     ? "news"
     : job.production?.contentType === "product"
       ? "product"
       : "other";
-  const jobs = data.jobs
+  const jobs = (filter === 'failed' ? latestJobs(data.jobs) : data.jobs)
     .filter(
       (job) =>
         job.projectId === project.id &&
@@ -166,6 +170,7 @@ export function QueuePage({ data, project, run, navigate }) {
             ["active", "Đang xử lý"],
             ["completed", "Hoàn tất"],
             ["failed", "Có lỗi"],
+            ["needs_assets", "Thiếu ảnh"],
             ["cancelled", "Đã hủy"],
           ].map(([value, label]) => (
             <button
@@ -180,7 +185,8 @@ export function QueuePage({ data, project, run, navigate }) {
         <span className="muted small">{jobs.length + preparations.length} tác vụ trong dự án{preparations.length ? ` · ${preparations.length} đang chuẩn bị / cần xử lý` : ''}</span>
       </div>
       <div className="output-filters"><Field label="Thời gian render"><select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">Mọi lần render · mới nhất trước</option><option value="today">Render hôm nay</option><option value="7d">Render 7 ngày qua</option></select></Field><Field label="Tìm tác vụ"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tên video hoặc mã tác vụ…" /></Field></div>
-      {preparations.length > 0 && <QueuePreparation items={preparations} data={data} run={run} navigate={navigate} />}
+      {['failed', 'needs_assets'].includes(filter) && <QueueRetryBar key={`${project.id}:${filter}:${typeFilter}:${period}:${search}`} projectId={project.id} jobs={jobs.filter(job => ['failed', 'interrupted'].includes(job.status))} preparations={preparations.filter(item => ['failed', 'interrupted', 'needs_assets'].includes(item.status))} selected={selectedErrors} onSelect={setSelectedErrors} run={run} />}
+      {preparations.length > 0 && <QueuePreparation items={preparations} data={data} run={run} navigate={navigate} selected={['failed', 'needs_assets'].includes(filter) ? selectedErrors : null} onSelect={setSelectedErrors} />}
       {jobs.length ? (
         <div className="job-list">
           {jobs.map((job) => {
@@ -207,6 +213,7 @@ export function QueuePage({ data, project, run, navigate }) {
             return (
               <article className="panel job-card" key={job.id} data-job-id={job.id}>
                 <div className="job-row">
+                  {filter === 'failed' && <input type="checkbox" aria-label={`Chọn thử lại ${job.name}`} checked={selectedErrors.has(job.id)} onChange={event => setSelectedErrors(previous => { const next = new Set(previous); event.target.checked ? next.add(job.id) : next.delete(job.id); return next; })} />}
                   <span className={`job-type ${job.type}`}>
                     {jobContentType === "news" ? <Newspaper size={22} /> : jobContentType === "product" ? <ShoppingBag size={22} /> : job.type === "render" ? (
                       <Cpu size={22} />
@@ -234,7 +241,7 @@ export function QueuePage({ data, project, run, navigate }) {
                     {jobContentType === "news" && job.production?.researchId && <small>Research → MC → editorial images → website article</small>}
                     {job.contentAutomation && <small>Content: {({ generated: "Đã tạo", warehouse_ready: "Đã tạo, chờ duyệt", warehouse_error: "Lỗi tạo", published: "Đã đăng website", social_published: "Đã đăng website + Meta", meta_error: "Lỗi Meta", website_error: "Lỗi website", error: "Lỗi tạo bài" }[job.contentAutomation] || job.contentAutomation)}</small>}
                     {(job.type === "news" || job.type === "render") && (job.finishedAt || running) && <small>{running ? "Đã xử lý" : "Thời gian xử lý"}: {formatJobDuration(jobElapsedSeconds(job))}</small>}
-                    {output?.duration > 0 && <small>Độ dài clip: {Number(output.duration).toFixed(1)} giây{job.type === 'news' ? ` · ${(output.newsVisualCount ?? job.payload.imageMediaIds?.length) || 0} ảnh minh họa` : ''}</small>}
+                    {output?.duration > 0 && <small>Độ dài clip: {Number(output.duration).toFixed(1)} giây{job.type === 'news' ? ` · ${output.newsPhotoCount ?? job.payload.newsPlan?.photoCount ?? (job.payload.newsPlan?.visualMode === 'source-card' ? 0 : output.newsVisualCount ?? job.payload.imageMediaIds?.length ?? 0)} ảnh thật${(output.newsSourceCardCount ?? job.payload.newsPlan?.sourceCardCount ?? (job.payload.newsPlan?.visualMode === 'source-card' ? 1 : 0)) ? ' · có thẻ tin' : ''}` : ''}</small>}
                     {job.type === 'news' && <small>Style: {newsRenderStyleLabel(output?.newsRenderStyle || job.newsRenderStyle || job.payload.newsPlan?.newsRenderStyle || 'classic')}</small>}
                     {(output?.newsCaptionWarning || job.newsCaptionWarning) && <small className="warning-text">{output?.newsCaptionWarning || job.newsCaptionWarning}</small>}
                     {(output?.renderDevice || job.renderDevice) && <small>Bộ mã hóa: {(output?.renderDevice || job.renderDevice).encoder} · {(output?.renderDevice || job.renderDevice).gpu ? 'GPU' : 'CPU'}</small>}
@@ -328,7 +335,7 @@ export function QueuePage({ data, project, run, navigate }) {
                         title="Thử lại"
                         onClick={() => {
                           if (
-                            job.submittedAt &&
+                            retryAction(job, data).action === 'review' && (job.submittedAt || job.payload.newsAvatarRequest?.submittedAt) &&
                             !confirm(
                               "Yêu cầu trước đã được gửi lên dịch vụ. Tạo lại có thể tốn thêm lượt. Bạn đã kiểm tra kết quả trong tài khoản và muốn tạo lại?",
                             )
@@ -336,8 +343,8 @@ export function QueuePage({ data, project, run, navigate }) {
                             return;
                           run(
                             () =>
-                              api(`/jobs/${job.id}/retry`, {
-                                confirmResubmit: Boolean(job.submittedAt),
+                              retryAction(job, data).action === 'recover' ? api(`/jobs/${job.id}/recover`, {}) : api(`/jobs/${job.id}/retry`, {
+                                confirmResubmit: retryAction(job, data).action === 'review' && Boolean(job.submittedAt || job.payload.newsAvatarRequest?.submittedAt),
                               }),
                             "Đã tạo tác vụ thử lại.",
                           );
@@ -383,6 +390,8 @@ export function QueuePage({ data, project, run, navigate }) {
                     </small>
                   </div>
                 )}
+                <JobTimings record={job} />
+                {job.type === 'news' && ['completed', 'failed', 'interrupted'].includes(job.status) && job.production?.researchId && <div className="inline-actions"><Button onClick={() => run(() => api(`/news/jobs/${job.id}/refresh-images`, {}), 'Đã chuẩn bị bổ sung ảnh. Giữ lời đọc và video MC đã có.')}>Tìm thêm ảnh và dựng lại</Button><small>{job.payload.newsPlan?.photoCount ?? (job.payload.newsPlan?.visualMode === 'source-card' ? 0 : job.payload.imageMediaIds?.length || 0)} ảnh thật · {job.payload.newsPlan?.variantWarning || ''}</small></div>}
                 {job.error && (
                   <div className="job-error">
                     <AlertCircle size={14} />
@@ -400,6 +409,7 @@ export function QueuePage({ data, project, run, navigate }) {
                 )}
                 {expanded === job.id && (
                   <div className="job-expanded">
+                    {job.providerDiagnostics && <p className="muted small">DreamFace: {job.providerDiagnostics.notice || job.providerDiagnostics.message} · {job.providerDiagnostics.receiptConfirmed ? "Đã lưu mã tác vụ" : job.providerDiagnostics.requestObserved ? "Đã thấy yêu cầu gửi, chưa xác nhận mã" : "Chưa thấy yêu cầu gửi"}</p>}
                     {output && (
                       <div className="media-location">
                         <small>Video đã lưu trên máy:</small>

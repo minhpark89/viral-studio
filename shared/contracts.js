@@ -45,6 +45,7 @@ export const statusLabels = {
   failed: "Có lỗi",
   cancelled: "Đã hủy",
   interrupted: "Bị gián đoạn",
+  needs_assets: "Thiếu ảnh",
   needs_login: "Cần đăng nhập",
   verification: "Cần xác minh",
   ready: "Sẵn sàng",

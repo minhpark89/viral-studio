@@ -92,7 +92,7 @@ test('a short grounded fallback query fills sparse event results with labeled co
   const queries=[];
   const f=await fixture(t,{imageSearch:async names=>{queries.push(names);return {images:names.includes('Qeshm Island')?Array.from({length:8},(_,i)=>({id:String(i),title:'Qeshm Island view '+i,imageUrl:`https://images.test/${i}.jpg`})):[],warnings:[]};}});
   const result=await f.service.prepareNewsMedia(f.batch,{projectId:f.project.id},f.research,{headline:f.research.headline,narration:'Qeshm Island update',imageQueries:['Qeshm Island attacks scene']},async(_store,_prompt,input)=>input.candidates?{selectedImageIds:input.candidates.map(image=>image.id)}:{subjects:[{name:'Qeshm Island',kind:'place'}]});
-  assert.deepEqual(queries,[['Qeshm Island attacks scene'],['Qeshm Island']]);assert.equal(result.imageMediaIds.length,8);assert.equal(result.visualMode,'illustration');assert.equal(f.batch.newsMediaByResearch[f.research.id].revision,5);
+  assert.deepEqual(queries,[['Qeshm Island attacks scene'],['Qeshm Island']]);assert.equal(result.imageMediaIds.length,8);assert.equal(result.visualMode,'illustration');assert.equal(f.batch.newsMediaByResearch[f.research.id].revision,6);
 });
 
 test('LLM output budget is bounded and does not change the default for narration',async()=>{

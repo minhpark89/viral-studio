@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { requestJsonContent } from "./llm.js";
 import { StudioError } from "./store.js";
+import { NEWS_ANGLES, similarNarration } from './news-variants.js';
+import { createHash } from 'node:crypto';
 import { NEWS_MAX_IMAGES, newsDurationSchema, newsImageCountSchema, newsScriptBudget, newsRenderStyleSchema, DEFAULT_NEWS_RENDER_STYLE } from '../shared/news-format.js';
 
 export const NEWS_CTA="Read the full story through the link in the first comment.";
@@ -38,6 +40,10 @@ export const newsPlanSchema=z.object({
   brand:z.string().max(24).default("NEWS UPDATE"),
   variation:z.number().int().min(1).max(100).default(1),
   visualVariant:z.number().int().min(1).max(100).default(1),
+  storyAngle:z.string().max(700).optional(),
+  variantWarning:z.string().max(600).optional(),
+  photoCount:z.number().int().min(0).max(10).optional(),
+  sourceCardCount:z.number().int().min(0).max(1).optional(),
 });
 
 const narrationOutput = z.object({headline:z.string().trim().min(5).max(100),summary:z.string().trim().min(20).max(16000),category:z.enum(['U.S. NEWS','U.S. POLITICS','BUSINESS','TECHNOLOGY','SCIENCE','HEALTH','WORLD NEWS','SPORTS','WEATHER']).catch('U.S. NEWS'),location:z.string().trim().max(70).catch(''),imageQueries:z.array(z.string().min(2).max(100)).max(6).default([]),contextImageQueries:z.array(z.string().min(2).max(100)).max(6).default([])});
@@ -58,13 +64,13 @@ export function fitNewsSummary(value, budget) {
   return chosen.join(' ');
 }
 
-export async function writeNewsNarration(store,research,{llm=requestJsonContent,variation=1,total=1,newsDuration='auto',newsImageCount='auto'}={}) {
+export async function writeNewsNarration(store,research,{llm=requestJsonContent,variation=1,total=1,newsDuration='auto',newsImageCount='auto',previous=[],angle=NEWS_ANGLES[(variation-1)%NEWS_ANGLES.length]}={}) {
   const budget = newsScriptBudget(newsDuration);
   const summaryBudget = { characters: budget.characters - NEWS_CTA.length - 1, words: budget.words - wordCount(NEWS_CTA) };
   const instruction = `Write a concise American English news summary for a short clip that leads viewers to the full article in the first comment. Return JSON {headline,summary,imageQueries}. Headline: factual, maximum 70 characters. Summary: 1–3 complete short sentences, approximately ${Math.max(15, summaryBudget.words - 5)}–${summaryBudget.words} words and no more than ${summaryBudget.characters} characters including spaces. State the main confirmed development first, then one useful detail or context explicitly supported by the source. Attribute allegations. Summarize only; do not retell the full article, create suspense, invent uncertainty or add filler to reach a duration. Do not invent facts, dates, quotes, reactions, stakes or promises of future updates. No CTA; the app appends it once. Image queries: 4–6 distinct literal noun phrases using only named people, exact locations and objects actually mentioned in this report. Keep full names and place qualifiers; do not broaden to unrelated people or events. A short source can use fewer queries. ${total > 1 ? `This is variation ${variation} of ${total}; vary wording, never the verified facts.` : ''}`;
-  const input = {variation,total,headline:research.headline,script:research.script,articles:(research.articles || []).map(({title,summary,source,url})=>({title,summary,source,url}))};
+  const input = {variation,total,angle,previousVersions:previous.slice(-5).map(({headline,narration,storyAngle})=>({headline,narration,storyAngle})),headline:research.headline,script:research.script,articles:(research.articles || []).map(({title,summary,text,source,url})=>({title,summary,text,source,url}))};
   const visualInstruction = ' Also return contextImageQueries: 2–4 short queries for labeled context photos, distinct from event-photo searches. Use the exact full name of a named person plus portrait, or the exact city and state plus city view. Do not include rally/campaign/crowd/event terms in context queries. Only include subjects explicitly named in the source. Do not invent a venue or search only a first name. If the source has no concrete visual subjects, return empty imageQueries and contextImageQueries; the app can show a factual source card.';
-  const identityInstruction = ' Also return category (one of U.S. NEWS, U.S. POLITICS, BUSINESS, TECHNOLOGY, SCIENCE, HEALTH, WORLD NEWS, SPORTS, WEATHER) and location. For location, copy a short exact place name present in the source or return an empty string; never infer a dateline, date, live status or breaking-news status.';
+  const identityInstruction = ' Also return category (one of U.S. NEWS, U.S. POLITICS, BUSINESS, TECHNOLOGY, SCIENCE, HEALTH, WORLD NEWS, SPORTS, WEATHER) and location. For location, copy a short exact place name present in the source or return an empty string; never infer a dateline, date, live status or breaking-news status. Follow the supplied angle using only source facts. Compared with previousVersions, change the opening subject, sentence structure and information order, not just synonyms. Never say the article omitted details just because the provided RSS excerpt is short. Remove repetition of the same fact within the summary.';
   let parsed = narrationOutput.parse(await llm(store, instruction + visualInstruction + identityInstruction, input));
   let summary = fitNewsSummary(parsed.summary, summaryBudget);
   // Never cut the end off a sentence or append invented context. Ask once for
@@ -74,6 +80,11 @@ export async function writeNewsNarration(store,research,{llm=requestJsonContent,
     summary = fitNewsSummary(parsed.summary, summaryBudget);
   }
   if (!summary) throw new StudioError('Không viết được câu tóm tắt hoàn chỉnh trong thời lượng đã chọn. Hãy chọn thời lượng dài hơn hoặc thử lại.', 'NEWS_SCRIPT_TOO_LONG', 422);
+  if (previous.length && similarNarration(summary, previous)) {
+    parsed = narrationOutput.parse(await llm(store, instruction + visualInstruction + identityInstruction + ' The last draft repeats a previous opening or too much phrasing. Rewrite using a different supported detail first.', { ...input, rejectedDraft: summary }));
+    summary = fitNewsSummary(parsed.summary, summaryBudget);
+    if (!summary || similarNarration(summary, previous)) throw new StudioError('Lời dẫn mới còn quá giống bản trước. Cần bổ sung dữ kiện nguồn hoặc thử viết lại; chưa tạo MC.', 'NEWS_VARIANTS_TOO_SIMILAR', 422);
+  }
   const narration=`${summary} ${NEWS_CTA}`;
   return {
     headline: parsed.headline,
@@ -89,6 +100,7 @@ export async function writeNewsNarration(store,research,{llm=requestJsonContent,
     sourceUrl: research.articles[0]?.url,
     variation: Math.max(1, Number(variation) || 1),
     visualVariant: Math.max(1, Number(variation) || 1),
+    storyAngle: angle,
   };
 }
 
@@ -111,7 +123,7 @@ export async function additionalNewsImageQueries(store, research, narration, pre
   }).map(({name}) => name);
 }
 
-export async function rankNewsImages(store,research,candidates,{llm=requestJsonContent,allowIllustrations=false,maxImages=NEWS_MAX_IMAGES,alreadySelected=[],onReviewed=()=>{},onWarning=()=>{}}={}) {
+export async function rankNewsImages(store,research,candidates,{llm=requestJsonContent,allowIllustrations=false,maxImages=NEWS_MAX_IMAGES,alreadySelected=[],reviewCache,onDecision=()=>{},onReviewed=()=>{},onWarning=()=>{}}={}) {
   if (!candidates.length) return [];
   // Attribution in a narration does not make a publisher's studio or logo a
   // subject of the story. Keep those images only for stories about that outlet.
@@ -119,7 +131,7 @@ export async function rankNewsImages(store,research,candidates,{llm=requestJsonC
   const subject=words([research.headline,...(research.articles||[]).map(article=>article.title)].join(' '));
   const publishers=[...new Set(['BBC','CBS','CNN','NBC','ABC News','Reuters','Associated Press','Sky News','Fox News',...(research.articles||[]).map(article=>article.source).filter(source=>source&&!/^(?:news report|source report|google news|unknown)$/i.test(source))])];
   const originalCount=candidates.length;
-  candidates=candidates.filter(image=>!publishers.some(publisher=>words(image.title).includes(words(publisher))&&!subject.includes(words(publisher))));
+  candidates=candidates.filter(image=>{const reject=publishers.some(publisher=>words(image.title).includes(words(publisher))&&!subject.includes(words(publisher)));if(reject)onDecision({id:image.id,status:'rejected',reason:'publisher-only'});return !reject;});
   if(candidates.length<originalCount)onWarning(`Đã bỏ ${originalCount-candidates.length} ảnh hãng tin không phải chủ thể của bản tin.`);
   if (!candidates.length) return [];
   const sourceWords=words([research.headline,research.script,...(research.articles||[]).flatMap(article=>[article.title,article.summary])].join(' '));
@@ -128,7 +140,7 @@ export async function rankNewsImages(store,research,candidates,{llm=requestJsonC
     // the target or scene. Broad landscape/coast/satellite context stays valid.
     const facilities=[/\b(?:airport|airfield|airbase|terminal)\b/i,/\b(?:aircraft|airplane|airliner|jet|avro|boeing|airbus)\b/i,...['hospital','school','church','mosque','military base','oil refinery'].map(name=>new RegExp('\\b'+name+'\\b','i'))];
     const before=candidates.length;
-    candidates=candidates.filter(image=>!facilities.some(pattern=>pattern.test(image.title+' '+image.description)&&!pattern.test(sourceWords)));
+    candidates=candidates.filter(image=>{const reject=facilities.some(pattern=>pattern.test(image.title+' '+image.description)&&!pattern.test(sourceWords));if(reject)onDecision({id:image.id,status:'rejected',reason:'unconfirmed-facility'});return !reject;});
     if(candidates.length<before)onWarning(`Đã bỏ ${before-candidates.length} ảnh cơ sở/phương tiện không được nguồn tin xác nhận.`);
   }
   if (!candidates.length) return [];
@@ -136,13 +148,18 @@ export async function rankNewsImages(store,research,candidates,{llm=requestJsonC
   // Keep each model request small. Dozens of long Commons descriptions and
   // URLs used to exhaust the configured gateway timeout before any selection.
   const review = async chunk => {
-    const selected=await llm(store,
+    const key = createHash('sha256').update(JSON.stringify({ revision:1, headline:research.headline, narration:research.script, articles:research.articles?.map(({title,summary,text})=>({title,summary,text})), allowIllustrations, candidates:chunk })).digest('hex');
+    const cached = reviewCache?.get(key);
+    const selected=cached || await llm(store,
       `Select visuals for the supplied narration, not the broader RSS topic. Return JSON {selectedImageIds:[]}. Select up to ${maxImages-result.length} valid candidate IDs in visual story order. Prefer varied views of the actual named people, places and objects over many similar portraits. Judge the actual candidate title, caption, date and description; a search query or article headline alone is not evidence that an image depicts that event. Every candidate, including article images, must relate to a subject explicitly named in this report. Reject unrelated events, places, people not named in the report, avatars, near duplicates and misleading old event photos. An old rally with the same politician is not the current rally. Prefer a clearly identified portrait or location as labeled context instead. Do not confuse Bitcoin with Bitcoin Cash or other coins. Never use screenshots/charts with unverified prices or data. ` +
       'Among equally relevant, verified and distinct candidates, prefer clear high-resolution landscape photographs with the subject well inside the frame. Portraits remain valid when they best identify the subject. Dimensions are only a presentation preference, never evidence of relevance or permission to fill a quota. ' +
       (allowIllustrations ? 'Context images of the exact named subject are allowed (for example a Bitcoin token for a Bitcoin report, a relevant building or product). These will be visibly labeled CONTEXT IMAGE, NOT EVENT FOOTAGE. They need not show the actual event. Reject generic hacking/network visuals and unrelated subjects. ' : 'Prefer photographs of the reported subjects/events. Reject generic stock, graphics and illustrations in this pass. ') +
       'For place context, prefer general geography, coastlines, skylines and landscapes of the exact named place. Do not introduce an unnamed facility, vehicle, landmark or person merely located there: an airport/airplane in an island attack story can falsely suggest the target. Avoid unrelated activities, disasters, tourist attractions as the main subject and near-identical satellite views. Publisher attribution is not a story subject: do not select publisher offices, studios or logos merely because a source is cited. For people who share a name, the candidate caption must match the organization or role in the report; reject an unconfirmed identity. Select fewer images when necessary; return an empty list if none are relevant. Do not invent IDs.',
-      {headline:research.headline,narration:research.script,articles:research.articles?.slice(0, 3).map(({title,publishedAt})=>({title,publishedAt})),alreadySelected:[...alreadySelected,...result].map(({title,description})=>({title,description:String(description||'').slice(0,140)})),candidates:chunk.map(({id,title,articleTitle,description,publishedAt,width,height})=>({id,title:String(title || '').slice(0,180),articleTitle,description:String(description || '').slice(0,350),publishedAt,...(Number(width)>0&&Number(height)>0?{width:Number(width),height:Number(height)}:{})}))}, {maxTokens:800,timeoutSeconds:Math.min(45,Number(store.state?.settings?.llm?.timeoutSeconds)||90)});
+      {headline:research.headline,narration:research.script,articles:research.articles?.slice(0, 3).map(({title,publishedAt,summary,text})=>({title,publishedAt,context:String(text||summary||'').slice(0,2800)})),alreadySelected:[...alreadySelected,...result].map(({title,description})=>({title,description:String(description||'').slice(0,140)})),candidates:chunk.map(({id,title,articleTitle,description,publishedAt,width,height})=>({id,title:String(title || '').slice(0,180),articleTitle,description:String(description || '').slice(0,350),publishedAt,...(Number(width)>0&&Number(height)>0?{width:Number(width),height:Number(height)}:{})}))}, {maxTokens:800,timeoutSeconds:Math.min(45,Number(store.state?.settings?.llm?.timeoutSeconds)||90)});
     const ids=z.array(z.string()).max(100).parse(selected?.selectedImageIds);
+    reviewCache?.set(key, { selectedImageIds: ids });
+    if (reviewCache?.size > 500) reviewCache.delete(reviewCache.keys().next().value);
+    for(const image of chunk)onDecision({id:image.id,status:ids.includes(image.id)?'approved':'rejected',reason:ids.includes(image.id)?'source-related':'not-selected-by-review',cached:Boolean(cached)});
     succeeded = true;
     const approved = [...new Set(ids)].map(id=>chunk.find(image=>image.id===id)).filter(image=>image && !result.some(prior=>prior.id===image.id));
     const chosen = approved.slice(0,maxImages-result.length);
@@ -156,6 +173,7 @@ export async function rankNewsImages(store,research,candidates,{llm=requestJsonC
     } catch (error) {
       lastError = error;
       onWarning(`Không kiểm tra được một nhóm ảnh: ${String(error.message).slice(0, 180)}`);
+      chunk.forEach(image=>onDecision({id:image.id,status:'unreviewed',reason:error.code||'review-error'}));
       // One bounded split retry recovers a slow/malformed group without ever
       // approving unverified images or retrying every group indefinitely.
       if (!splitRetryUsed && chunk.length > 1) {

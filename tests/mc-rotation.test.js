@@ -24,13 +24,13 @@ test('100 videos keep exact MC blocks across stories, failure, retry and restart
   let fail = true;
   const llm = async (_system, input) => {
     if (input.candidates) return { selectedImageIds: input.candidates.map(image => image.id) };
-    if (input.variation === 51 && fail) throw new Error('Transient preparation failure');
-    return { headline: input.headline, summary: 'Officials released a transport report. It outlines findings from the recent public review. The next decision will depend on the response from residents.', imageQueries: ['city transport'] };
+    if (input.headline === 'City report 10' && input.variation === 1 && fail) throw new Error('Transient preparation failure');
+    return { headline: input.headline, summary: ['Officials released a transport report. The next decision will depend on residents.', 'The public review examines how passengers reach their destinations.', 'Road maintenance forms another section of this newly released assessment.', 'Bus routes feature prominently in proposals awaiting local approval.', 'Residents can read the findings before any final policy is adopted.'][input.variation - 1], imageQueries: ['city transport'] };
   };
-  const options = { llm, fetchImpl: async () => { throw new Error('External calls forbidden'); } };
+  const options = { llm, sourceLoader:async research=>({articles:research.articles,warnings:[]}), imageSearch:async()=>({images:[],warnings:[]}), fetchImpl: async () => { throw new Error('External calls forbidden'); } };
   let service = new ProductionService(store, queue, options);
   t.after(async () => { await service.close(); await queue.close(); await fs.rm(root, { recursive: true, force: true }); });
-  const request = { requestId: randomUUID(), projectId: project.id, contentType: 'news', topic: 'City news', count: 100,
+  const request = { requestId: randomUUID(), projectId: project.id, contentType: 'news', topic: 'City news', newsVisualPolicy:'allow-fewer', count: 100,
     researchIds: stories.flatMap(story => Array(5).fill(story.id)), mcRotation: hosts.map((host, i) => ({ avatarMediaId: host.id, count: [10, 20, 5][i] })) };
   const batch = service.create(request);
   assert.equal(service.create(request).id, batch.id);
@@ -60,7 +60,7 @@ test('100 videos keep exact MC blocks across stories, failure, retry and restart
     assert.equal(job.production.researchId, story.id);
     assert.equal(job.production.sources[0].url, story.articles[0].url);
     assert.deepEqual(job.payload.imageMediaIds, story.imageMediaIds);
-    assert.equal(job.payload.newsPlan.visualVariant, item.index + 1);
+    assert.equal(job.payload.newsPlan.visualVariant, item.index % 5 + 1);
   }
   service.retry(batch.id); await service.worker;
   assert.equal(reloaded.state.jobs.length, 100);
