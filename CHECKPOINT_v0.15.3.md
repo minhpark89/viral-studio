@@ -1,6 +1,6 @@
 # Viral Studio 0.15.3 — quality gates và hàng đợi thử lại
 
-Ngày 13/11/2026. Base: `b8caa9535684b811f3fdf0f216b2b35345c39da4` (0.15.2). Nhánh cục bộ: `fix/news-quality-0.15.3`. Không ghép đè source từ worktree Product Research 0.21.0. Thay đổi này chưa deploy/push/publish.
+Ngày 13/11/2026. Base: `b8caa9535684b811f3fdf0f216b2b35345c39da4` (0.15.2). Nhánh thực hiện: `fix/news-quality-0.15.3`; nguồn tiếp tục là tag `v0.15.3`/main và commit trong manifest của [release](https://github.com/minhpark89/viral-studio/releases/tag/v0.15.3). Không ghép đè source từ worktree Product Research 0.21.0. Người dùng đã yêu cầu phát hành và cài KAD22P5; kết quả triển khai bên dưới.
 
 ## Bằng chứng và thay đổi
 
@@ -34,4 +34,14 @@ Máy kiểm: Windows x64, i7-11800H, Intel UHD và RTX 3050 Ti Laptop. Hai bản
 
 Đọc được bài gốc và ảnh ứng viên không bảo đảm mọi ảnh đều đạt kiểm duyệt hoặc tải được. Duyệt ảnh vẫn dựa trên metadata/nội dung nguồn, chưa thêm dịch vụ nhận diện ảnh. Các site chặn truy cập, thay HTML, Google đổi protocol, quota provider hoặc LLM timeout vẫn có thể gây lỗi; có trạng thái và đường thử lại rõ ràng. Chưa thử tạo MC mới có trả phí trên DreamFace cho phiên bản này. Thời gian đo cục bộ không được coi là tốc độ bảo đảm trên mọi PC.
 
-Chưa cài mới lên KAD22P5, nên chưa có backup/nâng cấp/rollback thực tế cho 0.15.3 trên máy đó. Nếu được yêu cầu cài: theo `RELEASE_RUNBOOK.md`, đợi idle, đóng app bình thường, backup state đã flush rồi mới thay EXE; giữ `Viral Data`. Không phục hồi state cũ đè dữ liệu đã phát sinh sau nâng cấp.
+## Triển khai KAD22P5
+
+Đã nâng cấp ngày 13/11/2026 lúc 16:34 (+07). Kiểm idle, đóng app bình thường và đợi portable wrapper thoát; sao lưu sau khi state đã flush rồi thay EXE nguyên tử. App mở lại trong desktop session 1, API health xác nhận 0.15.3 và đúng dataDir; cửa sổ thật đã được chụp kiểm tra. API thử lại hàng loạt nhận lựa chọn rỗng trả 0/0/0, không tạo job mới.
+
+- EXE chuẩn: `D:\Viral Studio\Viral Studio.exe`; SHA-256 `78336FE5D2E70F153994C64B57D70B569AEE72A03EB9AFBC91FD40F35B9B8E7A`.
+- Dữ liệu: `D:\Viral Studio\Viral Data`. Đối chiếu mọi ID collection: không thiếu bản ghi; 36 accounts, 167 media, 51 jobs, 25 research, 31 socialPosts, 2 productionBatches và 1 project được giữ. Không có key cấu hình nào thay đổi.
+- Backup: `D:\Viral Studio Support\2026-11-13\v0.15.3\before-0.15.3`; có state, `.private`, Product database, EXE 0.15.2, marker và shortcut cũ. Media/exports/profiles giữ tại chỗ. `backup-manifest.json` ghi hash các tệp sao lưu.
+- Chẩn đoán riêng trên máy đích: `D:\Viral Studio Support\2026-11-13\v0.15.3\gpu-diagnostic\report.json`, 11/11 đạt, Intel QSV, 61,943 giây cả bộ. Windows 10 19045, i5-12450H, 15,7 GiB RAM; video V3/V3 Fast 1080×1920, 30 fps, audio và decode đạt.
+- Bằng chứng cục bộ hỗ trợ: `.verification/deploy-0.15.3`; các script triển khai chỉ là helper riêng, không đi vào source ZIP. Thông tin SSH nằm trong tài liệu hỗ trợ cục bộ của chủ máy, không đưa khóa hay dữ liệu xác thực lên release.
+
+Rollback nếu cần: kiểm idle và đóng app bình thường; khôi phục EXE 0.15.2 đã backup, giữ dữ liệu hiện hành trước. Chỉ phục hồi snapshot state/DB/secret khi đã đối chiếu và sao lưu phần phát sinh mới; không đè snapshot cũ lên dữ liệu sau nâng cấp. Các lần nâng cấp tiếp theo theo `RELEASE_RUNBOOK.md`.

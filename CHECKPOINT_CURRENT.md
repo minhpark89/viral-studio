@@ -1,6 +1,6 @@
-# Current local candidate: v0.15.3 — ảnh News và thử lại lỗi
+# Current: v0.15.3 — ảnh News và thử lại lỗi
 
-Bắt đầu tại [CHECKPOINT_v0.15.3.md](CHECKPOINT_v0.15.3.md), [hướng dẫn](RELEASE_NOTES_v0.15.3.md) và [validation](RELEASE_VALIDATION_v0.15.3.json). Nhánh `fix/news-quality-0.15.3`, base `b8caa9535684b811f3fdf0f216b2b35345c39da4`. Bản đóng gói cục bộ, chưa push/publish/deploy; KAD22P5 vẫn dùng 0.15.2.
+Bắt đầu tại [CHECKPOINT_v0.15.3.md](CHECKPOINT_v0.15.3.md), [hướng dẫn](RELEASE_NOTES_v0.15.3.md) và [validation](RELEASE_VALIDATION_v0.15.3.json). [Bộ cài và source chuẩn](https://github.com/minhpark89/viral-studio/releases/tag/v0.15.3), base `b8caa9535684b811f3fdf0f216b2b35345c39da4`. Manifest trong release xác định commit chính xác. KAD22P5 đã nâng cấp và kiểm chứng 0.15.3 ngày 13/11/2026; dữ liệu và cấu hình giữ nguyên. Tiếp tục sửa từ source/tag này, không đè module bằng bản cũ.
 
 ---
 

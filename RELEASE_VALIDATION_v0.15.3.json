@@ -3,8 +3,7 @@
   "verifiedAt": "2026-11-13T09:22:48.448417+00:00",
   "baseCommit": "b8caa9535684b811f3fdf0f216b2b35345c39da4",
   "branch": "fix/news-quality-0.15.3",
-  "published": false,
-  "deployedToKAD22P5": false,
+  "deployedToKAD22P5": true,
   "unit": {
     "tests": 547,
     "pass": 547,
@@ -466,7 +465,122 @@
   "limits": [
     "No paid DreamFace MC creation was submitted during verification",
     "Photo approval still uses metadata/source text, not computer vision",
-    "Limited source photos can prevent 50% visual difference; the job records a warning",
-    "No installation or migration was performed on KAD22P5"
-  ]
+    "Limited source photos can prevent 50% visual difference; the job records a warning"
+  ],
+  "publicationAuthorized": true,
+  "releaseUrl": "https://github.com/minhpark89/viral-studio/releases/tag/v0.15.3",
+  "deployment": {
+    "passed": true,
+    "machine": "DESKTOP-KAD22P5",
+    "version": "0.15.3",
+    "dataDir": "D:\\Viral Studio\\Viral Data",
+    "sha256": "78336FE5D2E70F153994C64B57D70B569AEE72A03EB9AFBC91FD40F35B9B8E7A",
+    "backup": "D:\\Viral Studio Support\\2026-11-13\\v0.15.3\\before-0.15.3",
+    "collections": [
+      {
+        "before": 0,
+        "name": "productScans",
+        "missing": 0,
+        "after": 0
+      },
+      {
+        "before": 2,
+        "name": "researchBatches",
+        "missing": 0,
+        "after": 2
+      },
+      {
+        "before": 167,
+        "name": "media",
+        "missing": 0,
+        "after": 167
+      },
+      {
+        "before": 0,
+        "name": "productRuns",
+        "missing": 0,
+        "after": 0
+      },
+      {
+        "before": 1,
+        "name": "projects",
+        "missing": 0,
+        "after": 1
+      },
+      {
+        "before": 0,
+        "name": "productFreeScans",
+        "missing": 0,
+        "after": 0
+      },
+      {
+        "before": 51,
+        "name": "jobs",
+        "missing": 0,
+        "after": 51
+      },
+      {
+        "before": 0,
+        "name": "socialPages",
+        "missing": 0,
+        "after": 0
+      },
+      {
+        "before": 36,
+        "name": "accounts",
+        "missing": 0,
+        "after": 36
+      },
+      {
+        "before": 0,
+        "name": "productBatches",
+        "missing": 0,
+        "after": 0
+      },
+      {
+        "before": 31,
+        "name": "socialPosts",
+        "missing": 0,
+        "after": 31
+      },
+      {
+        "before": 2,
+        "name": "productionBatches",
+        "missing": 0,
+        "after": 2
+      },
+      {
+        "before": 0,
+        "name": "productCampaigns",
+        "missing": 0,
+        "after": 0
+      },
+      {
+        "before": 25,
+        "name": "researchResults",
+        "missing": 0,
+        "after": 25
+      }
+    ],
+    "settingsChangedKeys": [],
+    "at": "2026-11-13T16:34:14.9982919+07:00",
+    "desktopCaptured": true,
+    "emptyBulkRetryPassed": true,
+    "gpu": {
+      "passed": true,
+      "cases": 11,
+      "elapsedMs": 61943,
+      "machine": {
+        "platform": "win32",
+        "arch": "x64",
+        "osRelease": "10.0.19045",
+        "cpu": "12th Gen Intel(R) Core(TM) i5-12450H",
+        "logicalCpus": 12,
+        "memoryGiB": 15.7
+      },
+      "encoders": [
+        "h264_qsv"
+      ]
+    }
+  }
 }

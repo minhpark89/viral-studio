@@ -12,4 +12,4 @@ Link Google News được giải ra bài báo gốc để đọc nội dung và 
 
 App hiển thị thời gian từng bước: đọc nguồn, viết lời dẫn, tìm ảnh, chờ hàng đợi, tạo MC, phụ đề và dựng video. Hai tin độc lập có thể chuẩn bị cùng lúc; các bản của cùng một tin vẫn xử lý lần lượt để so sánh với bản trước. Lỗi gửi MC có thêm dấu hiệu yêu cầu/mã tác vụ và thông báo nhà cung cấp đã lược thông tin nhạy cảm.
 
-Bản này được đóng gói cục bộ trên nhánh `fix/news-quality-0.15.3`, chưa phát hành GitHub và chưa cài thay bản 0.15.2 trên KAD22P5. Chi tiết kiểm chứng và giới hạn nằm trong `CHECKPOINT_v0.15.3.md` và `RELEASE_VALIDATION_v0.15.3.json`.
+Bản này đã được cài thay 0.15.2 trên KAD22P5 ngày 13/11/2026, giữ nguyên dữ liệu và cấu hình; Intel QSV đạt 11/11 bài kiểm tra. Bộ cài/source chuẩn tại [release v0.15.3](https://github.com/minhpark89/viral-studio/releases/tag/v0.15.3). Chi tiết kiểm chứng, backup và giới hạn nằm trong `CHECKPOINT_v0.15.3.md` và `RELEASE_VALIDATION_v0.15.3.json`. Phiên sau tiếp tục từ tag/source trong manifest này.
