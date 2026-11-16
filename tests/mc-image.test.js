@@ -62,15 +62,20 @@ test("news plans use a neutral news label by default", () => {
 test("news batches reuse the saved MC still for later DreamFace videos", async (t) => {
   const root = path.resolve(".verification", `mc-reuse-${randomUUID()}`);
   const store = new Store(root);
-  const image = store.add("media", { kind: "image", file: "mc.png", projectId: null });
+  const file=path.join(root,'media','mc.png');await fs.writeFile(file,'Existing MC still');
+  const image = store.add("media", { kind: "image", file, projectId: null });
   const account = store.add("accounts", {
     name: "DreamFace reuse",
     provider: "dreamface",
     avatarMediaId: image.id,
     avatarSource: "highlight-endpoint",
   });
-  const job = { id: randomUUID(), payload: {} };
+  const job = store.add('jobs', { payload: {} });
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const reused = await ensureNewsMcImage(store, {}, job, account, {}, new AbortController().signal);
   assert.equal(reused.id, image.id);
+  assert.equal(job.payload.avatarMediaId,image.id);
+  // A different profile on the next attempt must not replace this identity.
+  const retry=store.add('jobs',{payload:structuredClone(job.payload)});
+  assert.equal((await ensureNewsMcImage(store,null,retry,{id:randomUUID(),avatarMediaId:randomUUID()},{},new AbortController().signal)).id,image.id);
 });

@@ -18,6 +18,12 @@ test('Wikimedia candidates retain relevance order rather than ascending numeric 
   assert.deepEqual(actual.map(image => image.title), ['Bitcoin token', 'Old event']);
 });
 
+test('Commons visual queries keep the actual noun phrase instead of scene directions and vague words', () => {
+ const queries = newsVisualQueries({ headline: 'FAA ground stop', articles: [] }, { imageQueries: ['FAA headquarters building exterior', 'airport departure board showing delayed flights', 'air traffic control tower at an airport', 'equipment', 'contractor error'] });
+ assert.deepEqual(queries, ['FAA headquarters', 'airport departure board', 'air traffic control tower']);
+ assert.ok(newsVisualQueries({ headline: 'London airport' }, { imageQueries: ['London Heathrow Airport', 'John F Kennedy International Airport'] }).includes('John F Kennedy International Airport'));
+});
+
 test('search cache shares network work without reusing per-story image decisions', async () => {
   let calls = 0; const cache = new Map();
   const fetchImpl = async () => { calls++; return Response.json({ query: { pages: { 1: { title: 'Bitcoin token', imageinfo: [{ url: 'https://images.test/coin.jpg', mime: 'image/jpeg' }] } } } }); };

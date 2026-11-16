@@ -3,7 +3,7 @@
   "verifiedAt": "2026-11-13T09:22:48.448417+00:00",
   "baseCommit": "b8caa9535684b811f3fdf0f216b2b35345c39da4",
   "branch": "fix/news-quality-0.15.3",
-  "deployedToKAD22P5": true,
+  "deployedToWindowsValidation": true,
   "unit": {
     "tests": 547,
     "pass": 547,
@@ -395,7 +395,7 @@
   "realMediaRetry": {
     "passed": true,
     "providerCalls": 0,
-    "note": "Copied existing MC and two photos from KAD22P5 into an isolated local workspace. Preserved narration to verify local retry/MC reuse; script diversity and 12-photo selection are covered separately by tests.",
+    "note": "Copied existing MC and two photos from WindowsValidation into an isolated local workspace. Preserved narration to verify local retry/MC reuse; script diversity and 12-photo selection are covered separately by tests.",
     "outputs": [
       {
         "variation": 1,
@@ -471,7 +471,7 @@
   "releaseUrl": "https://github.com/minhpark89/viral-studio/releases/tag/v0.15.3",
   "deployment": {
     "passed": true,
-    "machine": "DESKTOP-KAD22P5",
+    "machine": "WINDOWS-VALIDATION",
     "version": "0.15.3",
     "dataDir": "D:\\Viral Studio\\Viral Data",
     "sha256": "78336FE5D2E70F153994C64B57D70B569AEE72A03EB9AFBC91FD40F35B9B8E7A",

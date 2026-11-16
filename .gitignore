@@ -2,6 +2,7 @@ node_modules/
 .studio/
 .verification/
 release/
+release-speed/
 dist/
 *.log
 *.tmp
@@ -17,4 +18,23 @@ build/*
 
 __pycache__/
 *.pyc
+release-retry/
+release-network/
+release-storage/
+release-storage-final/
+release-diagnostics/
+release-recovery/
+release-recovery-final/
+release-queue-01515/
+release-queue-01516/
+release-queue-01517/
+release-groups-01518/
+release-content-01519/
+release-daily-01520/
+release-v4-01521/
 
+
+# Local releases, validation data and machine handoffs stay private.
+release*/
+.private-checkpoints/
+CHECKPOINT_PRIVATE*.md

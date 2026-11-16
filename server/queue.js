@@ -16,6 +16,7 @@ import {productOverlayText} from './product-overlay.js';
 import { checkProductOutput } from './product-output.js';
 import { changePhase } from '../shared/job-timing.js';
 import { latestJobs } from '../shared/queue-retry.js';
+import { newsJobAvatarId } from '../shared/news-avatar.js';
 
 function elapsedMs(job, finishedAt) {
   const started = Date.parse(job.startedAt || job.createdAt || "");
@@ -351,6 +352,7 @@ export class JobQueue {
           mediaType: job.payload.workflow === 'product-video' ? 'product-clip' : job.production.contentType === "news" ? "news-video" : "product-video",
         });
       }
+      update({ mediaId: media.id, stage: job.production?.autoCreateContent === true ? 'Video đã xuất xong · Đang chuẩn bị nội dung bài đăng' : 'Video đã xuất xong', progress: 99 });
       if (job.production?.autoCreateContent === true && job.type === "news" && this.newsAutomation) {
         try {
           const automation = await this.newsAutomation({ job, media });
@@ -635,7 +637,7 @@ export class JobQueue {
     return recovered;
   }
 
-  retry(id, confirmResubmit) {
+  retry(id, confirmResubmit, narration) {
     const job = this.store.require("jobs", id);
     if (!["failed", "cancelled", "interrupted"].includes(job.status))
       throw new StudioError("Chỉ thử lại tác vụ đã dừng hoặc có lỗi.");
@@ -646,6 +648,15 @@ export class JobQueue {
     const canRenderExisting = job.type === 'news' && job.payload.presenterMediaId;
     const rejected = job.type === 'news' && job.payload.newsAvatarRequest?.rejected;
     const priorSubmission = job.submittedAt || job.payload.newsAvatarRequest?.submittedAt || job.payload.newsAvatarRequest?.id || job.payload.productRequest?.submittedAt || job.payload.productRequest?.id;
+    let reviewedNarration;
+    if (narration !== undefined || job.errorCode === 'PROVIDER_CONTENT_REJECTED') {
+      if (job.type !== 'news' || job.errorCode !== 'PROVIDER_CONTENT_REJECTED' || canRenderExisting || priorSubmission || !job.payload.newsPlan)
+        throw new StudioError('Chỉ sửa lời dẫn bị từ chối trước khi gửi tác vụ MC.', 'NEWS_NARRATION_EDIT_UNSAFE', 409);
+      reviewedNarration = typeof narration === 'string' ? narration.replace(/\s+/g, ' ').trim() : '';
+      const originalNarration = String(job.payload.newsPlan.narration || '').replace(/\s+/g, ' ').trim();
+      if (reviewedNarration.length < 20 || reviewedNarration.length > 500 || reviewedNarration === originalNarration)
+        throw new StudioError('Hãy chỉnh lời dẫn đã bị từ chối (20–500 ký tự), giữ đúng dữ kiện nguồn trước khi thử lại.', 'NEWS_NARRATION_REVIEW_REQUIRED', 422);
+    }
     if (priorSubmission && !canRenderExisting && !rejected && !confirmResubmit)
       throw new StudioError(
         "Yêu cầu trước đã gửi. Kiểm tra kết quả trong tài khoản trước; tạo lại có thể tốn thêm lượt.",
@@ -657,6 +668,11 @@ export class JobQueue {
       ...structuredClone(job.payload),
       scheduledAt: null,
     };
+    if (job.type === 'news' && !payload.avatarMediaId) {
+      const avatarMediaId = newsJobAvatarId(job, this.store.state);
+      if (avatarMediaId) payload.avatarMediaId = avatarMediaId;
+    }
+    if (reviewedNarration) payload.newsPlan = { ...payload.newsPlan, narration: reviewedNarration };
     delete payload.recoverSubmitted;
     if (job.payload.workflow === 'product-video') delete payload.productRequest;
     if (job.type === "generate") payload.autoAssemble = original.payload.autoAssemble;

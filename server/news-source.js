@@ -1,5 +1,6 @@
 import { fetchProductResource, productText } from './product-sources.js';
 import { articleImagesFromHtml } from './news-visuals.js';
+import { newsArticleIdentity, newsArticleMarkup } from './news-document.js';
 
 const attrs = tag => Object.fromEntries([...tag.matchAll(/([\w:-]+)\s*=\s*(["'])(.*?)\2/gs)].map(([, key, , value]) => [key.toLowerCase(), value.replace(/&amp;/g, '&')]));
 const google = value => new URL(value).hostname === 'news.google.com';
@@ -13,7 +14,7 @@ export function parseNewsDocument(html, article) {
     if (!node || typeof node !== 'object') return;
     if (/Article|Reportage/i.test(String(node['@type'])) && typeof node.articleBody === 'string' && node.articleBody.length > body.length) {
       const candidate = node.url || node.mainEntityOfPage?.['@id'];
-      if (!candidate || new URL(candidate, article.url).pathname.replace(/\/$/, '') === new URL(article.url).pathname.replace(/\/$/, '')) body = node.articleBody;
+      if (!candidate || newsArticleIdentity(candidate, article.url) === newsArticleIdentity(article.url)) body = node.articleBody;
     }
     if (node['@graph']) visit(node['@graph']);
     if (node.mainEntity) visit(node.mainEntity);
@@ -21,9 +22,7 @@ export function parseNewsDocument(html, article) {
   for (const [, attributes, json] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
     if (/application\/ld\+json/i.test(attributes)) { try { visit(JSON.parse(json)); } catch { /* Ignore malformed metadata. */ } }
   }
-  const segment = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] || html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] || '';
-  const semantic = segment.replace(/<(nav|aside|footer|form|header)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');
-  const text = plain(body || semantic);
+  const text = plain(body || newsArticleMarkup(html));
   const description = plain(meta(html, 'og:description') || meta(html, 'description'));
   const { sourceImages:_images, text:_text, sourceRead:_read, ...imageArticle } = article;
   return { ...article, text, summary: text.length > 180 ? text.slice(0, 4000) : description || article.summary || '',

@@ -16,7 +16,7 @@ export function changePhase(record, phase, now = Date.now()) {
 }
 
 export function preparationPhase(stage) {
-  if (/đọc bài|nguồn|tổng hợp/i.test(stage)) return 'source';
+  if (/đọc bài|chuẩn bị nguồn|tổng hợp/i.test(stage)) return 'source';
   if (/lời đọc|lời dẫn/i.test(stage)) return 'narration';
   return 'images';
 }

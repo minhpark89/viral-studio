@@ -1,3 +1,4 @@
+import './http-runtime.cjs';
 import express from "express";
 import multer from "multer";
 import fs from "node:fs";
@@ -663,7 +664,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
   app.post("/api/accounts/:id/open", async (req, res) => {
     const account = store.require("accounts", req.params.id);
     if (account.provider === "dreamface") {
-      const session = await dreamface.open(account, { visible: true });
+      const session = await dreamface.open(account, { visible: true, reason: 'manual-open' });
       if (session.page.url() === "about:blank") await session.page.goto(providers.dreamface.url);
       res.json({ ok: true });
       return;
@@ -710,7 +711,7 @@ async function createServer({ port, dataDir, host, desktop, instance }) {
     res.json(queue.cancel(req.params.id)),
   );
   app.post("/api/jobs/:id/retry", (req, res) =>
-    res.json(queue.retry(req.params.id, req.body.confirmResubmit === true)),
+    res.json(queue.retry(req.params.id, req.body.confirmResubmit === true, req.body.narration)),
   );
   app.post("/api/jobs/:id/recover", async (req, res) => {
     const job = store.require("jobs", req.params.id);

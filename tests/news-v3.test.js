@@ -7,17 +7,17 @@ import { productionRequestSchema } from '../shared/production-contracts.js';
 import { newsPlanSchema } from '../server/news-plan.js';
 import { newsImageTarget } from '../shared/news-format.js';
 import { Store } from '../server/store.js';
-import { alignNewsWords, groupNewsCaptions, whisperWords } from '../server/news-captions.js';
+import { alignNewsWords, groupNewsCaptions, whisperWords, validateNewsCaptionSpeech } from '../server/news-captions.js';
 import { createNewsTypography } from '../server/news-typography.js';
 import { v3PhotoGraph } from '../server/news-v3-motion.js';
 import { newsV3Editorial, newsPhotoCaption } from '../server/news-v3-editorial.js';
 
-test('new News requests default to V3 and reject an unsupported renderer',()=>{
+test('new News requests default to V4 and retain explicit legacy renderers',()=>{
  const base={requestId:randomUUID(),projectId:randomUUID(),contentType:'news',topic:'space research'};
- assert.equal(productionRequestSchema.parse(base).newsRenderStyle,'v3');
- for(const style of ['v3','v3-fast','classic'])assert.equal(productionRequestSchema.parse({...base,newsRenderStyle:style}).newsRenderStyle,style);
+ assert.equal(productionRequestSchema.parse(base).newsRenderStyle,'v4');
+ for(const style of ['v4','v3','v3-fast','classic'])assert.equal(productionRequestSchema.parse({...base,newsRenderStyle:style}).newsRenderStyle,style);
  assert.throws(()=>productionRequestSchema.parse({...base,newsRenderStyle:'unknown'}));
- assert.equal(newsPlanSchema.parse({headline:'A verified source headline',narration:'The city published a report. Read the full story through the link in the first comment.',imageMediaIds:[randomUUID()]}).newsRenderStyle,'v3');
+ assert.equal(newsPlanSchema.parse({headline:'A verified source headline',narration:'The city published a report. Read the full story through the link in the first comment.',imageMediaIds:[randomUUID()]}).newsRenderStyle,'v4');
  assert.deepEqual(['auto',15,20,30].map(duration=>newsImageTarget(duration)),[8,6,8,10]);
 });
 
@@ -41,6 +41,27 @@ test('caption timing preserves reviewed words even when ASR mishears a name or n
  assert.ok(cues.every((c,i)=>c.end>c.start&&c.start>=0&&c.end<=5&&(!i||c.start>=cues[i-1].end)));
  const fallback=alignNewsWords(script,[{text:'unrelated',start:0,end:1}],5);
  assert.equal(fallback.method,'estimated');assert.equal(fallback.words.map(w=>w.text).join(' '),script);
+});
+
+test('a missing spoken CTA cannot pass solely because most story words aligned',()=>{
+ const story='The New York Post reports plans for a meeting in China involving the U.S., Chinese and Russian leaders. According to the newspaper, nuclear arms control is expected to be the focus of their discussions.';
+ const script=story+' Read the full report through the link in the first comment.';
+ const recognized=story.split(' ').map((text,i)=>({text,start:i*.35,end:i*.35+.3}));
+ const aligned=alignNewsWords(script,recognized,15);
+ assert.equal(aligned.method,'aligned');assert.ok(aligned.coverage>.7);
+ assert.throws(()=>validateNewsCaptionSpeech(aligned),e=>e.code==='NEWS_PRESENTER_SPEECH_INCOMPLETE');
+ assert.throws(()=>validateNewsCaptionSpeech(JSON.parse(JSON.stringify(aligned))),e=>e.code==='NEWS_PRESENTER_SPEECH_INCOMPLETE');
+});
+
+test('complete speech and isolated final recognition mistakes remain usable',()=>{
+ const script='The city published its transport report today. Read the full story through the link in the first comment.';
+ const words=script.split(' ').map((text,i)=>({text,start:i*.3,end:i*.3+.25}));
+ for(const recognized of [words,words.slice(0,-1)]){
+  const aligned=alignNewsWords(script,recognized,8);
+  assert.equal(validateNewsCaptionSpeech(aligned),aligned);
+  assert.equal(aligned.words.map(w=>w.text).join(' '),script);
+ }
+ const fallback=alignNewsWords(script,[],8);assert.equal(validateNewsCaptionSpeech(fallback),fallback);
 });
 
 test('Whisper token normalization joins split words, drops control tokens and invalid offsets',()=>{

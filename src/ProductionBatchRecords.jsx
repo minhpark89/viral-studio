@@ -30,7 +30,7 @@ export function ProductionBatchRecords({ batches, data, notify, navigate, focuse
       const title = result?.headline || request.topic || request.sourceUrl || request.productName || 'Lượt render';
       const sources = new Set([request.researchId, ...(request.researchIds || []), ...(batch.items || []).map(item => item.researchId)].filter(Boolean));
       const available = videos(batch);
-      const status = progress.failed ? `${progress.failed} video cần xử lý` : progress.active ? `${progress.active} video đang xử lý` : progress.complete === progress.total ? 'Đã hoàn tất' : 'Đang chuẩn bị';
+      const status = [progress.active ? `${progress.active} video đang xử lý` : '', progress.failed ? `${progress.failed} video cần xử lý` : ''].filter(Boolean).join(' · ') || (progress.complete === progress.total ? 'Đã hoàn tất' : 'Đang chuẩn bị');
       const errors = progress.slots.filter(slot => slot.error && ['failed', 'interrupted', 'cancelled', 'needs_assets'].includes(slot.status));
       return <article className={`production-batch${focusedIds.includes(batch.id) ? ' is-focused' : ''}`} data-production-batch-id={batch.id} key={batch.id}>
         <div className="production-batch-copy">
@@ -40,6 +40,7 @@ export function ProductionBatchRecords({ batches, data, notify, navigate, focuse
           {request.contentType === 'news' && <small className="production-batch-source">Style đã lưu: {newsRenderStyleLabel(request.newsRenderStyle || 'classic')}{request.newsDuration && request.newsDuration !== 'auto' ? ` · khoảng ${request.newsDuration}s` : ''}{request.newsImageCount && request.newsImageCount !== 'auto' ? ` · tối đa ${request.newsImageCount} ảnh` : ''}</small>}
           <small>{request.autoCreateContent ? 'Content: tự tạo sau render' : 'Content: tạo sau trong Content Studio'}</small>
           {batch.stage && progress.active > 0 && <small>{batch.stage}</small>}
+          {progress.slots.filter(slot => !slot.job && slot.status === 'preparing').map(slot => <small key={slot.item.index}>Video {slot.item.index + 1}: {slot.item.stage || 'Đang chuẩn bị'}</small>)}
           {batch.error && <small className="danger-text">{batch.error}</small>}
           {errors.length > 0 && <details className="production-batch-errors"><summary>Chi tiết {errors.length} lỗi</summary>{errors.map(slot => <small key={slot.item.index}>Video {slot.item.index + 1}: {slot.error}</small>)}</details>}
           {batch.warnings?.length > 0 && <details className="production-batch-errors"><summary>Lưu ý của lượt render</summary>{batch.warnings.map((warning, index) => <small key={index}>{warning}</small>)}</details>}

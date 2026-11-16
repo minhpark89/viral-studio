@@ -1,0 +1,839 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "validatedAt": "2026-11-16T15:03:33.958449+00:00",
+  "baseCommit": "09df04482c5e59b0bf3cb81c1bc0abf87dfb36c4",
+  "sourceCommitReference": "See RELEASE_MANIFEST_v1.0.0.json in the release assets",
+  "passed": true,
+  "node": "24.22.2",
+  "electron": "45.0.0",
+  "cleanDependencyInstall": true,
+  "backend": {
+    "tests": 648,
+    "passed": 648,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browserAndDesktop": [
+    {
+      "name": "news-style-browser",
+      "exitCode": 0,
+      "seconds": 4.27
+    },
+    {
+      "name": "news-retry-browser",
+      "exitCode": 0,
+      "seconds": 4.39
+    },
+    {
+      "name": "news-preparation-browser",
+      "exitCode": 0,
+      "seconds": 2.51
+    },
+    {
+      "name": "research-discovery-browser",
+      "exitCode": 0,
+      "seconds": 5.08
+    },
+    {
+      "name": "content-inventory-browser",
+      "exitCode": 0,
+      "seconds": 20.44
+    },
+    {
+      "name": "group-setup-browser",
+      "exitCode": 0,
+      "seconds": 6.03
+    },
+    {
+      "name": "page-check-results-browser",
+      "exitCode": 0,
+      "seconds": 4.23
+    },
+    {
+      "name": "page-daily-browser",
+      "exitCode": 0,
+      "seconds": 7.52
+    },
+    {
+      "name": "news-studio-desktop",
+      "exitCode": 0,
+      "seconds": 20.67
+    },
+    {
+      "name": "product-research-desktop",
+      "exitCode": 0,
+      "seconds": 17.44
+    }
+  ],
+  "package": {
+    "passed": true,
+    "version": "1.0.0",
+    "sourceFilesVerified": 158,
+    "runtimeFilesCompared": 144,
+    "runtimeUnchangedFromValidatedBuild": true,
+    "lineEndingOnly": [
+      "server/news-variants.js",
+      "shared/contracts.js",
+      "shared/production-contracts.js",
+      "shared/production-progress.js",
+      "shared/queue-preparation.js"
+    ],
+    "privateFoldersAbsent": true
+  },
+  "packagedRender": [
+    {
+      "mode": "cpu",
+      "target": "portable",
+      "passed": true,
+      "checks": 11,
+      "seconds": 27.538,
+      "machine": {
+        "platform": "win32",
+        "arch": "x64",
+        "osRelease": "10.0.19045",
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+        "logicalCpus": 16,
+        "memoryGiB": 23.8
+      },
+      "tools": [
+        {
+          "name": "ffmpeg",
+          "sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
+          "version": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers"
+        },
+        {
+          "name": "ffprobe",
+          "sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
+          "version": "ffprobe version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+        }
+      ],
+      "cases": [
+        {
+          "name": "portrait-3-4",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 73
+        },
+        {
+          "name": "portrait-9-16",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 60
+        },
+        {
+          "name": "landscape-4-3",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 79
+        },
+        {
+          "name": "landscape-16-9",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 83
+        },
+        {
+          "name": "square",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 55
+        },
+        {
+          "name": "small",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 73
+        },
+        {
+          "name": "non-square-pixels",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 64
+        },
+        {
+          "name": "odd-dimensions",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 65
+        },
+        {
+          "name": "540x720",
+          "type": "full-news",
+          "passed": true,
+          "elapsedMs": 12617,
+          "output": "NEWS-540x720.mp4",
+          "metadata": {
+            "kind": "video",
+            "duration": 15,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "hasAudio": true,
+            "videoCodec": "h264",
+            "audioCodec": "aac",
+            "bytes": 815798
+          },
+          "meanVolumeDb": -18.9,
+          "fullyDecoded": true,
+          "renderDevice": {
+            "encoder": "libx264",
+            "gpu": false,
+            "name": "CPU"
+          },
+          "renderPipeline": "v4-single-pass",
+          "photoFraming": [
+            {
+              "index": 0,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 6.54,
+              "width": 1080,
+              "height": 1040,
+              "frames": 156,
+              "direction": "in",
+              "motion": "smooth",
+              "labelStart": 0,
+              "labelEnd": 5.066666666666666,
+              "zoomPercent": 1.7999999999999998
+            },
+            {
+              "index": 1,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 1040,
+              "frames": 156,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 5.066666666666666,
+              "labelEnd": 9.966666666666667,
+              "zoomPercent": 0
+            },
+            {
+              "index": 2,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 800,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 1040,
+              "frames": 156,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 9.966666666666667,
+              "labelEnd": 15,
+              "zoomPercent": 0
+            }
+          ],
+          "newsRenderStyle": "v4",
+          "captionTiming": "estimated",
+          "captionRuntimeExecuted": true
+        },
+        {
+          "name": "1056x792",
+          "type": "full-news",
+          "passed": true,
+          "elapsedMs": 11287,
+          "output": "NEWS-1056x792.mp4",
+          "metadata": {
+            "kind": "video",
+            "duration": 15,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "hasAudio": true,
+            "videoCodec": "h264",
+            "audioCodec": "aac",
+            "bytes": 906552
+          },
+          "meanVolumeDb": -18.9,
+          "fullyDecoded": true,
+          "renderDevice": {
+            "encoder": "libx264",
+            "gpu": false,
+            "name": "CPU"
+          },
+          "renderPipeline": "v3-single-pass",
+          "photoFraming": [
+            {
+              "index": 0,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 156,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 0,
+              "labelEnd": 5.066666666666666,
+              "zoomPercent": 0
+            },
+            {
+              "index": 1,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 156,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 5.066666666666666,
+              "labelEnd": 9.966666666666667,
+              "zoomPercent": 0
+            },
+            {
+              "index": 2,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 800,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 156,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 9.966666666666667,
+              "labelEnd": 15,
+              "zoomPercent": 0
+            }
+          ],
+          "newsRenderStyle": "v3-fast",
+          "captionTiming": "estimated",
+          "captionRuntimeExecuted": true
+        },
+        {
+          "name": "logo-and-looped-music",
+          "type": "timeline",
+          "passed": true,
+          "elapsedMs": 1820,
+          "output": "TIMELINE.mp4",
+          "metadata": {
+            "kind": "video",
+            "duration": 5,
+            "width": 480,
+            "height": 854,
+            "fps": 30,
+            "hasAudio": true,
+            "videoCodec": "h264",
+            "audioCodec": "aac",
+            "bytes": 263010
+          },
+          "fullyDecoded": true,
+          "renderDevice": {
+            "encoder": "libx264",
+            "gpu": false,
+            "name": "CPU"
+          }
+        }
+      ],
+      "visualReview": {
+        "passed": true,
+        "checked": [
+          "V4 hero/MC/headline/captions/footer",
+          "CPU/GPU frame layout",
+          "timeline logo and text"
+        ],
+        "syntheticMediaOnly": true
+      }
+    },
+    {
+      "mode": "gpu",
+      "target": "packaged executable",
+      "passed": true,
+      "checks": 11,
+      "seconds": 41.45,
+      "machine": {
+        "platform": "win32",
+        "arch": "x64",
+        "osRelease": "10.0.19045",
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11800H @ 2.30GHz",
+        "logicalCpus": 16,
+        "memoryGiB": 23.8
+      },
+      "tools": [
+        {
+          "name": "ffmpeg",
+          "sha256": "1326dde4c84ff1f96fe6b8916c5bed29e163e9b5dccf995f6f3db069d143ec5e",
+          "version": "ffmpeg version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers"
+        },
+        {
+          "name": "ffprobe",
+          "sha256": "b49ccc7c6547b141ad5a2f6ec69cc04323d7133d7704d70b331b904c63eecb07",
+          "version": "ffprobe version 8.1.2-essentials_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+        }
+      ],
+      "cases": [
+        {
+          "name": "portrait-3-4",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 79
+        },
+        {
+          "name": "portrait-9-16",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 65
+        },
+        {
+          "name": "landscape-4-3",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 74
+        },
+        {
+          "name": "landscape-16-9",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 72
+        },
+        {
+          "name": "square",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 63
+        },
+        {
+          "name": "small",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 62
+        },
+        {
+          "name": "non-square-pixels",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 75
+        },
+        {
+          "name": "odd-dimensions",
+          "type": "geometry",
+          "passed": true,
+          "elapsedMs": 64
+        },
+        {
+          "name": "540x720",
+          "type": "full-news",
+          "passed": true,
+          "elapsedMs": 17581,
+          "output": "NEWS-540x720.mp4",
+          "metadata": {
+            "kind": "video",
+            "duration": 25,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "hasAudio": true,
+            "videoCodec": "h264",
+            "audioCodec": "aac",
+            "bytes": 1676089
+          },
+          "meanVolumeDb": -18.3,
+          "fullyDecoded": true,
+          "renderDevice": {
+            "encoder": "h264_qsv",
+            "gpu": true,
+            "name": "Intel(R) UHD Graphics",
+            "driver": "27.20.100.9415"
+          },
+          "renderPipeline": "v4-single-pass",
+          "photoOrder": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "photoFraming": [
+            {
+              "index": 0,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 6.54,
+              "width": 1080,
+              "height": 1040,
+              "frames": 158,
+              "direction": "in",
+              "motion": "smooth",
+              "labelStart": 0,
+              "labelEnd": 5.133333333333334,
+              "zoomPercent": 1.7999999999999998
+            },
+            {
+              "index": 1,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 1040,
+              "frames": 157,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 5.133333333333334,
+              "labelEnd": 10.066666666666666,
+              "zoomPercent": 0
+            },
+            {
+              "index": 2,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 800,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 1040,
+              "frames": 157,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 10.066666666666666,
+              "labelEnd": 15,
+              "zoomPercent": 0
+            },
+            {
+              "index": 3,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 6.54,
+              "width": 1080,
+              "height": 1040,
+              "frames": 157,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 15,
+              "labelEnd": 19.933333333333334,
+              "zoomPercent": 0
+            },
+            {
+              "index": 4,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 1040,
+              "frames": 157,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 19.933333333333334,
+              "labelEnd": 25,
+              "zoomPercent": 0
+            }
+          ],
+          "newsRenderStyle": "v4",
+          "captionTiming": "estimated",
+          "captionRuntimeExecuted": true
+        },
+        {
+          "name": "1056x792",
+          "type": "full-news",
+          "passed": true,
+          "elapsedMs": 16068,
+          "output": "NEWS-1056x792.mp4",
+          "metadata": {
+            "kind": "video",
+            "duration": 25,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "hasAudio": true,
+            "videoCodec": "h264",
+            "audioCodec": "aac",
+            "bytes": 1994852
+          },
+          "meanVolumeDb": -18.3,
+          "fullyDecoded": true,
+          "renderDevice": {
+            "encoder": "h264_qsv",
+            "gpu": true,
+            "name": "Intel(R) UHD Graphics",
+            "driver": "27.20.100.9415"
+          },
+          "renderPipeline": "v3-single-pass",
+          "photoOrder": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9
+          ],
+          "photoFraming": [
+            {
+              "index": 0,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 84,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 0,
+              "labelEnd": 2.6666666666666665,
+              "zoomPercent": 0
+            },
+            {
+              "index": 1,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 2.6666666666666665,
+              "labelEnd": 5.133333333333334,
+              "zoomPercent": 0
+            },
+            {
+              "index": 2,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 800,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 5.133333333333334,
+              "labelEnd": 7.6,
+              "zoomPercent": 0
+            },
+            {
+              "index": 3,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 7.6,
+              "labelEnd": 10.066666666666666,
+              "zoomPercent": 0
+            },
+            {
+              "index": 4,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 10.066666666666666,
+              "labelEnd": 12.533333333333333,
+              "zoomPercent": 0
+            },
+            {
+              "index": 5,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 800,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 12.533333333333333,
+              "labelEnd": 15,
+              "zoomPercent": 0
+            },
+            {
+              "index": 6,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 15,
+              "labelEnd": 17.466666666666665,
+              "zoomPercent": 0
+            },
+            {
+              "index": 7,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "portrait-or-square",
+              "sourceWidth": 900,
+              "sourceHeight": 1400,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 17.466666666666665,
+              "labelEnd": 19.933333333333334,
+              "zoomPercent": 0
+            },
+            {
+              "index": 8,
+              "fit": "cover",
+              "background": "photo",
+              "fitReason": "bounded-landscape-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 800,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 19.933333333333334,
+              "labelEnd": 22.4,
+              "zoomPercent": 0
+            },
+            {
+              "index": 9,
+              "fit": "contain",
+              "background": "same-image-blur",
+              "fitReason": "excessive-crop",
+              "sourceWidth": 1200,
+              "sourceHeight": 1080,
+              "cropPercent": 0,
+              "width": 1080,
+              "height": 720,
+              "frames": 83,
+              "direction": "in",
+              "motion": "static",
+              "labelStart": 22.4,
+              "labelEnd": 25,
+              "zoomPercent": 0
+            }
+          ],
+          "newsRenderStyle": "v3-fast",
+          "captionTiming": "estimated",
+          "captionRuntimeExecuted": true
+        },
+        {
+          "name": "logo-and-looped-music",
+          "type": "timeline",
+          "passed": true,
+          "elapsedMs": 2786,
+          "output": "TIMELINE.mp4",
+          "metadata": {
+            "kind": "video",
+            "duration": 5,
+            "width": 480,
+            "height": 854,
+            "fps": 30,
+            "hasAudio": true,
+            "videoCodec": "h264",
+            "audioCodec": "aac",
+            "bytes": 173584
+          },
+          "fullyDecoded": true,
+          "renderDevice": {
+            "encoder": "h264_qsv",
+            "gpu": true,
+            "name": "Intel(R) UHD Graphics",
+            "driver": "27.20.100.9415"
+          }
+        }
+      ],
+      "visualReview": {
+        "passed": true,
+        "checked": [
+          "V4 hero/MC/headline/captions/footer",
+          "CPU/GPU frame layout",
+          "timeline logo and text"
+        ],
+        "syntheticMediaOnly": true
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "Viral.Studio.1.0.0.exe",
+      "bytes": 323352538,
+      "sha256": "6c94728ec4a45e3c8ad8cf9bc433c3d89e6a255c5d2685780d1dbe970acf3f39"
+    },
+    {
+      "name": "Viral.Studio.Setup.1.0.0.exe",
+      "bytes": 323614607,
+      "sha256": "e3bcfad7b9f62ab377d6aa933f354cb490180474e19abc71b6271a3f18748685"
+    },
+    {
+      "name": "Viral.Studio.Setup.1.0.0.exe.blockmap",
+      "bytes": 337904,
+      "sha256": "6211e84fa174684c67d6b9bd03610c49514931285651e006312f5e91ae2d590e"
+    }
+  ],
+  "externalProviderGeneration": false,
+  "testPublishing": false,
+  "limitations": [
+    "No clean Windows VM install/uninstall validation for this release.",
+    "GPU diagnostic covers NVIDIA NVENC on the recorded hardware; AMD AMF and Intel QSV were not retested with the 1.0.0 package.",
+    "Provider/browser fixtures do not guarantee future third-party UI or API behavior.",
+    "Windows executables are unsigned."
+  ],
+  "privacy": {
+    "userWorkspacesBundled": false,
+    "machineAccessDetailsPublished": false,
+    "privateOperationalCheckpointsPublished": false
+  }
+}

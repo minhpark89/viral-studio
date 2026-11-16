@@ -1,4 +1,5 @@
 import test from "node:test";
+import { autoScheduleDailyPageGroups } from '../server/social.js';
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -106,6 +107,17 @@ test("editing during authentication blocks stale publication before any external
   const f=await fixture(t,{beforeProbe:store=>{if(!changed){changed=true;store.state.socialPosts[0].revision++;}}});
   await assert.rejects(f.service.publish(f.post.id,{revision:1}),error=>error.code==="STALE_REVISION");
   assert.equal(f.calls.filter(call=>call.url==="/admin/api/v1/posts").length,0);
+});
+
+test('the daily scheduler waits through website authentication and upload before assigning the Page',async t=>{
+  let checks=0;
+  const verify=store=>{checks++;assert.equal(store.websitePublishing.size,1);assert.equal(autoScheduleDailyPageGroups(store,{nowValue:Date.parse('2026-11-16T08:00:00Z')}).scheduled.length,0);};
+  const f=await fixture(t,{beforeProbe:verify,onCreate:verify});
+  const project=f.store.createProject('Website scheduling'),media=f.store.add('media',{projectId:project.id,kind:'video',generated:true,mediaType:'news-video'}),page=f.store.add('socialPages',{externalId:'123456',archived:false});
+  Object.assign(f.post,{projectId:project.id,mediaIds:[media.id],firstComment:'Read https://news.example'});
+  f.store.state.settings.meta.pageGroups=[{id:'daily',pageIds:[page.externalId],scheduleConfig:{enabled:true,autoPublish:true,perPageDaily:true,times:['16:00'],timezone:'Asia/Ho_Chi_Minh',staggerMinutes:0}}];
+  await f.service.publish(f.post.id,{revision:f.post.revision});assert.ok(checks>=2);assert.equal(f.store.websitePublishing.size,0);
+  const result=autoScheduleDailyPageGroups(f.store,{nowValue:Date.parse('2026-11-16T08:00:00Z')});assert.equal(result.scheduled.length,1);assert.ok(result.scheduled[0].firstComment.includes(result.scheduled[0].website.url));
 });
 
 test("unknown create result cannot be resubmitted automatically",async t=>{

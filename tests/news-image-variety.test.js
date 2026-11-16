@@ -49,10 +49,49 @@ test('additional searches require literal source subjects and reject attribution
   assert.deepEqual(queries,['Qeshm Island']);
 });
 
+test('one malformed image subject cannot erase valid subjects, including a two-letter country',async()=>{
+  const research={headline:'UK airport update',articles:[{title:'UK airport update',summary:'Norfolk Airport and London were named.',source:'BBC'}]};
+  const queries=await additionalNewsImageQueries({},research,{narration:'UK airport update'},[],{llm:async()=>({subjects:[{name:'X',kind:'place'},{name:'UK',kind:'place'},{name:'Norfolk Airport',kind:'place'},{name:'Paris',kind:'place'}]})});
+  assert.deepEqual(queries,['UK','Norfolk Airport']);
+});
+
+test('additional image subjects can be grounded in the retrieved full article, not only its RSS summary', async () => {
+ const research = { headline: 'Airport equipment report', articles: [{ title: 'Airport equipment report', summary: 'An update was issued.', text: 'The full report names Morgan Rivera and Norfolk International Airport.', source: 'City News' }] };
+ const queries = await additionalNewsImageQueries({}, research, {}, [], { llm: async (_store, _prompt, input) => {
+  assert.match(input.articles[0].text, /Morgan Rivera/);
+  return { subjects: [{ name: 'Morgan Rivera', kind: 'person' }, { name: 'Norfolk International Airport', kind: 'place' }, { name: 'Heathrow Airport', kind: 'place' }] };
+ } });
+ assert.deepEqual(queries, ['Morgan Rivera', 'Norfolk International Airport']);
+});
+
 test('a named island does not justify an unnamed airport, jet or hospital in an attack report',async()=>{
   const candidates=[{id:'airport',title:'Qeshm International Airport'},{id:'jet',title:'Qeshm Air Avro RJ100'},{id:'hospital',title:'Qeshm hospital'},{id:'coast',title:'Qeshm Island coastline'}];
   const result=await rankNewsImages({}, {headline:'US strikes Qeshm Island',script:'The report does not identify the targets.'},candidates,{llm:async(_store,_prompt,input)=>({selectedImageIds:input.candidates.map(image=>image.id)})});
   assert.deepEqual(result.map(image=>image.id),['coast']);
+});
+
+test('location matches cannot approve bodega cats or a diocese map for unrelated news',async()=>{
+  const candidates=[
+    {id:'cat',title:'Cookie The Bodega Cat.jpg',description:'A bodega cat in New York City'},
+    {id:'cat2',title:'Bodega cat at Heavenly Market IV, East Harlem, New York.jpg'},
+    {id:'diocese',title:'Roman Catholic Diocese of Tapachula in Mexico.jpg'},
+    {id:'store',title:'New York grocery store interior.jpg'},
+    {id:'city',title:'Tapachula city panorama.jpg'},
+  ];
+  const decisions=[];
+  const result=await rankNewsImages({}, {headline:'New York stores get more time for SNAP rules; migration report names Tapachula'},candidates,{onDecision:value=>decisions.push(value),llm:async(_store,_prompt,input)=>({selectedImageIds:input.candidates.map(image=>image.id)})});
+  assert.deepEqual(result.map(image=>image.id),['store','city']);
+  assert.deepEqual(decisions.filter(item=>item.reason==='unmentioned-subject').map(item=>item.id),['cat','cat2','diocese']);
+});
+
+test('animal and religious subjects remain valid when supported by the retrieved article',async()=>{
+  for(const [candidate,text]of [
+    [{id:'cat',title:'Cookie The Bodega Cat.jpg'},'The new program protects bodega cats in New York.'],
+    [{id:'diocese',title:'Roman Catholic Diocese of Tapachula in Mexico.jpg'},'The Catholic bishop spoke about the Diocese of Tapachula.'],
+  ]){
+    const result=await rankNewsImages({}, {headline:'City update',articles:[{title:'City update',text}]},[candidate],{llm:async(_store,_prompt,input)=>({selectedImageIds:input.candidates.map(image=>image.id)})});
+    assert.deepEqual(result.map(image=>image.id),[candidate.id]);
+  }
 });
 
 test('decoded fingerprints detect resized JPEG copies without merging a different scene',async t=>{
@@ -92,7 +131,7 @@ test('a short grounded fallback query fills sparse event results with labeled co
   const queries=[];
   const f=await fixture(t,{imageSearch:async names=>{queries.push(names);return {images:names.includes('Qeshm Island')?Array.from({length:8},(_,i)=>({id:String(i),title:'Qeshm Island view '+i,imageUrl:`https://images.test/${i}.jpg`})):[],warnings:[]};}});
   const result=await f.service.prepareNewsMedia(f.batch,{projectId:f.project.id},f.research,{headline:f.research.headline,narration:'Qeshm Island update',imageQueries:['Qeshm Island attacks scene']},async(_store,_prompt,input)=>input.candidates?{selectedImageIds:input.candidates.map(image=>image.id)}:{subjects:[{name:'Qeshm Island',kind:'place'}]});
-  assert.deepEqual(queries,[['Qeshm Island attacks scene'],['Qeshm Island']]);assert.equal(result.imageMediaIds.length,8);assert.equal(result.visualMode,'illustration');assert.equal(f.batch.newsMediaByResearch[f.research.id].revision,6);
+  assert.deepEqual(queries,[['Qeshm Island attacks scene'],['Qeshm Island']]);assert.equal(result.imageMediaIds.length,8);assert.equal(result.visualMode,'illustration');assert.equal(f.batch.newsMediaByResearch[f.research.id].revision,7);
 });
 
 test('LLM output budget is bounded and does not change the default for narration',async()=>{

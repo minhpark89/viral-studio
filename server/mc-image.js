@@ -217,7 +217,14 @@ export async function ensureNewsMcImage(store, session, job, account, plan, sign
   const existingId = job.payload.avatarMediaId || account.avatarMediaId;
   const existing = existingId ? store.state.media.find((media) => media.id === existingId && media.kind === "image") : null;
   const reusable = existing && ["highlight-endpoint", "dreamface-image"].includes(account.avatarSource);
-  if (reusable) return existing;
+  if (reusable) {
+    await fs.access(existing.file);
+    // Persist a profile default just like a newly generated or explicitly
+    // selected still, so rotating profiles on retry keeps this job's host.
+    job.payload = { ...job.payload, avatarMediaId: existing.id };
+    store.patch('jobs', job.id, { payload: job.payload });
+    return existing;
+  }
 
   const config = await resolveMcImageConfig(store);
   const failures = [];

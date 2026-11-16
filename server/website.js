@@ -35,6 +35,9 @@ function verifiedArticlePage(html, url, title) {
 export class WebsiteService {
   constructor(store,{requestFactory=request,sources=websiteImportSources}={}) {
     this.store=store;this.requestFactory=requestFactory;this.sources=sources;this.secrets=new SecretStore(store.root);this.pending=new Set();
+    // Scheduling must wait through login, upload and URL verification. This
+    // process-local lock cannot be stranded in the database after a restart.
+    store.websitePublishing = this.pending;
     store.state.settings.website ||= {activeId:"",connections:[]};
   }
   save(input) {

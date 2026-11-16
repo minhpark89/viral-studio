@@ -15,7 +15,7 @@
 
 ## Kiểm chứng trước phát hành
 
-1. `npm ci`; `npm run setup:captions`; `npm run setup:windows`. Dùng Node >=22.12. Kiểm SHA-256 và Authenticode Microsoft của VC++ installer. Không dùng DLL tải rời không rõ nguồn.
+1. `npm ci`; `npm run setup:captions`; `npm run setup:windows`. Dùng Node 24.22.2 theo `.node-version` (engine tối thiểu 22.19.0). Kiểm SHA-256 và Authenticode Microsoft của VC++ installer. Không dùng DLL tải rời không rõ nguồn.
 2. Chạy test phù hợp với thay đổi; release thống nhất chạy `npm test`. Khi chạm frontend, chạy bộ browser liên quan. Khi chạm News/Product chung, chạy cả packaged `node tests/news-studio-desktop.mjs` và `node tests/product-research-desktop.mjs`.
 3. `npm run pack:release` (script dùng `--publish never`). Chạy packaged CPU diagnostic, và GPU diagnostic trên máy GPU thật nếu có; lưu `report.json`/`RESULT.txt`. Khi sửa hình ảnh, xem frame/video thật và kiểm toàn bộ decode, không chỉ exit code.
 4. Nếu nâng cấp máy người dùng: kiểm jobs/batches idle, đóng app bình thường, backup state sau khi app flush, rồi thay EXE. Portable có tiến trình wrapper còn dọn thư mục tạm sau khi server đã đóng: đợi wrapper nhả EXE trước khi thay, không chỉ đợi mất `.server-instance.json`. Nếu file còn bị khóa, giữ backup và thử lại sau khi wrapper thoát; không đè snapshot ban đầu. So sánh ID các collection và cấu hình cần giữ qua API/state đã lọc; không in key/cookie. Không dùng Force kill để vượt qua job đang chạy.
@@ -31,3 +31,7 @@ Push commit lên main bằng fast-forward, tạo tag mới duy nhất. Tạo dra
 Sau publish, kiểm tag trỏ đúng commit, release không còn draft, version và kích thước/hash assets khớp manifest. Tải lại ít nhất Portable và đối chiếu SHA-256. Ghi URL release/checkpoint vào bàn giao và marker version máy đã nâng cấp. Không đổi binary dưới tag/version đã công bố; sửa tiếp bằng version mới.
 
 Phát hành phần mềm lên GitHub không đồng nghĩa đăng video lên website/social. Bài render kiểm chứng dùng workspace riêng, tắt automation, không gọi provider trả phí nếu đã có media/receipt có thể tái sử dụng.
+
+## Tài liệu công khai và vận hành riêng
+
+Release notes, README, validation và checkpoint công khai không chứa tên máy người dùng, địa chỉ truy cập, tài khoản đăng nhập hoặc đường dẫn backup riêng. Lưu thông tin đó trong checkpoint nội bộ ngoài Git, có source tag/commit và mapping với EXE đang dùng. Giữ checkpoint riêng trên workspace bảo trì và máy được quản lý khi cần; không đính kèm vào assets.

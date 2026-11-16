@@ -6,8 +6,10 @@ import { providers } from "../../shared/contracts.js";
 import { importMedia, probe, binary, runProcess } from "../media.js";
 import { StudioError } from "../store.js";
 import { ensureNewsMcImage } from "../mc-image.js";
+import { selectNewsAvatarTextTab, fillNewsAvatarNarration, canRetryNewsEditor } from '../news-avatar-editor.js';
 import { submitNewsAvatar, waitForNewsAvatar } from "../dreamface-news-result.js";
 import { captureNewsFailure } from '../dreamface-diagnostics.js';
+import { traceDreamFaceSession } from '../dreamface-session-trace.js';
 import { inspectDreamFaceQuota } from '../dreamface-quota.js';
 import { generateProductVideo } from '../dreamface-product.js';
 import { ensureDreamFaceCredentials, getDreamFaceCredentials, getDreamFaceProxy, parseProxy } from "../dreamface-accounts.js";
@@ -67,17 +69,17 @@ function generateButtonLocators(page) {
   // DreamFace can prefix the credit cost in the submit label, for
   // example "2 Generate". The old exact "Generate" selector missed that
   // valid button and made a connected profile look unavailable.
-  const label = /^(?:\d+\s+)?Generate(?:\s+\d+)?$/i;
+  // Keep one live locator across the paid/free label change that happens
+  // when the selected Avatar and its daily allowance finish loading.
+  const label = /^(?:(?:\d+\s+)?Generate(?:\s+\d+)?|(?:\d+\s+)?Free Daily)$/i;
   return [
     page.getByRole("button", { name: label }),
     page.locator("button:visible").filter({ hasText: label }),
     page.getByRole("button", { name: /Generate.*Avatar|Create.*Avatar/i }),
-    page.getByRole("button", { name: /^(?:\d+\s+)?Free Daily$/i }),
-    page.locator("button:visible").filter({ hasText: /^(?:\d+\s+)?Free Daily$/i }),
   ];
 }
 
-async function findGenerateButton(page) {
+export async function findGenerateButton(page) {
   return firstVisible(generateButtonLocators(page));
 }
 
@@ -98,13 +100,19 @@ export async function selectDreamFaceRadio(page, menu, preferred, fallbackPatter
     const available = options.filter((item) => !item.disabled);
     const choice = preferred.map((label) => available.find((item) => item.label === label)).find(Boolean)
       || available.find((item) => wantedLabel(item.label));
-    const clickTimeout = () => Math.max(1, Math.min(1500, deadline - Date.now()));
+    // Saving/broadcasting a large workspace can delay Playwright's host-side
+    // protocol work for more than 1.5 seconds. Leave time for the action to
+    // finish while retaining a bounded retry for a replaced/hidden menu.
+    const clickTimeout = () => Math.max(1, Math.min(5000, deadline - Date.now()));
     try {
       if (choice) {
         // Image/model hydration can replace or reorder this menu between the
         // read and click. Resolve by name each time; an old numeric index can
         // target a different option or disappear entirely.
         const radio = page.getByRole("radio", { name: choice.label, exact: true }).first();
+        // A hidden replacement is already observable; reopen it immediately
+        // instead of spending the longer action budget waiting for visibility.
+        if (!await radio.isVisible().catch(() => false)) await menu.click({ timeout: clickTimeout() });
         await radio.click({ timeout: clickTimeout() });
         // Some versions close the menu after selection. Reopen only to verify
         // the selected value; no Generate/paid submission occurs in this loop.
@@ -987,7 +995,7 @@ export class DreamFaceProvider {
     return directory;
   }
 
-  async open(account, { visible = false } = {}) {
+  async open(account, { visible = false, reason = 'session', jobId = null } = {}) {
     const id = accountId(account);
     const prior = this.opening.get(id) || Promise.resolve();
     const pending = prior.catch(() => {}).then(async () => {
@@ -1005,6 +1013,7 @@ export class DreamFaceProvider {
         const page = closed ? await existing.context.newPage() : existing.page;
         existing.page = page;
         if (!visible) await hideHeadlessUserAgent(existing.context, page);
+        await traceDreamFaceSession(this.store, { event: 'reuse', profileId: id, visible, reason, jobId });
         return existing;
       }
       if (existing) {
@@ -1015,6 +1024,7 @@ export class DreamFaceProvider {
       const proxy = validateProxy(getDreamFaceProxy(this.store, account));
       const releaseStorage = await profileStorage(this.store).beginSession(id);
       let context;
+      await traceDreamFaceSession(this.store, { event: 'launch', profileId: id, visible, reason, jobId });
       try { context = await this.browserType.launchPersistentContext(directory, {
         headless: !visible,
         executablePath: executableFrom(this.store, this.executablePath),
@@ -1031,8 +1041,13 @@ export class DreamFaceProvider {
           username: proxy.username || undefined,
           password: proxy.password || undefined,
         } : undefined,
-      }); } catch (error) { releaseStorage(); throw error; }
+      }); } catch (error) {
+        releaseStorage();
+        await traceDreamFaceSession(this.store, { event: 'launch-failed', profileId: id, visible, reason, jobId });
+        throw error;
+      }
       context.on?.('close', releaseStorage);
+      context.on?.('close', () => { void traceDreamFaceSession(this.store, { event: 'close', profileId: id, visible, reason, jobId }); });
       try {
       const page = context.pages()[0] || await context.newPage();
       page.setDefaultTimeout(12000);
@@ -1111,7 +1126,7 @@ export class DreamFaceProvider {
     if (existing && !existing.visible) {
       await this.close(account).catch(() => {});
     }
-    const session = existing?.visible&&!existing.page.isClosed()?existing:await this.open(account, { visible: false });
+    const session = existing?.visible&&!existing.page.isClosed()?existing:await this.open(account, { visible: false, reason: 'check-session' });
     const result = await this.inspect(account, session, { navigate: !existing?.visible });
     const checkedAt = new Date().toISOString();
     // Keep the row badges honest: a confirmed session must not keep showing an
@@ -1131,7 +1146,7 @@ export class DreamFaceProvider {
       try{return await inspectDreamFaceQuota(page,{selectRadio:selectDreamFaceRadio,signal});}
       finally{await page.close().catch(()=>{});}
     }
-    const session=await this.open(account,{visible:false});
+    const session=await this.open(account,{visible:false,reason:'quota'});
     return inspectDreamFaceQuota(session.page,{selectRadio:selectDreamFaceRadio,signal});
   }
 
@@ -1401,7 +1416,7 @@ export class DreamFaceProvider {
   }
 
   async solveAccountCaptcha(account, { visible = false, onProgress, waitMs = 90000 } = {}) {
-    const session = await this.open(account, { visible });
+    const session = await this.open(account, { visible, reason: visible ? 'manual-login' : 'background-login' });
     const page = session.page;
     const settings = this.captchaSettings();
     const canSolve = settings.enabled && settings.autoSolveDreamFace && Boolean(settings.apiKey);
@@ -1679,11 +1694,9 @@ export class DreamFaceProvider {
   }
 
   async checkDreamFaceSignup(account) {
-    const existing = this.sessions.get(account.id);
-    const session = existing?.visible && !existing.page.isClosed()
-      ? existing
-      : await this.open(account, { visible: true });
-    return this.inspect(account, session, { navigate: !existing?.visible });
+    // A session check is a read operation. Preserve a login window the user
+    // already opened; otherwise check headlessly and respect the busy guard.
+    return this.check(account);
   }
 
   // Compatibility aliases for older saved UI actions. These actions now stay
@@ -1698,14 +1711,14 @@ export class DreamFaceProvider {
 
   async importCookies(account, input) {
     const cookies = parseDreamFaceCookies(input);
-    const session = await this.open(account, { visible: false });
+    const session = await this.open(account, { visible: false, reason: 'cookie-import' });
     await session.context.addCookies(cookies);
     const result = await this.inspect(account, session, { navigate: true });
     return { ...result, cookieCount: cookies.length };
   }
 
   async withAuthenticatedSession(account, action) {
-    const session = await this.open(account, { visible: false });
+    const session = await this.open(account, { visible: false, reason: 'authenticated-action' });
     const state = await this.inspect(account, session, { navigate: true });
     if (state.status !== "ready") throw providerError(state.message, state.status === "verification" ? "VERIFICATION" : "NEEDS_LOGIN", 401);
     return action(session);
@@ -1718,14 +1731,21 @@ export class DreamFaceProvider {
       try {
         return await this.generateNewsAvatarOnce(store, job, account, signal, update);
       } catch (error) {
-        const closed = /target page|context.*closed|browser.*closed|page has been closed|page\.goto/i.test(String(error?.message || ""));
-        if (!closed || attempt > 0) throw error;
+        signal.throwIfAborted();
+        const message = String(error?.message || '');
+        const closed = /target page|context.*closed|browser.*closed|page has been closed/i.test(message);
+        const preflightNetwork = error.code === 'PROVIDER_PREFLIGHT_NETWORK' && !job.payload?.newsAvatarRequest?.submittedAt;
+        const navigationNetwork = /page\.(?:goto|reload):.*(?:\bERR_(?:ABORTED|NETWORK_CHANGED|CONNECTION_(?:RESET|CLOSED|TIMED_OUT)|TIMED_OUT|NAME_NOT_RESOLVED|INTERNET_DISCONNECTED|EMPTY_RESPONSE)\b|\bTimeout\s+\d+ms\s+exceeded\b)/i.test(message);
+        const editorNotReady = canRetryNewsEditor(job, error);
+        if ((!closed && !preflightNetwork && !navigationNetwork && !editorNotReady) || attempt > 0) throw error;
         const id = accountId(account);
         const priorSession = this.sessions.get(id);
         this.sessions.delete(id);
         try { await priorSession?.context?.close?.(); } catch {}
         update({ status: "retrying", workflow: "avatar-news", retry: 1, progress: 1 });
-        store.log(job, "DreamFace browser session closed unexpectedly; reopened the profile and retried once.");
+        store.log(job, editorNotReady
+          ? 'DreamFace chưa sẵn sàng nhận ảnh/lời dẫn; mở lại profile ẩn một lần trước khi gửi MC, giữ nguyên ảnh và lời dẫn.'
+          : "DreamFace connection was interrupted; reopening the hidden profile once, keeping the existing image and MC receipt.");
       }
     }
     throw providerError("DreamFace presenter could not be reopened.", "PROVIDER_NOT_READY");
@@ -1738,7 +1758,7 @@ export class DreamFaceProvider {
   }
 
   async recoverExistingNewsAvatar(store, job, account, signal, update) {
-    const session = await this.open(account, { visible: false });
+    const session = await this.open(account, { visible: false, reason: 'news-recover', jobId: job.id });
     const state = await this.inspect(account, session, { navigate: true });
     if (state.status !== "ready") throw providerError(state.message, state.status === "verification" ? "VERIFICATION" : "NEEDS_LOGIN", 401);
     return waitForNewsAvatar({ page: session.page, narration: job.payload.newsPlan?.narration,
@@ -1751,7 +1771,7 @@ export class DreamFaceProvider {
   async generateNewsAvatarOnce(store, job, account, signal, update) {
     if (job.payload.newsAvatarRequest?.id || job.payload.recoverSubmitted) return this.recoverExistingNewsAvatar(store, job, account, signal, update);
     if (job.payload.newsAvatarRequest?.submittedAt && !job.payload.newsAvatarRequest.rejected) throw providerError("The previous MC submission is unconfirmed. Check Creations before submitting again.", "PROVIDER_SUBMISSION_UNCONFIRMED");
-    const session = await this.open(account, { visible: false });
+    const session = await this.open(account, { visible: false, reason: 'news-generate', jobId: job.id });
     const state = await this.inspect(account, session, { navigate: true });
     if (state.status !== "ready") {
       throw providerError(state.message, state.status === "verification" ? "VERIFICATION" : "NEEDS_LOGIN", 401);
@@ -1769,20 +1789,17 @@ export class DreamFaceProvider {
     await page.getByText("More", { exact: true }).first().waitFor({ state: "visible", timeout: 30000 });
     await page.waitForTimeout(1800);
     // A profile can remember its previous Audio tab on another PC/session.
-    const textTab = page.getByText('Text', { exact: true }).first();
-    if (await textTab.isVisible().catch(() => false)) await textTab.click();
-    await page.getByPlaceholder("Type or paste text here").waitFor({ state: "visible", timeout: 30000 });
+    await selectNewsAvatarTextTab(page, { signal });
     // Upload the saved still first. This unlocks the Avatar 3.0 family in the
     // current DreamFace UI and makes the selected effect explicit and testable.
     const imageInput = page.locator('input[type="file"]').first();
     if (!await imageInput.count()) throw providerError("DreamFace Avatar image upload is unavailable.", "PROVIDER_NOT_READY");
-    await imageInput.setInputFiles(avatarMedia.file);
+    await imageInput.setInputFiles(avatarMedia.file, { timeout: 30000 });
     await page.waitForTimeout(1800);
 
-    const prompt = page.getByPlaceholder("Type or paste text here");
     const narration = String(plan.narration || '').trim();
     if (!narration || narration.length > 500) throw providerError('The news narration must fit within 500 characters including the full CTA.', 'NEWS_SCRIPT_TOO_LONG', 422);
-    await prompt.fill(narration);
+    await fillNewsAvatarNarration(page, narration, { signal });
     const effect = page.getByRole("button", { name: /Animate Effect/i }).first();
     if (!await effect.isVisible().catch(() => false)) throw providerError("DreamFace Animate Effect is unavailable.", "PROVIDER_NOT_READY");
     const selectedEffect = await selectDreamFaceRadio(page, effect, ["Avatar 3.0 Fast", "Avatar 3.0", "Avatar 2.0", "Avatar"], /avatar/i, { signal });
@@ -1808,9 +1825,7 @@ export class DreamFaceProvider {
     update({ quota: (await generate.innerText()).trim() });
     // Model/image hydration can replace a previously filled composer. Check
     // the exact narration immediately before submission, after all controls.
-    if (await prompt.inputValue() !== narration) await prompt.fill(narration);
-    await page.waitForTimeout(250);
-    if (await prompt.inputValue() !== narration) throw providerError("DreamFace reset the news narration before submission. Please retry.", "PROVIDER_NOT_READY");
+    await fillNewsAvatarNarration(page, narration, { signal });
     update({ status: "submitting", workflow: "avatar-news", progress: 5 });
     const receipt = await submitNewsAvatar({ page, narration, profileId: accountId(account), signal,
       onFailure:(error, signals)=>captureNewsFailure(store, job, page, error, signals),
@@ -1840,7 +1855,7 @@ export class DreamFaceProvider {
     if (!["text","reference"].includes(job.payload.mode)) {
       throw providerError("DreamFace supports text and reference images for this workflow.", "UNSUPPORTED_MODE");
     }
-    const session = await this.open(account, { visible: false });
+    const session = await this.open(account, { visible: false, reason: 'video-generate', jobId: job.id });
     const state = await this.inspect(account, session, { navigate: true });
     if (state.status !== "ready") {
       throw providerError(state.message, state.status === "verification" ? "VERIFICATION" : "NEEDS_LOGIN", 401);

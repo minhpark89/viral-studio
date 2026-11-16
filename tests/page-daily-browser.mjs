@@ -1,0 +1,42 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { chromium } from 'playwright';
+import { Store } from '../server/store.js';
+import { startServer } from '../server/index.js';
+
+const root=path.resolve('.verification',`page-daily-ui-${Date.now()}`),seed=new Store(path.join(root,'data')),project=seed.createProject('Daily Pages QA');
+const meta=seed.state.settings.meta;
+meta.enabled=true;meta.tokens=Array.from({length:10},(_,i)=>({id:`t${i}`,name:`Token ${i}`,token:`synthetic-${i}`,status:'ACTIVE'}));meta.activeTokenId='t0';meta.accessToken='synthetic-0';
+meta.pages=Array.from({length:30},(_,i)=>({id:String(100000+i),name:`Page ${i+1}`,accessToken:`synthetic-page-${i}`,tokenBindings:{[`t${Math.floor(i/3)}`]:{pageToken:`synthetic-page-${i}`,status:'VERIFIED'}}}));
+seed.state.socialPages=meta.pages.map(page=>({id:randomUUID(),externalId:page.id,name:page.name,archived:false,revision:1}));
+meta.tokenGroups=[{id:'pool',name:'10 token',tokenIds:meta.tokens.map(t=>t.id),pageIds:meta.pages.map(p=>p.id),pageTokenBindings:Object.fromEntries(meta.pages.map((p,i)=>[p.id,`t${Math.floor(i/3)}`]))}];
+meta.pageGroups=[{id:'group',name:'Daily 30',pageIds:meta.pages.map(p=>p.id),scheduleConfig:{times:['23:00'],enabled:false,autoPublish:false,timezone:'Asia/Ho_Chi_Minh',tokenGroupId:'pool',staggerMinutes:0,sameTokenMinutes:0,crossTokenMinutes:0,samePageMinutes:0,dailyLimit:0}}];
+seed.state.media=Array.from({length:35},(_,i)=>({id:randomUUID(),projectId:project.id,kind:'video',generated:true,mediaType:'news-video',name:`News ${i}`}));
+seed.state.socialPosts=seed.state.media.map(m=>({id:randomUUID(),projectId:project.id,mediaIds:[m.id],contentType:'news',title:m.name,status:'draft',caption:'Caption',articleBody:'Article',firstComment:'https://example.invalid/story',revision:1,createdAt:new Date().toISOString()}));seed.save();
+let externalAttempts=0;const originalFetch=globalThis.fetch;
+globalThis.fetch=async(input,init)=>{const url=new URL(typeof input==='string'||input instanceof URL?input:input.url);if(['127.0.0.1','localhost'].includes(url.hostname))return originalFetch(input,init);externalAttempts++;throw Error('External requests blocked in QA');};
+const studio=await startServer({port:0,dataDir:seed.root}),browser=await chromium.launch({headless:true}),page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
+page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(15000);
+try {
+  await page.route('**/*',route=>{const url=new URL(route.request().url());if(url.protocol==='data:'||['127.0.0.1','localhost'].includes(url.hostname))return route.continue();externalAttempts++;return route.abort();});
+  await page.goto(studio.address);await page.getByRole('button',{name:'Channels & Tokens',exact:true}).click();await page.getByRole('tab',{name:'Nhóm phân phối',exact:true}).click();
+  await page.getByRole('button',{name:'Sửa nhóm & lịch',exact:true}).click();const dialog=page.getByRole('dialog');
+  assert.equal(await dialog.getByLabel('Cách chia Content mỗi ngày',{exact:true}).inputValue(),'group');
+  await dialog.getByLabel('Cách chia Content mỗi ngày',{exact:true}).selectOption('page');
+  await dialog.getByLabel('Giờ bắt đầu mỗi ngày',{exact:true}).fill('23:00');
+  assert.equal(await dialog.getByLabel('Giới hạn video/ngày cho cả nhóm',{exact:true}).count(),0);
+  await dialog.getByLabel('Bật Auto Post khi có nội dung sẵn sàng trong kho',{exact:true}).check();
+  await dialog.getByRole('button',{name:'Lưu thay đổi',exact:true}).click();await dialog.waitFor({state:'hidden'});
+  const progress=page.getByLabel('Tiến độ đăng hôm nay của Daily 30',{exact:true});await progress.getByText('0 đã đăng · 30 đã xếp lịch · 0 chờ Content',{exact:true}).waitFor();
+  assert.equal(studio.store.state.socialPosts.filter(p=>p.status==='scheduled').length,30);assert.equal(studio.store.state.socialPosts.filter(p=>p.status==='draft').length,5);
+  assert.equal(new Set(studio.store.state.socialPosts.filter(p=>p.status==='scheduled').map(p=>p.pageId)).size,30);
+  await page.screenshot({path:path.join(root,'daily-30-pages.png'),fullPage:true});
+  await page.getByRole('button',{name:'Sửa nhóm & lịch',exact:true}).click();assert.equal(await dialog.getByLabel('Cách chia Content mỗi ngày',{exact:true}).inputValue(),'page');assert.equal(await dialog.getByLabel('Giờ bắt đầu mỗi ngày',{exact:true}).inputValue(),'23:00');
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(root,'daily-mode-mobile.png'),fullPage:true});
+  await dialog.getByRole('button',{name:'Hủy',exact:true}).click();await page.setViewportSize({width:1440,height:1000});
+  await page.getByRole('button',{name:'Tắt Auto Post',exact:true}).click();await page.getByRole('button',{name:'Bật Auto Post',exact:true}).waitFor();assert.equal(studio.store.state.settings.meta.pageGroups[0].scheduleConfig.enabled,false);assert.equal(studio.store.state.socialPosts.filter(p=>p.status==='scheduled').length,30);
+  assert.deepEqual(errors,[]);assert.equal(externalAttempts,0);
+  const report={passed:true,root,version:'0.15.20',pages:30,scheduled:30,remainingStock:5,modePersists:true,progressVisible:true,mobileFits:true,disableKeepsQueue:true,externalAttempts,errors};fs.writeFileSync(path.join(root,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
+} finally {await browser.close();await studio.close();globalThis.fetch=originalFetch;}

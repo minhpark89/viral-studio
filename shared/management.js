@@ -1,14 +1,16 @@
 export const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 export const lifecycleLabels = { active:'Đang dùng', review:'Chờ xử lý', archived:'Lưu trữ', deleted:'Thùng rác' };
-export const healthLabels = { usable:'Truy cập tốt', published:'Đã đăng được', identity:'Cần xác minh danh tính', restricted:'Bị hạn chế', unpublished:'Không công khai', token:'Thiếu / lỗi token', unchecked:'Chưa kiểm tra' };
+export const healthLabels = { usable:'Truy cập tốt', published:'Đã đăng được', identity:'Cần xác minh danh tính', restricted:'Bị hạn chế', unpublished:'Không công khai', token:'Thiếu / lỗi token', check_error:'Kiểm tra chưa đạt', unchecked:'Chưa kiểm tra' };
 export const postLabels = { warehouse:'Đã trả về kho', draft:'Bản nháp', ready:'Sẵn sàng', scheduled:'Đã hẹn giờ', publishing:'Đang đăng', error:'Cần xử lý', comment_error:'Lỗi bình luận', published:'Lịch sử đã đăng', incomplete:'Thiếu nội dung', archived:'Lưu trữ', deleted:'Thùng rác' };
 
 export function pageHealth(page) {
   const health = page.publishingHealth || {};
   if (health.blocked && health.details?.subcode === 4854002) return 'identity';
   if (health.blocked) return 'restricted';
+  if (!page.hasUsableToken) return 'token';
+  if (page.verification?.status === 'error') return ['authentication','permission'].includes(page.verification.details?.kind) ? 'token' : 'check_error';
   if (page.isPublished === false) return 'unpublished';
-  if (!page.hasUsableToken || page.verification?.status === 'error') return 'token';
+  if (page.verification?.status === 'unknown') return 'check_error';
   if (health.lastSucceededAt) return 'published';
   return page.verification?.status === 'passed' ? 'usable' : 'unchecked';
 }

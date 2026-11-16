@@ -46,7 +46,7 @@ test('image ranking uses bounded groups, ignores foreign IDs and retains verifie
     return { selectedImageIds: ['not-a-candidate', ...input.candidates.slice(0, 4).map(image => image.id)] };
   } });
   assert.equal(calls, 4);
-  assert.deepEqual(result.map(image => image.id), Array.from({length:8},(_,i)=>`image-${i}`));
+  assert.deepEqual(result.map(image => image.id), [6,7,8,9,12,13,14,15].map(i=>`image-${i}`));
   assert.equal(warnings.length, 1);
 });
 

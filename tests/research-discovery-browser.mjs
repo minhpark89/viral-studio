@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 import { Store } from '../server/store.js';
 import { startServer } from '../server/index.js';
 
-const root = path.resolve('../.maintenance/release-091-20261104/research-ui');
+const root = path.resolve('.verification/research-discovery-browser');
 await fs.mkdir(root, { recursive: true });
 const seed = new Store(path.join(root, `data-${Date.now()}`));
 seed.createProject('Adaptive Research QA'); seed.state.settings.queuePaused = true; seed.save();
@@ -29,7 +29,7 @@ const errors = [], checks = []; page.on('pageerror', error => errors.push(error.
 const until = async (fn, label) => { for (let i = 0; i < 300; i++) { if (await fn()) return; await page.waitForTimeout(100); } throw Error(`Timeout: ${label}`); };
 try {
   await page.goto(studio.address);
-  await page.getByRole('button', { name: 'Research & News', exact: true }).click();
+  await page.locator('aside nav').getByRole('button', { name: 'News Studio', exact: true }).click();
   await page.getByLabel('Chủ đề cần nghiên cứu', { exact: true }).fill('donal trump wars');
   await page.getByLabel('Số tin muốn research', { exact: true }).fill('50');
   assert.equal(await page.getByLabel('Số tin muốn research', { exact: true }).getAttribute('max'), '1000');
@@ -52,7 +52,10 @@ try {
   await panel.locator('summary').filter({ hasText: 'Gợi ý từ khóa' }).click();
   assert.ok(await panel.locator('.research-keyword-list button').count() > 0);
   await panel.locator('summary').filter({ hasText: 'Đã tìm' }).click();
-  assert.ok(await panel.locator('.research-discovery-details li').count() > 1);
+  assert.equal(await panel.locator('.research-discovery-details li').count(), studio.store.state.researchBatches[0].discovery.queries.length);
+  assert.ok(studio.store.state.researchBatches[0].discovery.searches > 0);
+  assert.equal(studio.store.state.researchBatches[0].discovery.attempt, 2);
+  assert.equal(studio.store.state.researchBatches[0].discovery.addedThisAttempt, 27);
   await page.screenshot({ path: path.join(root, 'completed-50-of-50.png'), fullPage: true });
   await panel.screenshot({ path: path.join(root, 'batch-panel.png') });
   checks.push('Refill preserves 23 saved IDs and completes 50; keywords and actual queries are visible');

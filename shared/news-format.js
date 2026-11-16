@@ -2,10 +2,11 @@ import { z } from 'zod';
 
 export const NEWS_MIN_SECONDS = 15;
 export const NEWS_MAX_IMAGES = 10;
-export const DEFAULT_NEWS_RENDER_STYLE = 'v3';
-export const newsRenderStyleSchema = z.enum(['v3', 'v3-fast', 'classic']);
+export const DEFAULT_NEWS_RENDER_STYLE = 'v4';
+export const newsRenderStyleSchema = z.enum(['v4', 'v3', 'v3-fast', 'classic']);
 export const NEWS_RENDER_STYLES = [
-  { id: 'v3', label: 'V3 chuẩn · mặc định', description: 'Ảnh rõ, MC riêng, chữ đỏ/trắng; zoom nhẹ xen ảnh tĩnh và hòa cảnh mềm.' },
+  { id: 'v4', label: 'V4 bản tin · mặc định', description: 'Ảnh lớn hơn, MC và tiêu đề gọn, phụ đề rõ; giảm khoảng trống dưới video.' },
+  { id: 'v3', label: 'V3 chuẩn', description: 'Ảnh rõ, MC riêng, chữ đỏ/trắng; zoom nhẹ xen ảnh tĩnh và hòa cảnh mềm.' },
   { id: 'v3-fast', label: 'V3 nhanh', description: 'Cùng bố cục V3; ảnh tĩnh và hòa cảnh, ưu tiên tốc độ render.' },
   { id: 'classic', label: 'Kiểu cũ', description: 'Bố cục tin tức trước V3, giữ để dùng lại khi cần.' },
 ];

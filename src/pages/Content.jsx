@@ -20,6 +20,8 @@ import {
 import { api } from "../api.js";
 import { Badge, Button, Empty, Field, Modal, Notice } from "../components.jsx";
 import { isPublishableVideo, isPageAvatar } from "../../shared/output-media.js";
+import { contentVideoInventory, mediaContentType } from "../../shared/content-inventory.js";
+import { ContentVideoInbox } from './ContentVideoInbox.jsx';
 
 const statusNames = {
   draft: "Bản nháp",
@@ -83,41 +85,6 @@ function TypeBadge({ type }) {
   return <span className={`content-type-badge ${type}`}><i />{type === "news" ? "NEWS" : "PRODUCT"}</span>;
 }
 
-function mediaContentType(media) {
-  const type = String(media?.production?.contentType || media?.contentType || media?.mediaType || "").toLowerCase();
-  if (type === "news" || type === "news-video") return "news";
-  return /^news(?:\s|[·-])/i.test(String(media?.name || "")) ? "news" : "product";
-}
-
-function contentWords(value) {
-  return new Set(String(value || "").toLowerCase().replace(/[^a-z0-9À-ỹ]+/gi, " ").split(/\s+/).filter((word) => word.length > 2));
-}
-
-function inferResearchId(media, research) {
-  if (media?.production?.researchId) return media.production.researchId;
-  if (mediaContentType(media) !== "news") return "";
-  const target = contentWords(media?.production?.title || media?.name);
-  let best = { id: "", score: 0 };
-  for (const item of research || []) {
-    const source = [item.headline, item.topic, ...(item.articles || []).slice(0, 5).map((article) => article.title)].join(" ");
-    const score = [...contentWords(source)].filter((word) => target.has(word)).length;
-    if (score > best.score) best = { id: item.id, score };
-  }
-  return best.score >= 2 ? best.id : "";
-}
-
-function contentCoverageKey(value, research) {
-  const type = mediaContentType(value);
-  const researchId = value?.researchId || inferResearchId(value, research);
-  if (researchId) return `${type}:research:${researchId}`;
-  const title = String(value?.production?.title || value?.title || value?.name || "")
-    .replace(/\.mp4$/i, "")
-    .replace(/^News\s*[·-]\s*/i, "")
-    .trim()
-    .toLowerCase();
-  return `${type}:title:${title}`;
-}
-
 function postWorkflowStage(post) {
   if(post.warehouse?.returnedAt)return "returned";
   if (post.contentType === "news") {
@@ -153,7 +120,7 @@ export function ContentPage({ data, project, notify, navigate }) {
 
   useEffect(() => {
     setPages(data.socialPages || []);
-    setPosts((data.socialPosts || []).filter(p=>!p.deletedAt && !p.archivedAt && p.status!=="published"));
+    setPosts(data.socialPosts || []);
   }, [data.socialPages, data.socialPosts]);
 
   useEffect(() => {
@@ -165,44 +132,15 @@ export function ContentPage({ data, project, notify, navigate }) {
     .filter((item) => (item.projectId === project.id || !item.projectId) && ["image", "video"].includes(item.kind) && !isPageAvatar(item, data))
     .slice()
     .sort((left, right) => Number(right.generated) - Number(left.generated) || new Date(right.createdAt || 0) - new Date(left.createdAt || 0)), [data.media, project.id]);
-  const renderedVideos = media.filter((item) => isPublishableVideo(item, data.jobs));
+  const inventory = useMemo(() => contentVideoInventory(data, project.id, posts), [data.media, data.jobs, project.id, posts]);
+  const renderedVideos = inventory.videos;
   const projectResearch = (data.researchResults || []).filter(result => result.projectId === project.id);
-  const unassignedVideos = useMemo(() => {
-    const coverage = new Map();
-    for (const post of posts.filter((item) => item.projectId === project.id)) {
-      const key = contentCoverageKey({ contentType: post.contentType, researchId: post.researchId, title: post.title }, projectResearch);
-      coverage.set(key, (coverage.get(key) || 0) + 1);
-    }
-    return renderedVideos.filter((video) => {
-      if (video.metaPublishedAt || posts.some((post) => post.mediaIds?.includes(video.id))) return false;
-      const key = contentCoverageKey(video, projectResearch);
-      const available = coverage.get(key) || 0;
-      if (available > 0) {
-        coverage.set(key, available - 1);
-        return false;
-      }
-      return true;
-    });
-  }, [posts, project.id, projectResearch, renderedVideos]);
-  const unassignedVideoGroups = useMemo(() => {
-    const groups = new Map();
-    for (const video of unassignedVideos) {
-      const type = mediaContentType(video);
-      const title = String(video.production?.title || video.name || "").replace(/\.mp4$/i, "").replace(/^News\s*[·-]\s*/i, "").trim().toLowerCase();
-      const key = `${type}:${title}`;
-      const group = groups.get(key) || { video, type, count: 0 };
-      group.count += 1;
-      groups.set(key, group);
-    }
-    return [...groups.values()].slice(0, 20);
-  }, [unassignedVideos]);
   const activePages = pages.filter((page) => !page.archived);
-  const projectPosts = posts
-    .filter((post) => post.projectId === project.id)
+  const projectPostItems = posts.filter(post => post.projectId === project.id && !post.deletedAt && !post.archivedAt && post.status !== 'published');
+  const projectPosts = projectPostItems
     .filter((post) => filter === "all" || post.contentType === filter || (filter === "ready" ? postWorkflowStage(post) === "ready" : postWorkflowStage(post) === filter))
     .filter((post) => !search.trim() || `${post.title} ${post.caption} ${post.firstComment}`.toLowerCase().includes(search.trim().toLowerCase()))
     .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0));
-  const projectPostItems = posts.filter((post) => post.projectId === project.id);
   const counts = {
     returned:projectPostItems.filter(p=>p.warehouse?.returnedAt).length,
     all: projectPostItems.length,
@@ -299,22 +237,11 @@ export function ContentPage({ data, project, notify, navigate }) {
     if (result) notify(`Đã chuẩn bị ${result.files?.length || 0} file để tải xuống.`);
   };
 
-  const writeForVideo = async (video) => {
-    const contentType = mediaContentType(video);
-    const result = await action(`write:${video.id}`, () => api(`/content/from-media/${video.id}`, {
+  const writeForVideo = (video) => api(`/content/from-media/${video.id}`, {
       pageId: activePages[0]?.id || "",
-      contentType,
+      contentType: mediaContentType(video),
       researchId: video.production?.researchId || undefined,
-    }));
-    if (!result) return;
-    const next = result;
-    if (contentType === "news") {
-      if (result.automationStatus === "website_error") notify(`Content đã tạo nhưng website chưa đăng được: ${result.automationError}`, "error");
-      else if (result.website?.status === "published") notify("Đã tạo Content News và tự đăng website; URL đã được gắn vào first comment.");
-      else notify("Đã tạo Content News. Website chưa được tự đăng; kiểm tra cấu hình website hoặc Auto publish.");
-    } else notify("Đã tạo Content và first comment.");
-    setPosts((current) => [next, ...current.filter((post) => post.id !== next.id)]);
-  };
+    });
   const publishWebsite = async (post, forceRevision = false) => {
     const result = await action(`website:${post.id}`,()=>api(`/content/posts/${post.id}/website`,{revision:post.revision, forceRevision}),forceRevision ? "Updated website article published with a new verified URL." : "Website article published. The first comment now contains its exact URL.");
     if(result)setPosts(current=>current.map(item=>item.id===result.id?result:item));
@@ -432,7 +359,8 @@ export function ContentPage({ data, project, notify, navigate }) {
   return <div className="page workspace-hub content-hub">
     <div className="page-heading hub-heading"><div><div className="eyebrow">CONTENT WORKSPACE</div><h1>Content tách riêng, quản lý nhẹ hơn.</h1><p>Soạn caption, first comment và link bài viết rồi gắn đúng Page trước khi duyệt.</p></div><div className="hub-heading-actions"><Button onClick={() => openCreate("news")}><Newspaper size={15} /> Content News</Button><Button variant="primary" onClick={() => openCreate("product")}><Plus size={16} /> Content Product</Button></div></div><div className="hub-metrics"><div><span>Tổng Content</span><strong>{counts.all}</strong><small>trong project hiện tại</small></div><div><span>News</span><strong>{counts.news}</strong><small>research → video → website</small></div><div><span>Product</span><strong>{counts.product}</strong><small>video sản phẩm</small></div><div><span>Đủ điều kiện</span><strong>{counts.ready}</strong><small>website + first comment</small></div></div>
     {!activePages.length && <Notice>You can write and save drafts now. Assign a Page before approval. <button className="inline-link" onClick={() => navigate?.("pages")}>Open Channels</button></Notice>}
-        {unassignedVideoGroups.length > 0 && <section className="content-video-inbox"><div className="hub-panel-heading"><div><span className="hub-kicker">READY FROM RENDER</span><h2>{unassignedVideoGroups.length} video group(s) cần tạo Content</h2><p>News sẽ tạo bài, đăng website và gắn URL chính xác vào first comment.</p></div></div>{unassignedVideoGroups.map(({ video, type, count }) => <article key={video.id}><Video size={24}/><div><strong>{video.production?.title || video.name}</strong><p>{type === "news" ? `News · bài viết website + first comment${count > 1 ? ` · ${count} bản render` : ""}` : `Product · first comment${count > 1 ? ` · ${count} bản render` : ""}`}</p></div><Button variant="primary" busy={busy===`write:${video.id}` || busy===`website:${video.id}`} disabled={Boolean(busy)} onClick={()=>writeForVideo(video)}><Sparkles size={15}/>{type === "news" ? "Tạo bài + đăng website" : "Tạo first comment"}</Button></article>)}</section>}
+    <div className="content-video-counts" aria-label="Đối chiếu video và Content"><span><b>{inventory.videos.length}</b> video đã render</span><span><b>{inventory.withContent.length}</b> video đã có Content</span><span><b>{inventory.missing.length}</b> video chưa có Content</span>{inventory.publishedWithoutContent.length > 0 && <span><b>{inventory.publishedWithoutContent.length}</b> video đã đăng, Content đã dọn</span>}</div>
+    <ContentVideoInbox key={project.id} videos={inventory.missing} busy={busy} autoPublishNews={contentDefaults.autoPublishNews !== false} create={writeForVideo} onCreated={post => setPosts(current => [post, ...current.filter(item => item.id !== post.id)])} onStart={() => setBusy('bulk-create')} onFinish={() => setBusy('')} notify={notify} />
     <div className="content-toolbar"><div className="content-filter-tabs">{[["all", "Tất cả"], ["returned", "Đã trả về kho"], ["news", "News"], ["product", "Product"], ["needs-content", "Cần viết"], ["needs-website", "Cần đăng web"], ["needs-comment", "Thiếu first comment"], ["ready", "Đủ điều kiện"]].map(([value, label]) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}<b>{counts[value]}</b></button>)}</div><input aria-label="Tìm Content" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tiêu đề, caption hoặc first comment…" /></div>
     {filter === "needs-website" && projectPosts.length > 0 && <div className="content-bulk-controls"><label htmlFor="content-llm-concurrency">LLM threads<select id="content-llm-concurrency" value={bulkConcurrency} onChange={(event) => setBulkConcurrency(Number(event.target.value))} disabled={Boolean(busy)}>{[1, 2, 3, 4, 5, 6, 7, 8].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>{bulkProgress && <div className="content-bulk-progress"><strong>LLM {bulkProgress.completed}/{bulkProgress.total}</strong><span>{bulkProgress.active} running | {bulkProgress.succeeded} ok | {bulkProgress.failed} failed | {bulkProgress.concurrency} threads</span><progress max={bulkProgress.total} value={bulkProgress.completed} /></div>}</div>}
     {filter === "needs-website" && projectPosts.length > 0 && <div className="content-bulk-toolbar"><label className="content-select-toggle"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} /> <span>Select all {projectPosts.length} items</span></label><span className="content-bulk-hint">{selectedPosts.length ? `Selected ${selectedPosts.length} items` : "No selection = process all filtered News items"}</span><div className="content-bulk-actions"><Button busy={busy === "bulk-regenerate"} disabled={Boolean(busy)} onClick={bulkRegenerate}><Sparkles size={14} /> Regenerate LLM {selectedPosts.length ? `(${selectedPosts.length})` : "all"}</Button><Button variant="primary" busy={busy === "bulk-website"} disabled={Boolean(busy)} onClick={bulkPublishWebsite}><Send size={14} /> Publish website {selectedPosts.length ? `(${selectedPosts.length})` : "all"}</Button></div></div>}

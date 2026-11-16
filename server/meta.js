@@ -8,7 +8,9 @@ import { generateImageEndpoint, resolveMcImageConfig } from "./mc-image.js";
 import { requestJsonContent } from "./llm.js";
 import { autoScheduleWarehousePosts, normalizeScheduleConfig } from "./social.js";
 import { classifyMetaFailure, metaResponseDetails } from "./meta-errors.js";
+import { pageDiagnostic } from '../shared/page-diagnostic.js';
 import { mountManagementRoutes } from "./management.js";
+import { mountGroupSetupRoutes } from './group-setup.js';
 import { cleanupPublishedMedia, publishedMediaLineage, publishedVideo, returnPostToWarehouse } from "./post-lifecycle.js";
 import { managedPageUnavailable } from "../shared/management.js";
 import { verifiedPageBinding, resolvePageToken, groupReadyPageIds, reconcileGroupQueue, pageUnavailableReason } from './page-routing.js';
@@ -52,8 +54,10 @@ function publicPage(page) {
     hasToken: Boolean(page.accessToken),
     tokenIds: Object.keys(page.tokenBindings || {}),
     groupIds: Array.isArray(page.groupIds) ? page.groupIds : [],
-    health: page.publishingHealth?.blocked ? "ERROR" : verified.length ? "HEALTHY" : failed ? "ERROR" : "UNVERIFIED",
-    errorMessage: String(page.publishingHealth?.blocked ? page.publishingHealth.message : failed?.errorMessage || ""),
+    health: page.publishingHealth?.blocked || page.verification?.status === 'error' ? "ERROR" : page.isPublished === false ? "UNPUBLISHED" : page.verification?.status === 'unknown' ? "UNVERIFIED" : verified.length ? "HEALTHY" : failed ? "ERROR" : "UNVERIFIED",
+    errorMessage: String(page.publishingHealth?.blocked ? page.publishingHealth.message : page.verification && page.verification.status !== 'passed' ? page.verification.message : page.isPublished === false ? pageDiagnostic(page).message : failed?.errorMessage || ""),
+    diagnostic: pageDiagnostic(page),
+    isPublished: typeof page.isPublished === 'boolean' ? page.isPublished : null,
     publishingHealth: page.publishingHealth || null,
     bindingCount: bindings.length,
   };
@@ -129,6 +133,8 @@ function publicPageGroup(group, meta = null) {
     readyPageCount: meta ? (group.pageIds || []).filter(id => !pageUnavailableReason(meta, meta.pages.find(page => page.id === id), null, group.scheduleConfig?.tokenGroupId || '')).length : undefined,
     folderBinding: group.folderBinding || "",
     scheduleConfig: normalizeScheduleConfig(group.scheduleConfig),
+    dailyAutomation: group.dailyAutomation || null,
+    dailyScheduleError: group.dailyScheduleError || null,
     createdAt: group.createdAt || null,
     updatedAt: group.updatedAt || null,
   };
@@ -626,6 +632,7 @@ function postPreflight(store, post, meta) {
 export function mountMetaRoutes(app, store, { client = createMetaClient(), llm = requestJsonContent, fetchImpl = globalThis.fetch } = {}) {
   const refreshTokenPools = () => { for (const pool of metaState(store).tokenGroups) if (pool.autoAssign !== false) autoAssignTokenGroup(metaState(store), pool); };
   const management = mountManagementRoutes(app, store, { client, postPreflight, refreshTokenPools });
+  mountGroupSetupRoutes(app, store, { tokenGroupDraft, autoAssignTokenGroup, publicTokenGroup, publicPageGroup });
   app.get("/api/meta/pages/:id/avatar", async (req, res) => {
     const meta = metaState(store);
     const page = meta.pages.find((item) => item.id === String(req.params.id));

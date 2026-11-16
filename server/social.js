@@ -14,6 +14,8 @@ import { isPublishableVideo } from "../shared/output-media.js";
 import { managedPageUnavailable } from "../shared/management.js";
 import { publishedVideo } from './post-lifecycle.js';
 import { groupReadyPageIds, reconcileGroupQueue } from './page-routing.js';
+import { scheduleDailyPages } from './page-daily-schedule.js';
+import { pageDailyMode } from '../shared/posting-calendar.js';
 
 const mediaKinds = new Set(["image", "video"]);
 
@@ -148,6 +150,7 @@ export function normalizeScheduleConfig(value, fallback = {}) {
     : fallback.enabled === true || fallback.autoPublish === true;
   return {
     times,
+    perPageDaily: (input.perPageDaily ?? fallback.perPageDaily) === true,
     staggerMinutes,
     sameTokenMinutes: Math.max(0, Math.min(1440, Number(input.sameTokenMinutes ?? fallback.sameTokenMinutes ?? 0) || 0)),
     crossTokenMinutes: Math.max(0, Math.min(1440, Number(input.crossTokenMinutes ?? fallback.crossTokenMinutes ?? 0) || 0)),
@@ -320,6 +323,10 @@ function groupOccupancy(store, group, excluded = new Set()) {
 export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId = "", nowValue = Date.now() } = {}) {
   const group = (store.state.settings?.meta?.pageGroups || []).find((item) => item.id === String(groupId));
   if (!group) throw new StudioError("Không tìm thấy nhóm Page.", "META_PAGE_GROUP_NOT_FOUND", 404);
+  if (pageDailyMode(group)) {
+    const result = autoScheduleDailyPageGroups(store, { nowValue });
+    return { group, scheduled: result.scheduled.filter(post => post.pageGroupId === group.id), errors: result.errors };
+  }
   reconcileGroupQueue(store, group);
   const config = normalizeScheduleConfig(group.scheduleConfig);
   if (!config.enabled || !config.autoPublish || !config.times.length || group.purpose === 'review' || group.id.startsWith('pgrp_hold_')) return { group, scheduled: [] };
@@ -354,22 +361,7 @@ export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId
   const futureCount = (store.state.socialPosts || []).filter(post => post.pageGroupId === group.id && post.status === 'scheduled' && !post.automationRetryBlocked && !post.archivedAt && !post.deletedAt && Date.parse(post.scheduledAt) > nowValue).length;
   const capacity = Math.max(0, dailyLimit - futureCount);
   if (!capacity) return { group, scheduled: [], rescheduled };
-  const candidates = (store.state.socialPosts || [])
-    .filter((post) => {
-      if (!["draft", "ready"].includes(post.status) || post.pageGroupId || !post.mediaIds?.length || post.archivedAt || post.deletedAt || post.warehouse?.returnedAt || post.automationHold) return false;
-      if (post.automationError) return false;
-      if (!String(post.firstComment || "").trim()) return false;
-      const media = store.state.media.find((item) => item.id === post.mediaIds[0]);
-      const legacyWarehouseSource = ["render-warehouse", "warehouse-sync", "news-render"].includes(post.automationSource);
-      if (!isPublishableVideo(media, store.state.jobs || []) && !legacyWarehouseSource) return false;
-      if (post.contentType === "news") {
-        return Boolean(String(post.caption || "").trim() && String(post.articleBody || "").trim());
-      }
-      return true;
-    })
-    .slice()
-    .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0))
-    .slice(0, capacity);
+  const candidates = warehouseCandidates(store).slice(0, capacity);
   if (!candidates.length) return { group, scheduled: [] };
   const { used, dailyCounts } = groupOccupancy(store, group);
   const slots = nextGroupSlots(group, used, candidates.length, nowValue, dailyCounts);
@@ -403,6 +395,36 @@ export function autoScheduleWarehousePosts(store, groupId, { limit, tokenGroupId
   }
   if (scheduled.length) { group.automatedScheduleSignature = signature; store.save(); }
   return { group, scheduled, rescheduled };
+}
+
+function warehouseCandidates(store) {
+  return (store.state.socialPosts || [])
+    .filter((post) => {
+      if (!["draft", "ready"].includes(post.status) || post.pageGroupId || !post.mediaIds?.length || post.archivedAt || post.deletedAt || post.warehouse?.returnedAt || post.automationHold) return false;
+      if (store.websitePublishing?.has(post.id) || post.website?.status === 'sending') return false;
+      if (post.contentType === 'news' && post.website?.status === 'published' && (!post.website.url || !String(post.firstComment || '').includes(post.website.url))) return false;
+      if (post.automationError) return false;
+      if (!String(post.firstComment || "").trim()) return false;
+      const media = store.state.media.find((item) => item.id === post.mediaIds[0]);
+      const legacyWarehouseSource = ["render-warehouse", "warehouse-sync", "news-render"].includes(post.automationSource);
+      if (!isPublishableVideo(media, store.state.jobs || []) && !legacyWarehouseSource) return false;
+      if (post.contentType === "news") {
+        return Boolean(String(post.caption || "").trim() && String(post.articleBody || "").trim());
+      }
+      return true;
+    })
+    .slice()
+    .sort((left, right) => new Date(left.createdAt || 0) - new Date(right.createdAt || 0));
+}
+
+export function autoScheduleDailyPageGroups(store, { nowValue = Date.now() } = {}) {
+  const groups = (store.state.settings?.meta?.pageGroups || []).filter(pageDailyMode);
+  if (!groups.length) return { scheduled: [], released: [], errors: [] };
+  for (const group of groups) {
+    reconcileGroupQueue(store, group);
+    if (group.scheduleConfig.enabled && group.scheduleConfig.autoPublish !== false && group.scheduleConfig.times?.length) ensureLocalPagesForGroup(store, groupReadyPageIds(store, group));
+  }
+  return scheduleDailyPages(store, { groups, nowValue, candidates: () => warehouseCandidates(store), validate: (post, changes) => validatePostPayload(store, { ...post, ...changes }, { existing: post, reapprove: true, nowValue }) });
 }
 
 export function validatePostPayload(store, payload, { existing = null, reapprove = false, nowValue = Date.now() } = {}) {

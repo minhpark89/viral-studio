@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { activeStatuses, defaultTimeline } from "../shared/contracts.js";
 import { relocateMediaPaths } from "./data-paths.js";
+import { commitFileSync } from './atomic-file.js';
 
 function maskSecret(value) {
   const secret = String(value || "");
@@ -129,7 +130,7 @@ export class Store extends EventEmitter {
     }
     let recovered = relocation.changed;
     // Existing records keep their original composition on retry. Only new
-    // requests default to V3; never regenerate a presenter's paid AI result.
+    // requests use the current default; never regenerate a presenter's paid AI result.
     const preserveNewsStyle = plan => {
       if (plan && plan.newsRenderStyle === undefined) { plan.newsRenderStyle = 'classic'; recovered = true; }
     };
@@ -301,7 +302,7 @@ export class Store extends EventEmitter {
     } finally {
       fs.closeSync(fd);
     }
-    fs.renameSync(temporary, this.file);
+    commitFileSync(temporary, this.file);
     this.emit("change");
   }
 

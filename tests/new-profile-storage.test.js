@@ -27,7 +27,9 @@ for (const type of ['dreamface', 'google']) test(`new ${type} profiles inherit l
     await Promise.allSettled(accounts.map(close));
     await new Promise(resolve => server.close(resolve));
     assert.ok(root.startsWith(path.resolve('.verification') + path.sep));
-    await fs.rm(root, { recursive: true, force: true });
+    // Chromium can release its Windows profile lock just after context.close.
+    // Retry only removal of this test's checked, isolated temporary directory.
+    await fs.rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
   });
   assert.deepEqual(await fs.readdir(path.join(root, 'profiles')), [], 'Creating slots must not clone any old profile');
   for (const account of accounts) {

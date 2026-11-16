@@ -98,10 +98,10 @@ export class ResearchBatchService {
               batch.items.push({ index, article, status: 'pending', resultId: null, error: null });
             }
           };
-          const found = existingCount >= batch.request.count ? { articles: [], warnings: [] } : await this.research.discover({ ...batch.request, count: batch.request.count - existingCount, excludeArticles, signal,
+          const found = existingCount >= batch.request.count ? { articles: [], warnings: [] } : await this.research.discover({ ...batch.request, count: batch.request.count - existingCount, excludeArticles, previousDiscovery: batch.discovery, signal,
             onProgress: async (discovery, articles) => {
               append(articles);
-              batch.discovery = { ...discovery, found: batch.items.length, target: batch.request.count };
+              batch.discovery = { ...discovery, found: batch.items.length, target: batch.request.count, addedThisAttempt: batch.items.length - existingCount };
               this.store.save();
             },
           });
@@ -109,8 +109,10 @@ export class ResearchBatchService {
           append(found.articles);
           batch.discovered = true;
           batch.warnings = [...found.warnings];
-          if (found.discovery) batch.discovery = { ...found.discovery, found: batch.items.length, target: batch.request.count };
-          if (batch.items.length < batch.request.count) batch.warnings.push(`Tìm được ${batch.items.length}/${batch.request.count} tin sau khi tự mở rộng trong ${batch.request.windowHours || 24} giờ qua. Chưa có thêm nguồn mới phù hợp; bấm “Tìm tiếp phần thiếu” để cập nhật nguồn, hoặc tạo lượt mới với khoảng thời gian rộng hơn.`);
+          if (found.discovery) batch.discovery = { ...found.discovery, found: batch.items.length, target: batch.request.count, addedThisAttempt: batch.items.length - existingCount };
+          if (batch.items.length < batch.request.count) batch.warnings.push(`Tìm được ${batch.items.length}/${batch.request.count} tin trong ${batch.request.windowHours || 24} giờ qua; lần này thêm ${batch.items.length - existingCount} tin. ` + (found.discovery?.stopReason === 'budget'
+            ? 'Còn nguồn chưa tìm. Bấm “Tìm tiếp phần thiếu” để tiếp tục từ phần chưa tìm.'
+            : 'Đã tìm hết các truy vấn hiện có. Có thể tìm tiếp khi nguồn cập nhật hoặc tạo lượt mới với khoảng thời gian rộng hơn.'));
           this.store.save();
         }
         for (const item of batch.items) {

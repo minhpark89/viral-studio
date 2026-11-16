@@ -70,3 +70,26 @@ test('DreamFace refuses an unconfirmed selection without clicking Generate', asy
   await assert.rejects(selectDreamFaceRadio(page, page.locator('#menu'), ['Avatar 3.0 Fast'], null, { timeoutMs: 700 }), error => error.code === 'PROVIDER_NOT_READY');
   assert.equal(await page.evaluate(() => window.submissions), 0);
 });
+
+test('DreamFace selection tolerates a busy event loop while Playwright delivers the click', async t => {
+  const page = await fixture(t);
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  const wrap = locator => new Proxy(locator, { get(target, key) {
+    if (key === 'first') return () => wrap(target.first());
+    if (key === 'click') return async options => {
+      const pending = target.click(options);
+      // Production can spend about two seconds saving/broadcasting a large
+      // workspace. The browser action must survive that host-side delay.
+      setImmediate(() => Atomics.wait(pause, 0, 0, 1900));
+      return pending;
+    };
+    const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+  } });
+  const busy = {
+    isClosed: () => page.isClosed(), waitForTimeout: ms => page.waitForTimeout(ms),
+    getByRole: (...args) => wrap(page.getByRole(...args)),
+  };
+  assert.equal(await selectDreamFaceRadio(busy, page.locator('#menu'), ['Avatar 3.0 Fast'], null, { timeoutMs: 8000 }), 'Avatar 3.0 Fast');
+  assert.equal(await page.getByRole('radio', { name: 'Avatar 3.0 Fast', exact: true }).getAttribute('aria-checked'), 'true');
+  assert.equal(await page.evaluate(() => window.submissions), 0);
+});

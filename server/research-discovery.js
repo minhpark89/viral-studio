@@ -83,46 +83,82 @@ function keywordSuggestions(observed, plan) {
     .slice(0, 16).map(([word, signal]) => ({ query: queryText(`${plan.core} ${word}`), mentions: signal.mentions, sourceCount: signal.sources.size, basis: 'current_reports' }));
 }
 
-export async function discoverResearch({ topic, niche = '', feeds = [], count = 12, windowHours = 24, excludeArticles = [], signal, onProgress }, { readFeeds, now = () => new Date().toISOString() }) {
-  const plan = topicPlan(topic, niche);
+export async function discoverResearch({ topic, niche = '', feeds = [], count = 12, windowHours = 24, excludeArticles = [], previousDiscovery, signal, onProgress }, { readFeeds, now = () => new Date().toISOString() }) {
+  // A list of subjects is a union of searches, not one impossible AND query.
+  const subjects = [...new Set(String(topic || '').split(/[,;\n]+/).map(value => value.trim()).filter(Boolean))];
+  const plans = (subjects.length ? subjects : [topic]).map(subject => topicPlan(subject, niche));
   const cutoff = Date.parse(now());
   const hours = [24, 72, 168].includes(Number(windowHours)) ? Number(windowHours) : 24;
+  const searchKey = JSON.stringify([subjects, niche, feeds, hours]);
+  const prior = previousDiscovery?.continuation;
+  const resume = prior?.key === searchKey && previousDiscovery.stopReason !== 'sources_exhausted';
+  const visited = new Set(resume ? prior.visited : []);
   const warnings = [], articles = [], observed = new Map(), queries = [], queued = new Set();
   const seenUrls = new Set(excludeArticles.map(article => researchUrlKey(article.url)));
   const seenTitles = new Set(excludeArticles.map(researchTitleKey));
   const titleList = [...seenTitles];
   const budget = Math.min(160, Math.max(24, Math.ceil(count / 8) + 12));
-  let searched = 0, round = 0, emptyRounds = 0, suggestions = [];
-  const pending = [], deferred = [];
+  let searched = 0, round = 0, suggestions = [];
+  const attempt = (Number(previousDiscovery?.attempt) || (previousDiscovery ? 1 : 0)) + 1;
+  const pending = [], deferred = [], observedTasks = [];
   const enqueue = (query, stage = 'related', destination = pending, url) => {
     const actualUrl = url || googleFeed(query, hours);
-    if (queued.has(actualUrl)) return;
+    if (queued.has(actualUrl) || visited.has(actualUrl)) return;
     queued.add(actualUrl); destination.push({ query, url: actualUrl, stage });
   };
   for (const url of feeds) enqueue(new URL(url).hostname, 'rss', pending, url);
-  enqueue(queryText(topic), 'topic');
-  if (normalize(plan.corrected) !== normalize(topic)) enqueue(plan.corrected, 'corrected');
-  const relatedTerms = plan.related.filter(term => !plan.tokens.includes(term));
-  if (relatedTerms.length) enqueue(`${plan.core} (${relatedTerms.slice(0, 8).join(' OR ')})`);
-  if (normalize(plan.core) !== normalize(plan.corrected)) enqueue(plan.core);
-  for (const term of relatedTerms.slice(0, 14)) enqueue(queryText(`${plan.core} ${term}`), 'related', deferred);
-  if (niche && !/^(general news|tin tức tổng hợp)$/i.test(niche)) enqueue(queryText(`${plan.core} ${niche}`), 'niche', deferred);
+  for (const [index, plan] of plans.entries()) {
+    const subject = subjects[index] || topic;
+    enqueue(queryText(subject), 'topic');
+    if (normalize(plan.corrected) !== normalize(subject)) enqueue(plan.corrected, 'corrected');
+    const relatedTerms = plan.related.filter(term => !plan.tokens.includes(term));
+    if (relatedTerms.length) enqueue(`${plan.core} (${relatedTerms.slice(0, 8).join(' OR ')})`);
+    if (normalize(plan.core) !== normalize(plan.corrected)) enqueue(plan.core);
+    if (niche && !/^(general news|tin tức tổng hợp)$/i.test(niche)) enqueue(queryText(`${plan.core} ${niche}`), 'niche', deferred);
+  }
   // Source/date partitions overcome the per-query RSS result ceiling without
-  // weakening topic, date, or duplicate checks.
-  for (const publisher of PUBLISHERS) enqueue(`${plan.core} site:${publisher}`, 'source', deferred);
+  // weakening topic, date, or duplicate checks. Interleave subjects and query
+  // families so repeated reports cannot starve untouched sources.
+  for (let index = 0; index < Math.max(14, PUBLISHERS.length); index++) {
+    for (const plan of plans) {
+      if (PUBLISHERS[index]) enqueue(`${plan.core} site:${PUBLISHERS[index]}`, 'source', deferred);
+      const term = plan.related.filter(term => !plan.tokens.includes(term))[index];
+      if (term) enqueue(queryText(`${plan.core} ${term}`), 'related', deferred);
+    }
+  }
   for (let day = 0; day <= Math.ceil(hours / 24); day++) {
     const start = new Date(cutoff - day * 24 * HOUR).toISOString().slice(0, 10);
     const end = new Date(cutoff + (1 - day) * 24 * HOUR).toISOString().slice(0, 10);
-    enqueue(`${plan.core} after:${start} before:${end}`, 'date', deferred);
+    for (const plan of plans) enqueue(`${plan.core} after:${start} before:${end}`, 'date', deferred);
   }
-  const publish = async (phase, currentQueries = []) => {
-    suggestions = keywordSuggestions(observed, plan);
-    await onProgress?.({ phase, target: count, found: articles.length, windowHours: hours, round, searches: searched, budget, expanded: queries.some(query => !['rss', 'topic'].includes(query.stage)), queries: [...queries], currentQueries, suggestions, exhausted: phase === 'exhausted' }, articles);
+  const relevant = entry => Math.max(...plans.map(plan => plan.matches(entry)));
+  // Existing results still contain useful search signals when every refreshed
+  // headline is a duplicate. Keep only signals in the selected time window.
+  for (const entry of excludeArticles) {
+    const time = Date.parse(entry.publishedAt);
+    if (time >= cutoff - hours * HOUR && time <= cutoff && relevant(entry)) observed.set(researchTitleKey(entry), entry);
+  }
+  const updateSuggestions = () => {
+    const groups = plans.map(plan => keywordSuggestions(new Map([...observed].filter(([, entry]) => plan.matches(entry))), plan));
+    suggestions = [];
+    for (let i = 0; i < 16; i++) for (const group of groups) if (group[i]) suggestions.push(group[i]);
+    suggestions = [...new Map(suggestions.map(item => [item.query, item])).values()].slice(0, 48);
+    for (const suggestion of suggestions) enqueue(suggestion.query, 'observed', observedTasks);
+  };
+  const snapshot = (phase, currentQueries = [], stopReason = null) => ({
+    phase, target: count, found: articles.length, windowHours: hours, round, searches: searched, budget, attempt,
+    expanded: queries.some(query => !['rss', 'topic'].includes(query.stage)), queries: [...queries], currentQueries,
+    suggestions, exhausted: phase === 'exhausted', stopReason,
+    continuation: { key: searchKey, visited: [...visited] },
+  });
+  const publish = async (phase, currentQueries = [], stopReason) => {
+    updateSuggestions();
+    await onProgress?.(snapshot(phase, currentQueries, stopReason), articles);
   };
   const addEntries = entries => {
     let added = 0;
     for (const entry of entries) {
-      const time = Date.parse(entry.publishedAt), relevance = plan.matches(entry);
+      const time = Date.parse(entry.publishedAt), relevance = relevant(entry);
       if (!Number.isFinite(time) || time < cutoff - hours * HOUR || time > cutoff + 5 * 60_000 || !relevance) continue;
       const url = researchUrlKey(entry.url), title = researchTitleKey(entry);
       if (!url || !title) continue;
@@ -136,10 +172,11 @@ export async function discoverResearch({ topic, niche = '', feeds = [], count = 
   while (articles.length < count && searched < budget) {
     signal?.throwIfAborted();
     if (!pending.length) {
-      for (const suggestion of suggestions) enqueue(suggestion.query, 'observed');
-      if (!pending.length) pending.push(...deferred.splice(0, 3));
+      updateSuggestions();
+      pending.push(...deferred.splice(0, 2), ...observedTasks.splice(0, 1));
+      if (!pending.length) pending.push(...deferred.splice(0, 3), ...observedTasks.splice(0, 3));
     }
-    if (!pending.length || emptyRounds >= 4 && searched >= 12) break;
+    if (!pending.length) break;
     // First query stands alone: a sufficient narrow result avoids expansion.
     const tasks = pending.splice(0, Math.min(round === 0 ? Math.max(1, feeds.length) : 3, budget - searched));
     round++;
@@ -149,17 +186,19 @@ export async function discoverResearch({ topic, niche = '', feeds = [], count = 
       const entries = await readFeeds([task.url], localWarnings, signal);
       return { task, entries, localWarnings };
     }));
-    let added = 0;
     for (const { task, entries, localWarnings } of results) {
-      const fresh = addEntries(entries); added += fresh; searched++;
+      const fresh = addEntries(entries); searched++;
+      // Failed network requests remain eligible next time.
+      if (!localWarnings.length) visited.add(task.url);
       warnings.push(...localWarnings);
       queries.push({ ...task, scanned: entries.length, added: fresh });
     }
-    emptyRounds = added ? 0 : emptyRounds + 1;
     await publish(articles.length >= count ? 'ready' : 'expanding');
   }
   signal?.throwIfAborted();
   const exhausted = articles.length < count;
-  await publish(exhausted ? 'exhausted' : 'ready');
-  return { articles, warnings: [...new Set(warnings)].slice(0, 12), discovery: { phase: exhausted ? 'exhausted' : 'ready', target: count, found: articles.length, windowHours: hours, round, searches: searched, budget, expanded: queries.some(query => !['rss', 'topic'].includes(query.stage)), queries, suggestions, exhausted } };
+  const stopReason = !exhausted ? 'target_reached' : pending.length + deferred.length + observedTasks.length ? 'budget' : 'sources_exhausted';
+  const phase = exhausted ? 'exhausted' : 'ready';
+  await publish(phase, [], stopReason);
+  return { articles, warnings: [...new Set(warnings)].slice(0, 12), discovery: snapshot(phase, [], stopReason) };
 }

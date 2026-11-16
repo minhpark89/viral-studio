@@ -18,15 +18,18 @@ export function v3PhotoFilter(input, output, { frames, motion = 'smooth', direct
   return `${fill},loop=loop=-1:size=1:start=0,setpts=N/(${NEWS_FPS}*TB),trim=end_frame=${frames}${transform},settb=1/${NEWS_FPS},setpts=PTS-STARTPTS[${output}]`;
 }
 
-export function v3PhotoGraph(images, duration, { style = 'v3', visualMode = 'photo', transitionFrames = 9, visualVariant = 1 } = {}) {
+export function v3PhotoGraph(images, duration, { style = 'v3', visualMode = 'photo', transitionFrames = 9, visualVariant = 1, hero = NEWS_PHOTO_RECT } = {}) {
   if (!images.length || images.length > 10 || !Number.isFinite(duration) || duration < 1 || duration > 600) throw new StudioError('Ảnh/thời lượng V3 không hợp lệ.', 'NEWS_VISUALS_INVALID', 422);
   const totalFrames = Math.round(duration * NEWS_FPS), distributed = totalFrames + (images.length - 1) * transitionFrames;
   const shots = images.map((image, index) => {
-    const framing = v3PhotoFit(image, { visualMode });
-    return { index, ...framing, frames: Math.floor(distributed / images.length) + (index < distributed % images.length ? 1 : 0), direction: visualVariant % 2 ? 'in' : 'out', motion: style === 'v3-fast' || framing.fit === 'contain' || (index + visualVariant - 1) % 2 ? 'static' : 'smooth' };
+    const framing = v3PhotoFit(image, { visualMode, width: hero.w, height: hero.h });
+    return { index, ...framing, width: hero.w, height: hero.h, frames: Math.floor(distributed / images.length) + (index < distributed % images.length ? 1 : 0), direction: visualVariant % 2 ? 'in' : 'out', motion: style === 'v3-fast' || framing.fit === 'contain' || (index + visualVariant - 1) % 2 ? 'static' : 'smooth' };
   });
   if (shots.some(s => s.frames - transitionFrames < 45)) throw new StudioError('Quá nhiều ảnh cho thời lượng clip.', 'NEWS_TOO_MANY_IMAGES', 422);
-  const inputs = images.flatMap(image => ['-framerate', String(NEWS_FPS), '-i', image.file]);
+  // CDN responses may contain AVIF despite a .jpg URL. Input -r works with
+  // both image2 and the AVIF/MOV demuxer; -framerate is image2-specific.
+  // The filter below holds the decoded still, so no input looping is needed.
+  const inputs = images.flatMap(image => ['-r', String(NEWS_FPS), '-i', image.file]);
   const filters = shots.map((shot, index) => v3PhotoFilter(index, `photo${index}`, shot));
   let output = 'photo0', elapsed = shots[0].frames; const transitions = [];
   for (let i = 1; i < shots.length; i++) {

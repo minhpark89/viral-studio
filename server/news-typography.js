@@ -53,7 +53,7 @@ export async function createNewsTypography(directory, style = 'news') {
         return result;
       }
     }
-    throw new StudioError(`Chữ quá dài cho bố cục V3 (${id}). Hãy rút gọn tiêu đề hoặc chọn font News chuẩn.`, 'NEWS_TEXT_TOO_LONG', 422);
+    throw new StudioError(`Chữ quá dài cho bố cục tin tức (${id}). Hãy rút gọn tiêu đề hoặc chọn font News chuẩn.`, 'NEWS_TEXT_TOO_LONG', 422);
   }
   return { fit, audit, widthOf, wrap };
 }

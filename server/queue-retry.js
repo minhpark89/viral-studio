@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { z } from 'zod';
 import { retryAction } from '../shared/queue-retry.js';
+import { retryReviewedNarrations } from './news-narration-recovery.js';
 
 const requestSchema = z.object({
   projectId: z.string().uuid(),
@@ -45,4 +46,5 @@ export function retryFailedSelection(store, queue, production, input) {
 
 export function mountQueueRetry(app, store, queue, production) {
   app.post('/api/jobs/retry-failed', (req, res) => res.status(202).json(retryFailedSelection(store, queue, production, req.body)));
+  app.post('/api/jobs/retry-reviewed-narrations', (req, res) => res.status(202).json(retryReviewedNarrations(store, queue, req.body)));
 }

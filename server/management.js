@@ -6,6 +6,7 @@ import { syncMetaPages, validatePostPayload } from './social.js';
 import { publishedVideo, returnPostToWarehouse } from './post-lifecycle.js';
 import { classifyMetaFailure } from './meta-errors.js';
 import { pageHealth, postStage, parsePageImport, managedPageUnavailable } from '../shared/management.js';
+import { pageDiagnostic } from '../shared/page-diagnostic.js';
 
 const now=()=>new Date().toISOString();
 const fingerprint=value=>createHash('sha256').update(value).digest('hex');
@@ -31,7 +32,8 @@ export function pageRows(store) {
     const avatar=page?.avatar || local?.avatar || '';
     const row={id,avatar:/^https?:\/\//i.test(avatar)?`/api/meta/pages/${id}/avatar`:avatar,localId:local?.id || '',externalId:page?.id || local?.externalId || '',name:page?.name || local?.name || id,url:page?.id || local?.externalId ? `https://www.facebook.com/${page?.id || local.externalId}` : '',revision:Number(management.revision || 0),lifecycle:management.status || (local?.archived?'archived':page?.publishingHealth?.blocked?'review':'active'),source:management.source || (bindings.length?'Token':'Thủ công'),sourceKind:management.sourceKind || (bindings.length?'token':'manual'),tokenIds:bindings.map(([id])=>id),hasUsableToken:Boolean(resolvePageToken(meta,page)),groupIds:memberships.get(id)||[],notes:management.notes ?? local?.notes ?? '',reviewAt:management.reviewAt || null,lastCheckedAt:owner.verification?.checkedAt || owner.publishingCheckedAt || null,verification:owner.verification || null,publishingHealth:page?.publishingHealth || null,isPublished:page?.isPublished,previousGroupIds:management.previousGroupIds || [],history:management.history || [],pendingCount:counts.count,publishingCount:counts.publishing,publishedCount:published.get(id)||0};
     row.health=pageHealth(row);
-    row.error=page?.publishingHealth?.blocked ? page.publishingHealth.message : owner.verification?.message || '';
+    row.diagnostic=pageDiagnostic(row);
+    row.error=page?.publishingHealth?.blocked ? page.publishingHealth.message : owner.verification && owner.verification.status !== 'passed' ? owner.verification.message || row.diagnostic.message : '';
     return row;
   });
 }
@@ -94,7 +96,7 @@ export function mountManagementRoutes(app,store,{client,postPreflight,refreshTok
   const checkRevision=(row,item)=>{if(!row)throw error('Mục đã bị xóa hoặc không tồn tại.');if(row.revision!==item.revision)throw error('Dữ liệu đã thay đổi. Làm mới rồi chọn lại.','STALE_REVISION');};
 
   app.get('/api/management/pages',(req,res)=>res.json({rows:pageRows(store),groups:groups(),tokens:meta.tokens.map(t=>({id:t.id,name:t.name,status:t.status})),checks:meta.managementChecks.slice(-5)}));
-  app.get('/api/management/posts',(req,res)=>res.json({rows:postRows(store),groups:groups(),pages:pageRows(store).filter(p=>p.lifecycle==='active' && p.hasUsableToken && !['restricted','identity','unpublished'].includes(p.health)),projects:store.state.projects.map(p=>({id:p.id,name:p.name}))}));
+  app.get('/api/management/posts',(req,res)=>res.json({rows:postRows(store),groups:groups(),pages:pageRows(store).filter(p=>p.lifecycle==='active' && p.hasUsableToken && !['restricted','identity','unpublished','token','check_error'].includes(p.health)),projects:store.state.projects.map(p=>({id:p.id,name:p.name}))}));
 
   const pageBulk=(input,apply)=>{
     const valid=new Set(['review','move_group','add_group','remove_group','archive','delete','restore','return_group','notes']);
@@ -108,7 +110,7 @@ export function mountManagementRoutes(app,store,{client,postPreflight,refreshTok
         if(row.lifecycle==='deleted' && input.action!=='restore')throw error('Khôi phục Page từ thùng rác trước.');
         const target=input.groupId?meta.pageGroups.find(g=>g.id===input.groupId):null;
         if(['move_group','add_group','remove_group'].includes(input.action) && !target)throw error('Chọn nhóm cần thao tác.');
-        if(['move_group','add_group'].includes(input.action) && purpose(target)!=='review' && (row.lifecycle!=='active' || ['identity','restricted','unpublished','token'].includes(row.health)))throw error('Page chưa sẵn sàng. Chuyển sang nhóm chờ xử lý hoặc kiểm tra lại trước.');
+        if(['move_group','add_group'].includes(input.action) && purpose(target)!=='review' && (row.lifecycle!=='active' || ['identity','restricted','unpublished','token','check_error'].includes(row.health)))throw error('Page chưa sẵn sàng. Chuyển sang nhóm chờ xử lý hoặc kiểm tra lại trước.');
         const destinations=input.action==='return_group'?(target?[target]:meta.pageGroups.filter(g=>row.previousGroupIds.includes(g.id) && purpose(g)!=='review')):[];
         if(input.action==='return_group'){
           if(!row.hasUsableToken || row.isPublished===false || !(row.verification?.status==='passed' || row.publishingHealth?.lastSucceededAt))throw error('Kiểm tra lại Page thành công trước khi đưa về nhóm đăng.');
@@ -215,8 +217,8 @@ export function mountManagementRoutes(app,store,{client,postPreflight,refreshTok
           if(String(result.id)!==id)throw error('Token không trả về đúng Page đã chọn.');
           if(closed || job.status==='cancelled')break;
           if(owner.management?.status==='deleted'){job.done++;job.results.push({id,name:row.name,status:'skipped',message:'Page đã bị xóa trong lúc kiểm tra.'});store.save();continue;}
-          page.isPublished=result.is_published;
-          owner.verification={checkedAt:now(),status:result.is_published===true?'passed':'unpublished',message:result.is_published===true?'Đọc được Page công khai. Hạn chế đăng đã ghi nhận chỉ được bỏ khi bạn xác nhận đã xử lý.':'Page chưa công khai trên Facebook.',readOnly:true};
+          owner.isPublished=typeof result.is_published==='boolean'?result.is_published:null;
+          owner.verification={checkedAt:now(),status:result.is_published===true?'passed':result.is_published===false?'unpublished':'unknown',message:result.is_published===true?'Đọc được Page công khai. Kiểm tra chỉ đọc, chưa xác nhận quyền đăng.':result.is_published===false?'Kết nối đọc thành công; Facebook báo Page không công khai (is_published=false).':'Đọc được Page nhưng Meta không trả trạng thái công khai (is_published).',readOnly:true,observations:{pageId:id,isPublished:owner.isPublished}};
           if(result.is_published===true)job.passed++;else job.failed++;
         }catch(e){
           if(closed || job.status==='cancelled')break;
@@ -226,7 +228,7 @@ export function mountManagementRoutes(app,store,{client,postPreflight,refreshTok
           if(details.kind==='rate_limit'){job.status='paused';job.message='Meta giới hạn lượt kiểm tra. Đã dừng; các Page còn lại chưa được gọi.';}
         }
         owner.management ||= {};owner.management.revision=Number(owner.management.revision||0)+1;
-        job.done++;job.results.push({id,name:row.name,...owner.verification});store.save();
+        job.done++;job.results.push({id,name:row.name,...owner.verification,diagnostic:pageDiagnostic(owner)});store.save();
         if(job.status==='paused')break;
         await new Promise(resolve=>setTimeout(resolve,250));
       }
@@ -241,7 +243,7 @@ export function mountManagementRoutes(app,store,{client,postPreflight,refreshTok
     if(!['edit','return_warehouse','pause','assign','retry','schedule','archive','delete','restore'].includes(input.action))throw error('Thao tác bài không hợp lệ.');
     const rows=new Map(postRows(store).map(p=>[p.id,p])),pages=pageRows(store),results=[],seen=new Set();
     const targetGroup=input.groupId?meta.pageGroups.find(g=>g.id===input.groupId):null;
-    const targets=pages.filter(p=>p.lifecycle==='active' && p.hasUsableToken && !['identity','restricted','unpublished','token'].includes(p.health) && (input.pageId?p.id===input.pageId:targetGroup && purpose(targetGroup)!=='review' && targetGroup.pageIds.includes(p.id)));
+    const targets=pages.filter(p=>p.lifecycle==='active' && p.hasUsableToken && !['identity','restricted','unpublished','token','check_error'].includes(p.health) && (input.pageId?p.id===input.pageId:targetGroup && purpose(targetGroup)!=='review' && targetGroup.pageIds.includes(p.id)));
     for(const item of input.items){
       if(seen.has(item.id))continue;seen.add(item.id);
       try{

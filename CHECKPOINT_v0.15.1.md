@@ -1,6 +1,6 @@
 # Viral Studio 0.15.1 — unified News/Product and Windows portability
 
-This is the unified successor prepared on 2026-11-09 from tag `v0.15.0` (commit `a32e0e2d7e4cc7a4025bcfc6c0f5dc04b7f7d8f0`). It incorporates the verified News fixes from the local KAD22P5 hotfix based on 0.10.1. No GitHub publication is implied by this document.
+This is the unified successor prepared on 2026-11-09 from tag `v0.15.0` (commit `a32e0e2d7e4cc7a4025bcfc6c0f5dc04b7f7d8f0`). It incorporates the verified News fixes from the local WindowsValidation hotfix based on 0.10.1. No GitHub publication is implied by this document.
 
 ## Merge boundaries
 
@@ -27,12 +27,12 @@ Use Node >=22.12 (verified with Node 24.22.2). Run `npm ci`, `npm run setup:capt
 - Packaged News Studio test passed: native folder selection, shared style persistence, independent Product output and version 0.15.1.
 - Local packaged CPU render diagnostic: 11/11 passed, 36.1 seconds.
 - Product packaged test passed: SQLite persistence, missing-key handling, native external-link routing and Trends CSV chart.
-- KAD22P5 packaged GPU diagnostic: 11/11 passed, 30.7 seconds, Intel QSV; caption runtime initialized successfully. Details and update verification are recorded in `RELEASE_VALIDATION_v0.15.1.json`.
+- WindowsValidation packaged GPU diagnostic: 11/11 passed, 30.7 seconds, Intel QSV; caption runtime initialized successfully. Details and update verification are recorded in `RELEASE_VALIDATION_v0.15.1.json`.
 
 ## Continue on another PC
 
 Use the 0.15.1 source commit/archive and its manifest, not the older 0.10.1 repair branch. Keep each PC's own `Viral Data`, credentials, profiles and output folders. Never copy the build PC's private data into an installer or open a second writing Store on a live data directory.
 
-KAD22P5 is updated only after all jobs and production preparation are idle. Its data root remains `D:\Viral Studio\Viral Data`; the canonical shortcut targets `D:\Viral Studio\Viral Studio.exe`. Back up state after graceful shutdown and verify existing IDs/settings after restart. Windows runtime/hardware behavior is tested as documented; no claim is made that all Windows versions, GPUs or third-party account states have been tested.
+WindowsValidation is updated only after all jobs and production preparation are idle. Its data root remains `D:\Viral Studio\Viral Data`; the canonical shortcut targets `D:\Viral Studio\Viral Studio.exe`. Back up state after graceful shutdown and verify existing IDs/settings after restart. Windows runtime/hardware behavior is tested as documented; no claim is made that all Windows versions, GPUs or third-party account states have been tested.
 
-The completed KAD22P5 upgrade retained 1 project, 16 accounts, 42 media, 13 jobs, 10 research results, 1 production batch and 2 social posts, with zero missing original IDs. The saved LLM key and explicit GPU preference are unchanged. The interactive desktop screenshot confirms the News Studio/Product Studio navigation, version 0.15.1 and Intel GPU indicator. Old executables and state are retained under `D:\Viral Studio Support\2026-11-09\before-unified-0.15.1`; only the canonical current EXE remains in the app folder. No new paid generation or publishing was triggered for this upgrade.
+The completed WindowsValidation upgrade retained 1 project, 16 accounts, 42 media, 13 jobs, 10 research results, 1 production batch and 2 social posts, with zero missing original IDs. The saved LLM key and explicit GPU preference are unchanged. The interactive desktop screenshot confirms the News Studio/Product Studio navigation, version 0.15.1 and Intel GPU indicator. Old executables and state are retained under `D:\Viral Studio Support\2026-11-09\before-unified-0.15.1`; only the canonical current EXE remains in the app folder. No new paid generation or publishing was triggered for this upgrade.

@@ -100,3 +100,28 @@ test('paused render waiters resume and close cancels waiters without a deadlock'
   assert.equal(job.status, 'cancelled');
   assert.equal(queue.running.size, 0);
 });
+
+test('a finished video is available while post creation continues outside the render pool', async t => {
+  let finishContent;
+  const f = fixture(t, { newsAutomation: () => new Promise(resolve => { finishContent = resolve; }) });
+  const { store, queue, news, active } = f;
+  const first = news(), next = news();
+  first.production = { autoCreateContent: true };
+  // Persist a real output row so production metadata can be attached.
+  const output = store.add('media', { kind: 'video' });
+  queue.renderNews = async (_store, job, _presenter, _plan, _images, signal) => {
+    if (job.id === first.id) return output;
+    return new Promise((resolve, reject) => {
+      active.set(job.id, () => resolve(output));
+      signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
+    });
+  };
+  queue.tick();
+  await until(() => !!finishContent && active.has(next.id));
+  assert.equal(first.mediaId, output.id);
+  assert.equal(first.phase, 'content');
+  assert.match(first.stage, /Video đã xuất xong/);
+  assert.equal(queue.running.get(first.id).type, 'postprocess');
+  finishContent({ status: 'generated' }); active.get(next.id)();
+  await until(() => first.status === 'completed' && next.status === 'completed');
+});

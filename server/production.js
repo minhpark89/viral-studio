@@ -91,17 +91,17 @@ async function articleFromUrl(fetchImpl, sourceUrl) {
 import { checkNewsOutput } from './news-output.js';
 
 export class ProductionService {
-  constructor(store, queue, { fetchImpl = globalThis.fetch, research, llm, imageSearch = searchImageQueries, downloadImage = downloadImageAsset, sourceCard = createNewsSourceCard, sourceLoader = loadNewsSources } = {}) {
+  constructor(store, queue, { fetchImpl = globalThis.fetch, research, llm, imageSearch = searchImageQueries, downloadImage = downloadImageAsset, sourceCard = createNewsSourceCard, sourceLoader = loadNewsSources, imageBudgetMs = 120_000 } = {}) {
     this.store = store;
     this.queue = queue;
     this.controller = new AbortController();
     this.fetch = (url, options = {}) => fetchImpl(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, this.controller.signal]) : this.controller.signal });
     this.research = research || createResearchService({ fetchImpl: this.fetch });
-    this.llm = llm || ((system, input, options = {}) => requestJsonContent(store, system, input, {...options,fetchImpl:this.fetch,signal:this.controller.signal}));
+    this.llm = llm || ((system, input, options = {}) => requestJsonContent(store, system, input, {...options,fetchImpl:this.fetch,signal:options.signal ? AbortSignal.any([options.signal,this.controller.signal]) : this.controller.signal}));
+    this.imageBudgetMs = imageBudgetMs;
     this.imageSearch = imageSearch;
     this.downloadImage = downloadImage;
     this.sourceCard = sourceCard;
-    this.imageSearchCache = new Map();
     this.sourceCache = new Map();
     this.imageReviewCache = new Map();
     this.sourceLoader = (research, force = false) => sourceLoader(research, { cache: this.sourceCache, force, signal: this.controller.signal, ...(fetchImpl !== globalThis.fetch ? { fetchImpl } : {}) });
@@ -184,7 +184,10 @@ export class ProductionService {
         }
         interrupted ||= nextStatus === "interrupted";
       }
-      const nextBatchStatus = interrupted
+      const preparing = batch.items.some(item => !item.jobId && ['preparing','pending'].includes(item.status));
+      const nextBatchStatus = preparing
+        ? 'preparing'
+        : interrupted
         ? "interrupted"
         : batch.items.every((item) => item.status === "completed")
           ? "completed"
@@ -361,7 +364,7 @@ export class ProductionService {
 
   async prepareItem(batch, item) {
     const request = { ...batch.request, newsVisualPolicy: item.visualPolicy || batch.request.newsVisualPolicy || 'require-photos' };
-    const stage = message => { changePhase(item, preparationPhase(message)); item.stage = message; item.stageUpdatedAt = touchPreparation(batch, item); this.store.save(); };
+    const stage = (message, diagnostics) => { changePhase(item, preparationPhase(message)); item.stage = message; batch.stage = message; if (diagnostics) item.imagePreparation = diagnostics; item.stageUpdatedAt = touchPreparation(batch, item); this.store.save(); };
     item.storyKey ||= newsStoryKey(batch, item);
     const variant = newsVariantContext(batch, item);
     if (!item.researchId && batch.newsResearchBySource?.[item.storyKey]) item.researchId = batch.newsResearchBySource[item.storyKey];
@@ -519,12 +522,17 @@ export class ProductionService {
     // A batch can contain different stories. Neither its cache nor its in-flight
     // promise may be shared between research IDs.
     const target = request.newsPoolTarget || newsImageTarget(request.newsDuration, request.newsImageCount);
+    // Auto may finish at its existing quality minimum. Explicit image counts
+    // and a larger pool for multiple variations still pursue the full target.
+    const autoCount = !request.newsImageCount || request.newsImageCount === 'auto';
+    const enough = autoCount && target <= newsImageTarget(request.newsDuration, request.newsImageCount)
+      ? Math.min(target, Math.max(1, newsMinimumPhotos(request.newsVisualPolicy, target))) : target;
     const key = batch.id + ':' + research.id + ':' + target;
     const usable = media => media?.kind === 'image' && media.projectId === request.projectId
       && media.id !== request.avatarMediaId && !request.mcRotation?.some(entry => entry.avatarMediaId === media.id)
       && !isPageAvatar(media, this.store.state) && !isMcImage(media, this.store.state);
     const scoped = batch.newsMediaByResearch?.[research.id];
-    if (scoped?.revision >= 6 && scoped.target === target && scoped.imageMediaIds?.length
+    if (scoped?.revision >= 7 && scoped.target === target && scoped.imageMediaIds?.length
       && (scoped.visualMode !== 'source-card' || request.newsVisualPolicy === 'allow-source-card')
       && scoped.imageMediaIds.every(id => usable(this.store.state.media.find(media => media.id === id)))) {
       return { imageMediaIds: [...scoped.imageMediaIds], selectedImageIds: [...scoped.selectedImageIds], visualMode: scoped.visualMode || 'photo', diagnostics: scoped.diagnostics };
@@ -532,6 +540,11 @@ export class ProductionService {
     const prior = this.newsMediaPromises.get(key);
     if (prior) return prior;
     const promise = (async () => {
+      const startedAt = Date.now();
+      const budget = AbortSignal.timeout(this.imageBudgetMs);
+      const signal = AbortSignal.any([this.controller.signal, budget]);
+      const imageFetch = (url, options = {}) => this.fetch(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, signal]) : signal });
+      const imageLlm = (store, system, input, options = {}) => { signal.throwIfAborted(); return callLlm(store, system, input, { ...options, signal, fast:true }); };
       stage('Đang kiểm tra ảnh của bản tin');
       const savedIds = [...new Set([
         ...(research.imageMediaIds || []),
@@ -546,25 +559,23 @@ export class ProductionService {
         }
       };
       addSavedCandidates();
-      const diagnostics = { target, attempts: [], searches: [], duplicates: 0, downloadErrors: [], warnings: [] };
+      const diagnostics = { target, budgetMs:this.imageBudgetMs, startedAt:new Date(startedAt).toISOString(), attempts: [], searches: [], duplicates: 0, downloadErrors: [], warnings: [] };
       const queries = newsVisualQueries(research, narration);
       const merge = extra => { const seen = new Set(); candidates = [...extra, ...candidates].filter(image => { const key = newsImageKey(image); if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 80); };
       const search = async searchQueries => {
         if (!searchQueries.length) return;
         stage('Đang tìm ảnh liên quan');
         try {
-          const found = await this.imageSearch(searchQueries, { fetchImpl: this.fetch, maxResultsPerQuery: 8, maxResults: 48, cache: this.imageSearchCache });
+          signal.throwIfAborted();
+          // Search promises tied to this story's deadline must not poison the
+          // shared cache of another story when this one expires.
+          const found = await this.imageSearch(searchQueries, { fetchImpl: imageFetch, maxResultsPerQuery: 8, maxResults: 48 });
           merge(newsImageCandidates([], found.images));
           diagnostics.searches.push({queries: searchQueries, found: found.images.length});
           diagnostics.warnings.push(...(found.warnings || []));
           this.store.patch('researchResults', research.id, { imageSearchResults: candidates.filter(image => image.imageUrl && !image.id.startsWith('article:')), imageSearchWarnings: diagnostics.warnings });
-        } catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
+        } catch (error) { signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
       };
-      if (candidates.filter(image => image.id.startsWith('article:')).length < target && !(research.articles || []).some(article => article.sourceRead)) {
-        const source = await discoverArticleImages(research.articles, { fetchImpl: this.fetch });
-        merge(newsImageCandidates(source.articles));
-        diagnostics.warnings.push(...source.warnings);
-      }
       const assets = [];
       const assetKeys = new Set();
       const selectedIds = [];
@@ -573,62 +584,87 @@ export class ProductionService {
       const contentHashes = new Set();
       const fingerprints = [];
       const reviewedContext = new Set();
+      const reportProgress = progress => {
+        diagnostics.progress = { ...progress, downloaded:assets.length, elapsedMs:Date.now()-startedAt };
+        stage(`Đang chọn ảnh: ${assets.length}/${target} ảnh đạt yêu cầu · đã kiểm tra ${progress.reviewed}/${progress.total} ảnh`, diagnostics);
+      };
+      const download = async ranked => {
+        for (const image of ranked) {
+          if (assets.length >= target) break;
+          signal.throwIfAborted();
+          selectedCandidateIds.add(image.id);
+          const source = newsImageKey(image);
+          if (downloadFailed.has(image.id)) continue;
+          const cached = image.mediaId ? saved.find(media => media.id === image.mediaId)
+            : this.store.state.media.find(media => usable(media) && image.imageUrl && media.sourceImageUrl && newsImageKey({imageUrl:media.sourceImageUrl}) === source);
+          if (assetKeys.has(cached?.id || source || image.id)) continue;
+          try {
+            const media = cached || await this.downloadImage({ image, store: this.store, projectId: request.projectId, fetchImpl: imageFetch });
+            if (!usable(media)) continue;
+            if (media.contentHash && contentHashes.has(media.contentHash)) { diagnostics.duplicates++; assetKeys.add(source); continue; }
+            const fingerprint = media.newsFingerprint?.revision === 1 ? media.newsFingerprint : await newsImageFingerprint(this.store,media,signal);
+            if (fingerprint) {
+              this.store.patch('media',media.id,{newsFingerprint:fingerprint});
+              if (fingerprints.some(prior=>sameNewsImage(prior,fingerprint))) { diagnostics.duplicates++;assetKeys.add(source);continue; }
+              fingerprints.push(fingerprint);
+            }
+            if (media.contentHash) contentHashes.add(media.contentHash);
+            assets.push(media); assetKeys.add(media.id); if (source) assetKeys.add(source);
+            selectedIds.push(image.id);
+            this.store.patch('media', media.id, { newsResearchIds: [...new Set([...(media.newsResearchIds || []), research.id])] });
+          } catch (error) {
+            signal.throwIfAborted();
+            downloadFailed.add(image.id);
+            diagnostics.downloadErrors.push({ title: image.title, error: String(error.message).slice(0, 180) });
+          }
+        }
+        reportProgress(diagnostics.progress || {reviewed:0,total:candidates.length});
+        return assets.length >= enough;
+      };
       const select = async (allowIllustrations, reviewed = new Set()) => {
         stage(allowIllustrations ? 'Đang chọn ảnh minh họa đúng chủ thể' : 'Đang xác minh ảnh theo nội dung tin');
         // Keep a reserve and continue with unreviewed candidates when downloads
         // fail or different URLs decode to the same image. Never recycle rejects.
-        for (let round = 0; round < 3 && assets.length < target; round++) {
+        for (let round = 0; round < 3 && assets.length < enough; round++) {
+        signal.throwIfAborted();
         let ranked = [];
-        const available = candidates.filter(image => !reviewed.has(image.id) && !selectedCandidateIds.has(image.id) && !downloadFailed.has(image.id) && !assetKeys.has(newsImageKey(image)));
+        const available = candidates.filter(image => (allowIllustrations || image.id.startsWith('article:')) && !reviewed.has(image.id) && !selectedCandidateIds.has(image.id) && !downloadFailed.has(image.id) && !assetKeys.has(newsImageKey(image)));
         if (!available.length) break;
-        try { ranked = await rankNewsImages(this.store, { ...research, headline: research.headline || narration.headline, script: narration.narration }, available, { llm: callLlm, allowIllustrations, maxImages: target - assets.length + 6, reviewCache: this.imageReviewCache, onDecision: decision => { (diagnostics.decisions ||= []).push(decision); }, alreadySelected: assets.map(media => ({title:media.name,description:media.imageDescription})), onReviewed: ids => ids.forEach(id => reviewed.add(id)), onWarning: warning => diagnostics.warnings.push(warning) }); }
-        catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
+        try { ranked = await rankNewsImages(this.store, { ...research, headline: research.headline || narration.headline, script: narration.narration }, available, { llm: imageLlm, signal, onBatch:download, onProgress:reportProgress, allowIllustrations, maxImages: target - assets.length + 6, reviewCache: this.imageReviewCache, onDecision: decision => { (diagnostics.decisions ||= []).push(decision); }, alreadySelected: assets.map(media => ({title:media.name,description:media.imageDescription})), onReviewed: ids => ids.forEach(id => reviewed.add(id)), onWarning: warning => diagnostics.warnings.push(warning) }); }
+        catch (error) { signal.throwIfAborted(); diagnostics.warnings.push(error.message); }
         diagnostics.attempts.push({ mode: allowIllustrations ? 'illustration' : 'photo', candidates: available.length, selected: ranked.length });
         if (!ranked.length) break;
-        for (const image of ranked) {
-        if (assets.length >= target) break;
-        selectedCandidateIds.add(image.id);
-        const source = newsImageKey(image);
-        if (downloadFailed.has(image.id)) continue;
-        const cached = image.mediaId ? saved.find(media => media.id === image.mediaId)
-          : this.store.state.media.find(media => usable(media) && image.imageUrl && media.sourceImageUrl && newsImageKey({imageUrl:media.sourceImageUrl}) === source);
-        if (assetKeys.has(cached?.id || source || image.id)) continue;
-        try {
-          const media = cached || await this.downloadImage({ image, store: this.store, projectId: request.projectId, fetchImpl: this.fetch });
-          if (!usable(media)) continue;
-          if (media.contentHash && contentHashes.has(media.contentHash)) { diagnostics.duplicates++; assetKeys.add(source); continue; }
-          const fingerprint = media.newsFingerprint?.revision === 1 ? media.newsFingerprint : await newsImageFingerprint(this.store,media,this.controller.signal);
-          if (fingerprint) {
-            this.store.patch('media',media.id,{newsFingerprint:fingerprint});
-            if (fingerprints.some(prior=>sameNewsImage(prior,fingerprint))) { diagnostics.duplicates++;assetKeys.add(source);continue; }
-            fingerprints.push(fingerprint);
-          }
-          if (media.contentHash) contentHashes.add(media.contentHash);
-          assets.push(media); assetKeys.add(media.id); if (source) assetKeys.add(source);
-          selectedIds.push(image.id);
-          this.store.patch('media', media.id, { newsResearchIds: [...new Set([...(media.newsResearchIds || []), research.id])] });
-        } catch (error) {
-          this.controller.signal.throwIfAborted();
-          downloadFailed.add(image.id);
-          diagnostics.downloadErrors.push({ title: image.title, error: String(error.message).slice(0, 180) });
-        }
-        }
         }
       };
+      let visualMode = 'photo';
+      try {
+      if (candidates.filter(image => image.id.startsWith('article:')).length < target && !(research.articles || []).some(article => article.sourceRead)) {
+        const source = await discoverArticleImages(research.articles, { fetchImpl: imageFetch });
+        merge(newsImageCandidates(source.articles));
+        diagnostics.warnings.push(...source.warnings);
+      }
       await select(false);
-      let visualMode = selectedIds.some(id => !id.startsWith('article:')) ? 'illustration' : 'photo';
-      if (assets.length < target) {
+      // Search-library images are labeled context. Review cached candidates
+      // once under that policy, not first as event photos and again as context.
+      if (assets.length < enough && candidates.some(image => !image.id.startsWith('article:'))) await select(true, reviewedContext);
+      if (assets.length < enough) {
         // Rejected cached candidates must trigger another search, even if their
         // count is high. Context imagery is labeled, never treated as event proof.
         await search(queries);
         await select(true, reviewedContext);
       }
-      if (assets.length < target) {
+      if (assets.length < enough) {
         stage('Đang tìm thêm góc ảnh đúng chủ thể trong nguồn tin');
         try {
-          const extraQueries = await additionalNewsImageQueries(this.store, research, narration, queries, {llm:callLlm});
+          const extraQueries = await additionalNewsImageQueries(this.store, research, narration, queries, {llm:imageLlm});
           if (extraQueries.length) { await search(extraQueries); await select(true, reviewedContext); }
-        } catch (error) { this.controller.signal.throwIfAborted(); diagnostics.warnings.push(`Không mở rộng được tìm ảnh: ${String(error.message).slice(0, 180)}`); }
+        } catch (error) { signal.throwIfAborted(); diagnostics.warnings.push(`Không mở rộng được tìm ảnh: ${String(error.message).slice(0, 180)}`); }
+      }
+      } catch (error) {
+        this.controller.signal.throwIfAborted();
+        if (!budget.aborted) throw error;
+        diagnostics.budgetExceeded = true;
+        diagnostics.warnings.push(`Đã hết ${Math.round(this.imageBudgetMs/1000)} giây tìm/chọn ảnh; giữ ${assets.length} ảnh đã xác minh để tiếp tục hoặc bổ sung sau.`);
       }
       if (selectedIds.some(id => !id.startsWith('article:'))) visualMode = 'illustration';
       if (!assets.length && request.newsVisualPolicy === 'allow-source-card') {
@@ -644,9 +680,9 @@ export class ProductionService {
       if (assets.length < target && diagnostics.warnings.some(item => /Không kiểm tra được|Không xác minh được/.test(item))) warning += ' Một số ảnh chưa kiểm tra được vì lỗi LLM; có thể thử lại bước chuẩn bị để bổ sung ảnh.';
       if (warning) batch.warnings = [...new Set([...(batch.warnings || []), warning])];
       const photoCount = assets.filter(media => media.visualRole !== 'source-card').length;
-      Object.assign(diagnostics, { visualMode, warning, downloaded: assets.length, photoCount, sourceCardCount: assets.length - photoCount, status: photoCount >= newsMinimumPhotos(request.newsVisualPolicy) ? 'ready' : 'partial', updatedAt: new Date().toISOString() });
+      Object.assign(diagnostics, { elapsedMs:Date.now()-startedAt, visualMode, warning, downloaded: assets.length, photoCount, sourceCardCount: assets.length - photoCount, status: photoCount >= newsMinimumPhotos(request.newsVisualPolicy, target) ? 'ready' : 'partial', updatedAt: new Date().toISOString() });
       const result = { imageMediaIds: assets.map(media => media.id), selectedImageIds: selectedIds, visualMode, diagnostics };
-      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, target, revision: 6 } };
+      batch.newsMediaByResearch = { ...batch.newsMediaByResearch, [research.id]: { ...result, target, revision: 7 } };
       this.store.patch('researchResults', research.id, { imageMediaIds: result.imageMediaIds, imagePreparation: diagnostics });
       this.store.save();
       return result;
@@ -662,7 +698,6 @@ export class ProductionService {
     this.store.off("change", this.onStoreChange);
     if (this.syncTimer) clearTimeout(this.syncTimer);
     this.newsMediaPromises.clear();
-    this.imageSearchCache.clear();
     this.sourceCache.clear();
     this.imageReviewCache.clear();
   }

@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require("electron");
+require('../server/http-runtime.cjs');
 const fs = require("node:fs");
 const path = require("node:path");
 const { dataDirectory } = require("./data-directory.cjs");

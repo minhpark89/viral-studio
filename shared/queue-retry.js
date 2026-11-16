@@ -26,5 +26,6 @@ export function retryAction(job, data) {
   if (receipt?.scriptMismatch) return { action: 'review', reason: 'Lời đọc đã gửi không khớp; cần kiểm tra tác vụ cũ.' };
   if (receipt?.id && !receipt.rejected) return { action: 'recover' };
   if (!receipt?.rejected && (job.submittedAt || receipt?.submittedAt)) return { action: 'review', reason: 'Đã gửi nhưng chưa xác nhận kết quả. Kiểm tra Creations trước để tránh tạo trùng.' };
+  if (job.errorCode === 'PROVIDER_CONTENT_REJECTED') return { action: 'review', reason: 'DreamFace từ chối lời dẫn. Cần xem lại nội dung hoặc chọn dịch vụ MC phù hợp trước khi thử lại.' };
   return { action: 'retry' };
 }

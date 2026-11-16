@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { binary, runProcess } from './media.js';
 import { cleanNewsText } from './news-render-common.js';
+import { StudioError } from './store.js';
 
 const normalized = text => text.normalize('NFKD').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 export function whisperWords(transcript, duration) {
@@ -62,6 +63,17 @@ export function groupNewsCaptions(words,duration){
   return cues.filter(c=>c.end>c.start);
 }
 
+// An unrecognized ending is collapsed to 10 ms per word by alignment. It
+// must not pass as readable, synchronized speech, including in old caches.
+export function validateNewsCaptionSpeech(captions) {
+ const words=captions?.words||[];
+ let trailing=0;
+ for(let i=words.length-1;i>=0&&words[i].end-words[i].start<=.011;i--)trailing++;
+ if(captions?.method==='aligned'&&trailing>=5)
+  throw new StudioError('Không xác minh được câu đọc cuối của video MC: nhiều từ bị dồn vào thời gian quá ngắn. Kiểm tra lời đọc và tạo lại MC nếu bị thiếu; video hiện có được giữ nguyên.', 'NEWS_PRESENTER_SPEECH_INCOMPLETE',422);
+ return captions;
+}
+
 async function captionRuntime(){
  const roots=[process.resourcesPath&&path.join(process.resourcesPath,'news-captions'),path.resolve(import.meta.dirname,'../runtime/news-captions')].filter(Boolean);
  for(const directory of roots){const executable=path.join(directory,process.platform==='win32'?'whisper-cli.exe':'whisper-cli'),model=path.join(directory,'ggml-base.en.bin');if(await fs.stat(executable).catch(()=>null)&&await fs.stat(model).catch(()=>null))return{executable,model};}
@@ -72,7 +84,7 @@ export async function createNewsCaptions(store,presenter,narration,duration,dire
  signal.throwIfAborted();
  const stat=await fs.stat(presenter.file),key=createHash('sha256').update(JSON.stringify([2,presenter.id,presenter.file,stat.size,stat.mtimeMs,narration,duration])).digest('hex');
  const existing=presenter.newsCaptionCache;
- if(existing?.key===key&&existing.method==='aligned')return{...existing,cached:true};
+ if(existing?.key===key&&existing.method==='aligned')return{...validateNewsCaptionSpeech(existing),cached:true};
  const runtime=await captionRuntime();let transcript=null,reason='';
  if(runtime){
   update(4,'Đang căn phụ đề theo lời đọc');
@@ -85,6 +97,7 @@ export async function createNewsCaptions(store,presenter,narration,duration,dire
  }else reason='Chưa có bộ căn lời đọc offline; phụ đề dùng thời gian ước lượng.';
  const aligned=alignNewsWords(narration,whisperWords(transcript,duration),duration);
  const result={key,cues:groupNewsCaptions(aligned.words,duration),words:aligned.words,method:aligned.method,coverage:aligned.coverage,warning:aligned.method==='aligned'?'':reason||'Lời đọc chưa khớp đủ với kịch bản; thời gian phụ đề được ước lượng.'};
+ validateNewsCaptionSpeech(result);
  if(presenter.id&&store.state.media.some(m=>m.id===presenter.id))store.patch('media',presenter.id,{newsCaptionCache:result});
  return result;
 }

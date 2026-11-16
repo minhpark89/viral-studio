@@ -37,7 +37,7 @@ export function resolvePageToken(meta, page, poolId = '', pinnedTokenId = '') {
 
 export function pageUnavailableReason(meta, page, local, poolId = '') {
   if (managedPageUnavailable(page, local)) return 'Page bị hạn chế, chờ xử lý, lưu trữ hoặc chưa công khai';
-  if (page?.verification?.status === 'error') return 'Kiểm tra Page chưa đạt';
+  if (['error','unknown'].includes(page?.verification?.status)) return 'Kiểm tra Page chưa đạt';
   if (!resolvePageToken(meta, page, poolId)) return poolId ? 'Chưa có phân công token hợp lệ trong pool' : 'Thiếu / lỗi token của Page';
   return '';
 }
@@ -61,7 +61,7 @@ export function reconcileGroupQueue(store, group) {
     const local = store.state.socialPages?.find(page => page.id === post.pageId);
     const page = meta.pages?.find(page => page.id === local?.externalId);
     const removed = !group.pageIds?.includes(local?.externalId);
-    const unavailable = managedPageUnavailable(page, local) || page?.verification?.status === 'error'
+    const unavailable = managedPageUnavailable(page, local) || ['error','unknown'].includes(page?.verification?.status)
       || (meta.pages?.length || meta.tokens?.length) && pageUnavailableReason(meta, page, local, post.tokenGroupId || group.scheduleConfig?.tokenGroupId || '');
     if (!removed && !unavailable) continue;
     post.automationError = removed ? 'Page đã được gỡ khỏi nhóm. Chọn Page khác để đăng nội dung này.' : 'Page cần xử lý. Nội dung được giữ trong kho.';

@@ -97,7 +97,7 @@ export async function runRenderSelfTest(directory, { gpu = false } = {}) {
     const colors = ['#dc1e1e','#1ed228','#2828d2','#dcd228','#d228d2','#1ed2d2','#a0641e','#6428a0','#e682aa','#64aae6'];
     for (const [index, color] of (gpu ? colors : colors.slice(0, 3)).entries()) {
       const file = path.join(root, `editorial-${index}.png`);
-      const photoSize = ['1600x900', '900x1400', '1200x800'][index % 3];
+      const photoSize = ['1200x1080', '900x1400', '1200x800'][index % 3];
       await runProcess(ffmpeg, ["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=${color}:s=${photoSize}`, "-frames:v", "1", "-threads", "1", "-update", "1", file], { signal, timeout: 30000 });
       images.push(await importMedia(store, file, { projectId: project.id, name: path.basename(file), move: true }));
     }
@@ -117,7 +117,8 @@ export async function runRenderSelfTest(directory, { gpu = false } = {}) {
       const metadata = await probe(output, store.state.settings);
       assert.equal(metadata.width, 1080); assert.equal(metadata.height, 1920);
       assert.equal(metadata.videoCodec, "h264"); assert.equal(metadata.audioCodec, "aac");
-      assert.equal(result.newsRenderStyle, size === '1056x792' ? 'v3-fast' : 'v3');
+      assert.equal(result.newsRenderStyle, size === '1056x792' ? 'v3-fast' : 'v4');
+      assert.equal(result.newsLayout.hero.h, size === '1056x792' ? 720 : 1040);
       assert.doesNotMatch(result.newsCaptionWarning || '', /Chưa có bộ|Không căn được/, 'Bundled offline caption runtime must execute');
       assert.ok(Math.abs(metadata.duration - (gpu ? 25 : 15)) < 0.25);
       await runProcess(ffmpeg, ["-v", "error", "-xerror", "-i", output, "-f", "null", "-"], { signal, timeout: 120000 });

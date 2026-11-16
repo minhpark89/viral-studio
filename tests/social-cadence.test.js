@@ -57,6 +57,17 @@ test('cadence configuration survives unrelated group edits and allows explicit d
   assert.equal(disabled.sameTokenMinutes,0);assert.equal(disabled.crossTokenMinutes,0);
 });
 
+test('cadence wakes at the reserved time without accumulating a full polling interval per Page',async()=>{
+  const {store}=fixture();store.state.socialPosts=store.state.socialPosts.slice(0,2);
+  for(const post of store.state.socialPosts)post.scheduledAt=new Date(Date.now()-1000).toISOString();
+  Object.assign(store.state.settings.meta.pageGroups[0].scheduleConfig,{sameTokenMinutes:0,crossTokenMinutes:0,staggerMinutes:0.001});
+  let calls=0,finish;const complete=new Promise(resolve=>{finish=resolve;});
+  const scheduler=new SocialScheduler(store,async({postId})=>{calls++;store.state.socialPosts=store.state.socialPosts.filter(p=>p.id!==postId);if(calls===2)finish();return{status:'published'};},{intervalMs:60_000});
+  let timeout;
+  try{await Promise.race([complete,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Waited for normal polling instead of cadence wake')),2000);})]);assert.equal(calls,2);}
+  finally{clearTimeout(timeout);await scheduler.close();}
+});
+
 test('comment-only retries keep the video slot available for the next Page',async()=>{
   const {store,at}=fixture();store.state.socialPosts=store.state.socialPosts.filter(p=>p.id==='A1');
   store.state.socialPosts[0].publication={externalPostId:'existing-video'};

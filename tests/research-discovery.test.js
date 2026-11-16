@@ -127,3 +127,57 @@ test('closing during expansion checkpoints discovered articles and resumes missi
   assert.equal(recoveredStore.state.researchResults.length, 5);
   assert.equal(new Set(recoveredStore.state.researchResults.map(r => r.articles[0].url)).size, 5);
 });
+
+test('comma-separated news subjects are searched independently instead of requiring all subjects in one article', async () => {
+  const calls = [];
+  const service = make(async input => {
+    const query = new URL(input).searchParams.get('q'); calls.push(query);
+    const rows = query.startsWith('FAA ground stop when:')
+      ? entries(25).map(a => ({ ...a, title: `FAA ground stop aviation report ${a.url.split('/').at(-1)}`, summary: 'Nationwide FAA flight restrictions.' }))
+      : query.startsWith('SpaceX Starship when:')
+        ? entries(25, 25).map(a => ({ ...a, title: `SpaceX Starship flight report ${a.url.split('/').at(-1)}`, summary: 'SpaceX launch updates.' })) : [];
+    return new Response(rss(rows));
+  });
+  const found = await service.discover({ topic: 'FAA ground stop, SpaceX Starship', count: 50 });
+  assert.equal(found.articles.length, 50);
+  assert.ok(calls.some(q => q.startsWith('FAA ground stop when:')));
+  assert.ok(calls.some(q => q.startsWith('SpaceX Starship when:')));
+});
+
+test('duplicate-only observed queries cannot stop discovery before untouched source partitions', async () => {
+  const prior = entries(10);
+  const calls = [];
+  const service = make(async input => {
+    const query = new URL(input).searchParams.get('q'); calls.push(query);
+    return new Response(rss(query.includes('site:apnews.com') ? entries(50) : prior));
+  });
+  const found = await service.discover({ topic: 'Trump wars', count: 40, excludeArticles: prior });
+  assert.equal(found.articles.length, 40);
+  assert.ok(calls.some(q => q.includes('site:apnews.com')));
+  assert.ok(found.articles.every(a => !prior.some(p => p.url === a.url)));
+});
+
+test('refill resumes unsearched partitions across its per-run budget and retains saved results', async t => {
+  const calls = [];
+  const prior = entries(10);
+  const { store, project, service } = await fixture(t, async input => {
+    const query = new URL(input).searchParams.get('q'); calls.push(query);
+    return new Response(rss(query.includes('site:cnbc.com') ? entries(50) : prior));
+  });
+  const batch = service.create({ projectId: project.id, requestId: randomUUID(), topic: 'Trump wars', count: 50 });
+  await service.worker;
+  const saved = store.state.researchResults.map(r => JSON.stringify(r));
+  assert.ok(saved.length >= 10);
+  assert.equal(batch.status, 'partial');
+  assert.equal(batch.discovery.stopReason, 'budget');
+  assert.ok(!calls.some(q => q.includes('site:cnbc.com')));
+  const firstCalls = new Set(calls);
+  for (let attempt = 0; attempt < 4 && batch.status !== 'completed'; attempt++) {
+    service.retry(batch.id); await service.worker;
+  }
+  assert.equal(batch.status, 'completed');
+  assert.equal(batch.items.length, 50);
+  assert.deepEqual(store.state.researchResults.slice(0, saved.length).map(r => JSON.stringify(r)), saved);
+  assert.ok(calls.some(q => q.includes('site:cnbc.com')));
+  assert.ok(batch.discovery.queries.every(query => !firstCalls.has(new URL(query.url).searchParams.get('q'))));
+});

@@ -27,19 +27,21 @@ async function fixture(t, options = {}) {
   const context = await browser.newContext();
   const page = await context.newPage();
   t.after(() => context.close());
-  const log = { submits: [], downloads: [], receipts: [], historyClicks: 0 };
+  const log = { submits: [], downloads: [], receipts: [], historyClicks: 0, navigations: 0 };
   let polls = 0;
   const success = data => ({ status_code: "THS12140000000", data });
   await page.route("https://www.dreamfaceapp.com/**", async route => {
     const url = new URL(route.request().url());
     let payload;
     if (url.pathname === "/image") {
+      log.navigations++;
       return route.fulfill({ contentType: "text/html", body: `<!doctype html><p>0 credits</p>${options.historyRequiresTab ? '<button id="history-tab">My Image</button>' : ''}<textarea placeholder="Type or paste text here"></textarea><button id="model" hidden></button><button id="create" disabled>Create</button><img src="data:image/png;base64,AA=="><script>
         const input=document.querySelector('textarea'),button=document.querySelector('#create');
         let model=false,history=false,submitted=${Boolean(options.pending)};
         const sync=()=>{button.disabled=!(model&&history&&input.value)};
         input.addEventListener('input',sync);
-        fetch('/dw-server/model_config/ai_image/list/en').then(r=>r.json()).then(()=>{model=true;document.querySelector('#model').textContent='Dream Image 2.0';document.querySelector('#model').hidden=false;input.value='';sync()});
+        if(!${Boolean(options.firstLoadStalls && log.navigations === 1)})fetch('/dw-server/model_config/ai_image/list/en').then(r=>r.json()).then(()=>{model=true;document.querySelector('#model').textContent='Dream Image 2.0';document.querySelector('#model').hidden=false;input.value='';sync()});
+        if(${Boolean(options.movingHistoryTab)})document.querySelector('#history-tab').animate([{transform:'translateX(0)'},{transform:'translateX(80px)'}],{duration:200,iterations:Infinity,direction:'alternate'});
         async function poll(){await fetch('/dw-server/work_session/list').then(r=>r.json());if(!history){history=true;input.value='';sync()}}
         document.querySelector('#history-tab')?.addEventListener('click',()=>{fetch('/history-opened');poll()});
         if(!${Boolean(options.historyRequiresTab)})poll();setInterval(()=>{if(submitted)poll()},100);
@@ -104,10 +106,27 @@ test("My Image history recovers an existing matching MC without another generati
   assert.deepEqual(log.downloads,[resultUrl]);
 });
 
+test('an animated My Image tab still opens history and recovers without another submission', async t => {
+  const { run, log } = await fixture(t, { historyRequiresTab: true, movingHistoryTab: true, existing: true });
+  await run();
+  assert.equal(log.historyClicks, 1);
+  assert.equal(log.submits.length, 0);
+  assert.deepEqual(log.downloads, [resultUrl]);
+});
+
+test('a stalled initial image page reloads once before submitting exactly one request', async t => {
+  const { run, log } = await fixture(t, { firstLoadStalls: true, modelDelay: 10, historyDelay: 10 });
+  await run({ readyTimeoutMs: 600 });
+  assert.equal(log.navigations, 2);
+  assert.equal(log.submits.length, 1);
+  assert.deepEqual(log.downloads, [resultUrl]);
+});
+
 test("opening My Image is insufficient until the saved-work response arrives", async t => {
   const { run, log } = await fixture(t, {historyRequiresTab:true,modelDelay:10,historyDelay:1500});
   await assert.rejects(run({readyTimeoutMs:450}),error=>error.code==='MC_IMAGE_NOT_READY');
-  assert.equal(log.historyClicks,1);
+  assert.equal(log.historyClicks,2);
+  assert.equal(log.navigations,2);
   assert.equal(log.submits.length,0);
 });
 

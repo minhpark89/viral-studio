@@ -10,7 +10,7 @@ export function PageAvatar({ page }) {
     : <span className="group-avatar fallback" aria-label="Chưa có avatar">{(page.name || 'P').slice(0, 1).toUpperCase()}</span>;
 }
 
-export const pageCanJoin = page => page.lifecycle === 'active' && page.hasUsableToken && !['identity', 'restricted', 'unpublished', 'token'].includes(page.health);
+export const pageCanJoin = page => page.lifecycle === 'active' && page.hasUsableToken && !['identity','restricted','unpublished','token','check_error'].includes(page.health);
 
 export function GroupMemberPicker({ items, selected, onChange, kind = 'page', groups = [], allowIssues = false, label }) {
   const [query, setQuery] = useState(''), [health, setHealth] = useState('all'), [group, setGroup] = useState('all');
@@ -81,7 +81,9 @@ export function GroupMemberPicker({ items, selected, onChange, kind = 'page', gr
     <p className="group-picker-help">Tick từng dòng, giữ Shift để chọn một dải hoặc kéo chuột qua các dòng. Lựa chọn ngoài bộ lọc được giữ lại.</p>
     <div className="group-picker-list" ref={list} onPointerMove={move}>
       {visible.map((item, index) => <div className={`group-picker-row ${ids.has(item.id) ? 'selected' : ''} ${!canSelect(item) ? 'unavailable' : ''}`} key={item.id} data-picker-id={item.id} data-picker-index={index} onPointerDown={event => start(event, index)} onPointerEnter={() => extend(index)} onClick={event => { if (event.detail !== 0 && !event.target.closest('input') && !drag.current && event.nativeEvent.pointerType === 'touch') selectRange(index, index, !ids.has(item.id)); }}>
-        <input type="checkbox" aria-label={`Chọn ${kind === 'token' ? 'token' : 'Page'} ${item.name}`} checked={ids.has(item.id)} disabled={!canSelect(item) && !ids.has(item.id)} onClick={event => { if (event.detail && event.nativeEvent.pointerType !== 'touch') event.preventDefault(); }} onChange={() => selectRange(index, index, !ids.has(item.id))} />
+        <input type="checkbox" aria-label={`Chọn ${kind === 'token' ? 'token' : 'Page'} ${item.name}`} checked={ids.has(item.id)} disabled={!canSelect(item) && !ids.has(item.id)}
+          onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
+          onChange={event => { const from = event.nativeEvent.shiftKey && anchor.current !== null ? anchor.current : index; selectRange(from, index, event.target.checked); anchor.current = from; }} />
         <span className="group-row-number">{index + 1}</span>
         {kind === 'page' && <PageAvatar page={item} />}
         <span className="group-picker-name"><strong>{item.name || item.id}</strong><small>{item.id}</small></span>

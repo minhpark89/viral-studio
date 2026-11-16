@@ -30,6 +30,26 @@
 .group-preview .group-warning { color: #eab57c; }
 .mg-page-identity { display: flex; align-items: center; gap: 10px; }
 .mg-page-identity > div { min-width: 0; }
+.group-setup-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.group-setup-fields > p { font-size: 13px; line-height: 1.6; color: #bdcde2; }
+.group-setup-steps { color: #98bdff !important; }
+.group-setup-summary { padding: 12px 16px; border: 1px solid #355270; border-radius: 10px; background: #152b43; color: #bdcde2; font-size: 13px; line-height: 1.6; }
+.group-setup-summary p { margin: 6px 0; }
+.group-setup-summary details { color: #eab57c; }
+.group-setup-summary ul { max-height: 140px; overflow: auto; padding-left: 20px; }
+.token-group-toolbar { display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 0; }
+.token-group-toolbar input { flex: 1; min-width: 180px; }
+.pages-token-panel .hub-panel-heading, .pages-page-groups-panel .hub-panel-heading { flex-wrap: wrap; gap: 10px; }
+.pages-token-panel .inline-actions, .pages-page-groups-panel .inline-actions { flex-wrap: wrap; }
+.group-dialog .modal-actions { flex-wrap: wrap; }
+.pages-groups-row .hub-group-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 16px 0; min-width: 0; }
+.pages-groups-row .hub-group-row > strong { flex-basis: 100%; font-size: 16px; overflow-wrap: anywhere; }
+.pages-groups-row .hub-group-row > span { flex-shrink: 0; max-width: 100%; }
+.pages-groups-row .hub-group-rule { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; min-width: 0; }
+.pages-groups-row .hub-group-rule > small { flex-basis: 100%; line-height: 1.6; margin-bottom: 3px; }
+.pages-groups-row .hub-group-rule > .button { flex-shrink: 0; }
+.group-daily-summary { flex: 1 1 100%; display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; background: #152b43; border: 1px solid #355270; border-radius: 8px; color: #bdcde2; font-size: 12px; line-height: 1.6; }
+.group-daily-summary .group-warning { color: #eab57c; }
 @media (max-width: 650px) {
   .group-dialog .form-grid { grid-template-columns: minmax(0, 1fr); }
   .group-picker-health { max-width: 110px; }

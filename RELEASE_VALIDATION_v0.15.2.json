@@ -72,7 +72,7 @@
     }
   },
   "remoteUpgrade": {
-    "machine": "DESKTOP-KAD22P5",
+    "machine": "WINDOWS-VALIDATION",
     "version": "0.15.2",
     "dataDir": "D:\\Viral Studio\\Viral Data",
     "canonicalExe": "D:\\Viral Studio\\Viral Studio.exe",

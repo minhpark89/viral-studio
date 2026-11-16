@@ -154,6 +154,26 @@
 .content-bulk-progress progress { width: 150px; height: 7px; accent-color: var(--hub-orange); }
 .content-select-toggle, .content-card-select { display: inline-flex; align-items: center; gap: 7px; color: #d9e7f8; font-size: 11px; font-weight: 700; cursor: pointer; }
 .content-select-toggle input, .content-card-select input { width: auto; accent-color: var(--hub-orange); }
+.content-video-counts { display: flex; gap: 12px 24px; flex-wrap: wrap; padding: 14px; margin-bottom: 20px; border: 1px solid #355576; border-radius: 12px; color: #b8cbe5; background: #132339; font-size: 13px; }
+.content-video-counts b { color: #f7fbff; }
+.content-inbox-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; border: 1px solid #355576; border-radius: 12px; background: #132339; }
+.content-inbox-controls > .button { margin-left: auto; }
+.content-inbox-concurrency { display: inline-flex; align-items: center; gap: 8px; color: #b8cbe5; font-size: 12px; }
+.content-inbox-concurrency select { width: 60px; padding: 6px; }
+.content-video-inbox article > input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--hub-orange); }
+.content-video-inbox article > svg { flex-shrink: 0; }
+.content-video-inbox article strong { overflow-wrap: anywhere; }
+.content-inbox-pagination { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; color: #b8cbe5; font-size: 12px; }
+.content-inbox-pagination > span:first-child { margin-right: auto; }
+.content-inbox-progress { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px; border: 1px solid #466184; border-radius: 12px; background: #132339; color: #b8cbe5; font-size: 12px; }
+.content-inbox-progress progress { width: 160px; height: 8px; accent-color: var(--hub-orange); }
+.content-inbox-progress details { flex-basis: 100%; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .content-inbox-controls > .button { margin-left: 0; width: 100%; }
+  .content-video-inbox article { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; }
+  .content-video-inbox article > svg { display: none; }
+  .content-video-inbox article > .button { grid-column: 2; }
+}
 .content-bulk-hint { color: #8fa6c6; font-size: 11px; }
 .content-bulk-actions { display: flex; gap: 7px; margin-left: auto; }
 .content-bulk-actions .button { padding: 7px 10px; font-size: 11px; }

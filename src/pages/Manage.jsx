@@ -36,6 +36,7 @@ import { HardwareStorageSettings } from '../HardwareStorageSettings.jsx';
 import { latestJobs, retryAction } from '../../shared/queue-retry.js';
 import { QueueRetryBar } from '../QueueRetryBar.jsx';
 import { JobTimings } from '../JobTimings.jsx';
+import { NewsNarrationRetry } from '../NewsNarrationRetry.jsx';
 
 function jobElapsedSeconds(job) {
   if (Number.isFinite(Number(job.durationMs))) return Math.max(0, Number(job.durationMs) / 1000);
@@ -185,7 +186,7 @@ export function QueuePage({ data, project, run, navigate }) {
         <span className="muted small">{jobs.length + preparations.length} tác vụ trong dự án{preparations.length ? ` · ${preparations.length} đang chuẩn bị / cần xử lý` : ''}</span>
       </div>
       <div className="output-filters"><Field label="Thời gian render"><select value={period} onChange={event => setPeriod(event.target.value)}><option value="all">Mọi lần render · mới nhất trước</option><option value="today">Render hôm nay</option><option value="7d">Render 7 ngày qua</option></select></Field><Field label="Tìm tác vụ"><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Tên video hoặc mã tác vụ…" /></Field></div>
-      {['failed', 'needs_assets'].includes(filter) && <QueueRetryBar key={`${project.id}:${filter}:${typeFilter}:${period}:${search}`} projectId={project.id} jobs={jobs.filter(job => ['failed', 'interrupted'].includes(job.status))} preparations={preparations.filter(item => ['failed', 'interrupted', 'needs_assets'].includes(item.status))} selected={selectedErrors} onSelect={setSelectedErrors} run={run} />}
+      {['failed', 'needs_assets'].includes(filter) && <QueueRetryBar data={data} key={`${project.id}:${filter}:${typeFilter}:${period}:${search}`} projectId={project.id} jobs={jobs.filter(job => ['failed', 'interrupted'].includes(job.status))} preparations={preparations.filter(item => ['failed', 'interrupted', 'needs_assets'].includes(item.status))} selected={selectedErrors} onSelect={setSelectedErrors} run={run} />}
       {preparations.length > 0 && <QueuePreparation items={preparations} data={data} run={run} navigate={navigate} selected={['failed', 'needs_assets'].includes(filter) ? selectedErrors : null} onSelect={setSelectedErrors} />}
       {jobs.length ? (
         <div className="job-list">
@@ -330,7 +331,7 @@ export function QueuePage({ data, project, run, navigate }) {
                             <Download size={16} />
                           </button>
                         )}
-                      <button
+                      {job.errorCode !== 'PROVIDER_CONTENT_REJECTED' && <button
                         className="icon-button"
                         title="Thử lại"
                         onClick={() => {
@@ -351,7 +352,7 @@ export function QueuePage({ data, project, run, navigate }) {
                         }}
                       >
                         <RefreshCw size={16} />
-                      </button>
+                      </button>}
                       </>
                     )}
                     <button
@@ -404,6 +405,7 @@ export function QueuePage({ data, project, run, navigate }) {
                     <span>Content: {job.contentError}</span>
                   </div>
                 )}
+                {job.type === 'news' && job.status === 'failed' && job.errorCode === 'PROVIDER_CONTENT_REJECTED' && <NewsNarrationRetry job={job} data={data} run={run} />}
                 {job.warnings?.length > 0 && (
                   <Notice>{job.warnings.join(" ")}</Notice>
                 )}

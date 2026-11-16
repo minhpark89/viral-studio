@@ -1,4 +1,6 @@
-import { autoScheduleWarehousePosts } from "./social.js";
+import { autoScheduleWarehousePosts, autoScheduleDailyPageGroups } from "./social.js";
+import { pageDailyMode } from '../shared/posting-calendar.js';
+import { dailyPagePublished, releaseDailyAllocation } from './page-daily-schedule.js';
 import { automaticPostRetry } from "./meta-errors.js";
 import { publishedVideo, returnPostToWarehouse } from './post-lifecycle.js';
 import { resolvePageToken, reconcileGroupQueue } from './page-routing.js';
@@ -12,6 +14,9 @@ export class SocialScheduler {
     this.running = new Set();
     this.pending = new Set();
     this.closed = false;
+    this.autoWake = intervalMs > 0;
+    this.wakeTimer = null;
+    this.wakeAt = 0;
     this.timer = intervalMs > 0 ? setInterval(() => this.tick(), intervalMs) : null;
     this.timer?.unref();
     this.tick();
@@ -43,6 +48,16 @@ export class SocialScheduler {
 
   process(post) {
     if (this.closed || this.running.has(post.id) || post.automationRetryBlocked || post.deletedAt || post.archivedAt) return null;
+    if (post.automationSource === 'daily-automation' && !publishedVideo(this.store, post)) {
+      if (dailyPagePublished(this.store, post, this.now())) {
+        releaseDailyAllocation(post, this.now(), 'Page đã đăng đủ một bài hôm nay.'); this.store.save(); return null;
+      }
+      const external = this.store.state.socialPages?.find(page => page.id === post.pageId)?.externalId;
+      if (external && [...this.running].some(id => {
+        const other = this.store.state.socialPosts.find(p => p.id === id);
+        return this.store.state.socialPages?.find(page => page.id === other?.pageId)?.externalId === external;
+      })) return null;
+    }
     if (!this.reserveCadence(post)) return null;
     this.running.add(post.id);
     const task = this.processPost(post);
@@ -80,6 +95,7 @@ export class SocialScheduler {
     const afterPool = !poolId || ledger.pools[poolId] === undefined ? 0 : Number(ledger.pools[poolId]) + cross;
     const earliest = Math.max(afterToken, afterGroup, afterPage, afterPool, ledger.tokenNext[tokenId] || 0, ledger.pageNext[page.externalId] || 0, poolId ? ledger.poolNext[poolId] || 0 : 0);
     if (earliest > current) {
+      this.wakeForCadence(earliest);
       const nextAt = new Date(earliest).toISOString();
       if (post.automationNextAttemptAt !== nextAt) {
         post.automationNextAttemptAt = nextAt;
@@ -101,6 +117,17 @@ export class SocialScheduler {
     post.automationNextAttemptAt = null;
     this.store.save();
     return true;
+  }
+
+  wakeForCadence(at) {
+    if (!this.autoWake || this.closed || this.wakeTimer && this.wakeAt <= at) return;
+    if (this.wakeTimer) clearTimeout(this.wakeTimer);
+    this.wakeAt = at;
+    this.wakeTimer = setTimeout(() => {
+      this.wakeTimer = null; this.wakeAt = 0;
+      if (!this.closed) this.tick();
+    }, Math.max(1, at - this.now()));
+    this.wakeTimer.unref?.();
   }
 
   async processPost(post) {
@@ -145,7 +172,14 @@ export class SocialScheduler {
 
   async tick() {
     if (this.closed) return;
+    try { autoScheduleDailyPageGroups(this.store, { nowValue: this.now() }); }
+    catch (error) {
+      let changed = false;
+      for (const group of this.store.state.settings?.meta?.pageGroups || []) if (pageDailyMode(group) && group.dailyScheduleError !== String(error.message || error)) { group.dailyScheduleError = String(error.message || error); changed = true; }
+      if (changed) this.store.save();
+    }
     for (const group of this.store.state.settings?.meta?.pageGroups || []) {
+      if (pageDailyMode(group)) continue;
       try {
         reconcileGroupQueue(this.store, group);
         autoScheduleWarehousePosts(this.store, group.id, {
@@ -164,6 +198,7 @@ export class SocialScheduler {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.wakeTimer) clearTimeout(this.wakeTimer);
     await Promise.allSettled([...this.pending]);
   }
 }

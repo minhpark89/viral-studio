@@ -1,7 +1,8 @@
 import { isPublicImageUrl, newsImageKey } from './image-search.js';
+import { newsArticleIdentity, newsArticleMarkup } from './news-document.js';
 
 export function newsVisualQueries(research, narration = {}) {
-  const text = [research.headline, research.script, ...(research.articles || []).map(article => article.title)].join(' ');
+  const text = [narration.headline, narration.narration, research.headline, research.script, ...(research.articles || []).map(article => article.title)].join(' ');
   const named = [
     [/\bbitcoin\b|\bBTC\b/i, 'Bitcoin coin'], [/\bsolana\b/i, 'Solana cryptocurrency'],
     [/\bethereum\b|\bETH\b/i, 'Ethereum cryptocurrency'], [/\bdogecoin\b/i, 'Dogecoin'],
@@ -10,8 +11,16 @@ export function newsVisualQueries(research, narration = {}) {
   // Commons searches AND the words. "city view" needlessly excludes most
   // photos of a correctly named city; retain the full city/state instead.
   const context = (narration.contextImageQueries || []).map(query => String(query).replace(/\s+(?:(?:city|town)\s+view|(?:official\s+)?portrait|photograph|photo)\s*$/i, ''));
+  // Commons ANDs every word. Generated scene directions such as "building
+  // exterior" or "board showing delayed flights" exclude useful photos. Keep
+  // the subject's noun phrase, then require the usual source/image review.
+  const compact = query => String(query)
+    .replace(/\s+(?:showing|featuring|depicting|displaying)\s+.+$/i, '')
+    .replace(/\s+(?:building\s+)?(?:exterior|interior|editorial image|photograph|photo)\s*$/i, '')
+    .replace(/\s+at\s+(?:an?|the)\s+airport\s*$/i, '');
   const short = [...context, ...(narration.imageQueries || []), ...(research.imageQueries || [])]
-    .map(query => String(query).replace(/[^\p{L}\p{N} -]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100)).filter(Boolean);
+    .map(query => compact(query).replace(/[^\p{L}\p{N} -]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 100))
+    .filter(query => query && !/^(?:equipment|error|contractor error|people|officials|statement|report|news|shutdown|disruption|flight shutdown)$/i.test(query));
   const words = value => ' ' + String(value||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim() + ' ';
   const titles = words([research.headline,...(research.articles||[]).map(article=>article.title)].join(' '));
   const publishers = ['BBC','CBS','CNN','Reuters','Associated Press',...(research.articles||[]).map(article=>article.source).filter(Boolean)].map(words);
@@ -70,7 +79,7 @@ export function articleImagesFromHtml(html, article) {
   const visit = node => {
     if (Array.isArray(node)) { node.forEach(visit); return; }
     if (!node || typeof node !== 'object') return;
-    const canonical = value => { try { const url=new URL(value,article.url);return url.origin+url.pathname.replace(/\/$/,''); } catch { return ''; } };
+    const canonical = value => newsArticleIdentity(value, article.url);
     const nodeUrl = node.url || node.mainEntityOfPage?.['@id'] || (typeof node.mainEntityOfPage==='string' ? node.mainEntityOfPage : '');
     if (/Article|NewsArticle|ReportageNewsArticle/i.test(String(node['@type'] || '')) && (!nodeUrl || canonical(nodeUrl) === canonical(article.url))) {
       for (const image of [node.image || []].flat()) add(typeof image === 'string' ? image : image?.contentUrl || image?.url, image?.caption || image?.description);
@@ -83,7 +92,7 @@ export function articleImagesFromHtml(html, article) {
     if (!/application\/ld\+json/i.test(attributes)) continue;
     try { visit(JSON.parse(body)); } catch { /* A malformed JSON-LD block is not an article image. */ }
   }
-  for (const figure of editorialFigures(html)) {
+  for (const figure of editorialFigures('<article>' + newsArticleMarkup(html) + '</article>')) {
     const tag = /<img\b[^>]*>/i.exec(figure)?.[0];
     if (!tag) continue;
     const attributes = metaAttributes(tag);

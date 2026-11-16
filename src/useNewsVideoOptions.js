@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
-import { newsVideoOptionsSchema, newsDurationSchema, newsImageCountSchema, newsRenderStyleSchema } from '../shared/news-format.js';
+import { newsVideoOptionsSchema, newsDurationSchema, newsImageCountSchema, newsRenderStyleSchema, DEFAULT_NEWS_RENDER_STYLE } from '../shared/news-format.js';
 
 // Bridge the short delay before the app's debounced state event arrives.
 // Switching projects immediately after a successful save must use its response.
@@ -13,7 +13,7 @@ function legacyOptions(key) {
     return newsVideoOptionsSchema.parse({
       newsDuration: newsDurationSchema.catch('auto').parse(saved.newsDuration),
       newsImageCount: newsImageCountSchema.catch('auto').parse(saved.newsImageCount),
-      newsRenderStyle: newsRenderStyleSchema.catch('v3').parse(saved.newsRenderStyle),
+      newsRenderStyle: newsRenderStyleSchema.catch(DEFAULT_NEWS_RENDER_STYLE).parse(saved.newsRenderStyle),
     });
   } catch { return null; }
 }

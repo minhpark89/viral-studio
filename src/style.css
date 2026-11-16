@@ -2073,6 +2073,16 @@ nav button b {
 .job-expanded > .button {
   margin: 15px 0 5px;
 }
+.narration-recovery {
+  padding-left: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.narration-recovery p { margin: 10px 0; }
+.narration-recovery li { margin: 10px 0; }
+.narration-recovery summary { cursor: pointer; font-weight: 600; }
+.narration-recovery a { color: var(--accent); overflow-wrap: anywhere; }
 .media-location {
   display: grid;
   gap: 7px;

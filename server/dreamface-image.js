@@ -101,22 +101,39 @@ export async function requestDreamFaceMcImage({ session, prompt, signal, previou
   page.on("response", responseListener);
   try {
     update({ status: "generating_mc_image", provider: "dreamface-image", progress: 2, stage: "Đang chuẩn bị ảnh MC trên DreamFace…" });
-    await page.goto("https://www.dreamfaceapp.com/image", { waitUntil: "domcontentloaded", timeout: 45000 });
-    let historyOpened = false;
-    await wait(async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      models = null; rows = null;
+      await page.goto("https://www.dreamfaceapp.com/image", { waitUntil: "domcontentloaded", timeout: 45000 });
+      let historyOpened = false;
+      try { await wait(async () => {
       // New profiles open the Template tab, which does not request saved
       // works. Open My Image after model hydration so history can load before
       // checking for an existing submission or spending another generation.
       if (models && rows === null && !historyOpened) {
         const history = page.getByText("My Image", { exact: true }).first();
         if (await history.isVisible()) {
-          await history.click();
+          try { await history.click({ timeout: Math.min(2000, readyTimeoutMs) }); }
+          catch (error) {
+            signal.throwIfAborted();
+            if (error.name !== 'TimeoutError') throw error;
+            // This tab only reads saved images. Animated layouts can prevent
+            // Playwright's stability check indefinitely; activate the exact
+            // tab directly. Never use this fallback for the Create button.
+            await history.evaluate(element => element.click());
+          }
           historyOpened = true;
         }
       }
       return models && rows;
-    }, readyTimeoutMs,
-      new StudioError("Trang tạo ảnh DreamFace chưa tải xong. Chưa gửi yêu cầu tạo ảnh MC; hãy kiểm tra kết nối và thử lại.", "MC_IMAGE_NOT_READY", 422));
+      }, readyTimeoutMs,
+        new StudioError("Trang tạo ảnh DreamFace chưa tải xong. Chưa gửi yêu cầu tạo ảnh MC; hãy kiểm tra kết nối và thử lại.", "MC_IMAGE_NOT_READY", 422));
+        break;
+      } catch (error) {
+        signal.throwIfAborted();
+        if (attempt || error.code !== 'MC_IMAGE_NOT_READY') throw error;
+        update({ stage: 'Đang tải lại trang ảnh MC chưa sẵn sàng; chưa gửi yêu cầu tạo ảnh…' });
+      }
+    }
     const input = page.getByPlaceholder("Type or paste text here");
     await input.waitFor({ state: "visible", timeout: readyTimeoutMs });
     let work = matchingMcWork(rows, text, receipt);

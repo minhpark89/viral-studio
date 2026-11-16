@@ -118,3 +118,11 @@
 .mg-count-note {margin:0;color:var(--mg-muted);font-size:11px;line-height:1.5;}
 .mg-posts .mg-metrics {grid-template-columns:repeat(5,minmax(0,1fr));}
 @media(max-width:1200px){.mg-posts .mg-metrics{grid-template-columns:repeat(3,minmax(0,1fr));}}
+
+.page-check-result {padding:12px 14px;border:1px solid #41516c;border-radius:8px;margin:10px 0;overflow-wrap:anywhere;}
+.page-check-result p {margin:8px 0;line-height:1.55;}
+.page-check-result.warning,.page-check-result.error {border-color:#9a7848;background:#30281d;}
+.page-check-result.success {border-color:#427a65;}
+.mg-check-results {margin:14px 0;max-height:360px;overflow:auto;}
+.mg-check-results>div {padding:8px 0;}
+.mg-badge.check_error {background:#4a3424;color:#ffcf8e;}

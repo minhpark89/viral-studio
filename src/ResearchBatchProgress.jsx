@@ -8,7 +8,10 @@ export function ResearchBatchProgress({ batches, results, onSelect, notify }) {
   const [busy, setBusy] = useState('');
   const action = async (batch, command) => {
     setBusy(batch.id);
-    try { await api(`/research/batches/${batch.id}/${command}`, {}); }
+    try {
+      await api(`/research/batches/${batch.id}/${command}`, {});
+      if (command === 'retry') notify('Đã bắt đầu tìm tiếp; các tin đã lưu được giữ nguyên.');
+    }
     catch (error) { notify(error.message, 'error'); }
     finally { setBusy(''); }
   };
@@ -22,7 +25,9 @@ export function ResearchBatchProgress({ batches, results, onSelect, notify }) {
       <strong>{batch.status === 'completed' && missing ? 'Chưa đủ tin' : labels[batch.status] || batch.status} · {batch.request.topic}</strong>
       <span>{saved.length}/{batch.request.count} tin đã lưu · {batch.items.length} nguồn mới tìm được</span>
       <progress aria-label="Tiến độ lưu tin research" value={saved.length} max={batch.request.count} />
+      {active && (!discovery || !['searching', 'expanding'].includes(discovery.phase)) && <small role="status">{batch.status === 'pending' ? 'Đã nhận yêu cầu, đang chờ tìm tiếp…' : 'Đang xử lý và lưu các nguồn đã tìm được…'}</small>}
       {active && discovery && ['searching', 'expanding'].includes(discovery.phase) && <small role="status">{discovery.phase === 'expanding' ? 'Đang tự mở rộng cùng chủ đề' : 'Đang tìm nguồn'} · lượt {discovery.round} · {discovery.found}/{discovery.target} tin{discovery.currentQueries?.length ? ` · ${discovery.currentQueries.join(' / ')}` : ''}</small>}
+      {discovery?.attempt > 0 && <small>Lần tìm {discovery.attempt} · thêm {discovery.addedThisAttempt || 0} tin{active ? ' đến hiện tại' : ''} · đã kiểm tra {discovery.searches || 0} truy vấn</small>}
       {discovery?.suggestions?.length > 0 && <details className="research-discovery-details"><summary>Gợi ý từ khóa cùng chủ đề · {discovery.suggestions.length} góc đang được nhắc đến</summary><small>Xếp theo độ phủ trong các nguồn mới tìm được; không phải thống kê lượt xem hay chia sẻ. App tự dùng các góc này khi cần bổ sung tin. Bấm từ khóa để sao chép.</small><div className="research-keyword-list">{discovery.suggestions.map(suggestion => <button type="button" key={suggestion.query} title={`${suggestion.mentions} tin · ${suggestion.sourceCount} nguồn`} onClick={async () => { try { await navigator.clipboard.writeText(suggestion.query); notify(`Đã sao chép: ${suggestion.query}`); } catch { notify('Không sao chép được. Bạn có thể chọn và sao chép dòng từ khóa.', 'error'); } }}>{suggestion.query}<span>{suggestion.mentions} tin</span></button>)}</div></details>}
       {discovery?.queries?.length > 0 && <details className="research-discovery-details"><summary>Đã tìm {discovery.searches} truy vấn · {discovery.windowHours} giờ qua</summary><ol>{discovery.queries.map(query => <li key={query.url}>{query.query}<small>+{query.added} tin mới</small></li>)}</ol></details>}
       {batch.warnings?.map(warning => <small key={warning}>{warning}</small>)}

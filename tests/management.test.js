@@ -10,6 +10,47 @@ import { mountSocialRoutes,autoScheduleWarehousePosts } from '../server/social.j
 import { pageRows,postRows } from '../server/management.js';
 import { parsePageImport,csvText } from '../shared/management.js';
 
+test('an unpublished Page has a working read connection and consistent actionable status in both APIs',async t=>{
+  const f=await fixture(t,1,{pageStatus:async({pageId})=>({id:pageId,is_published:false})});
+  await f.request('/api/management/pages/check',{ids:['100000']});await f.waitCheck();
+  const page=pageRows(f.store)[0];
+  assert.equal(page.health,'unpublished');assert.equal(page.hasUsableToken,true);
+  assert.match(page.diagnostic.message,/is_published=false/);assert.match(page.diagnostic.action,/API không cho biết nguyên nhân/);
+  assert.deepEqual(page.verification.observations,{pageId:'100000',isPublished:false});
+  const meta=(await f.request('/api/meta')).body;
+  assert.equal(meta.pages[0].health,'UNPUBLISHED');assert.match(meta.pages[0].errorMessage,/không công khai/);
+  const result=(await f.request('/api/management/pages')).body.checks.at(-1).results[0];
+  assert.equal(result.diagnostic.title,'Page không công khai');
+  assert.equal(f.store.state.socialPosts[0].status,'draft');
+});
+
+test('a missing publication field is unknown, not a false unpublished result, and cannot be routed to publishing',async t=>{
+  const f=await fixture(t,1,{pageStatus:async({pageId})=>({id:pageId})});
+  f.store.state.settings.meta.pages[0].isPublished=false;
+  await f.request('/api/management/pages/check',{ids:['100000']});await f.waitCheck();
+  const page=pageRows(f.store)[0];
+  assert.equal(page.health,'check_error');assert.equal(page.isPublished,null);assert.equal(page.verification.status,'unknown');
+  assert.match(page.diagnostic.message,/không trả trường/);
+  assert.equal((await f.request('/api/meta')).body.pages[0].health,'UNVERIFIED');
+  assert.equal((await f.request('/api/management/posts')).body.pages.length,0);
+  assert.equal((await f.request('/api/management/pages/bulk/preview',{items:f.pageItems(),action:'add_group',groupId:'active'})).body.failed,1);
+});
+
+test('network check errors do not diagnose expired tokens, while OAuth errors retain code and remedy',async t=>{
+  let oauth=false;
+  const f=await fixture(t,1,{pageStatus:async()=>{if(!oauth)throw new TypeError('fetch failed');throw Object.assign(new Error('Token expired: page-secret-100000'),{code:'META_GRAPH_ERROR',metaError:{code:190,subcode:463,httpStatus:400}});}});
+  await f.request('/api/management/pages/check',{ids:['100000']});await f.waitCheck();
+  assert.equal(pageRows(f.store)[0].health,'check_error');assert.match(pageRows(f.store)[0].diagnostic.action,/kết nối mạng/);
+  oauth=true;await f.request('/api/management/pages/check',{ids:['100000']});await f.waitCheck();
+  const page=pageRows(f.store)[0];assert.equal(page.health,'token');assert.equal(page.diagnostic.details.code,190);
+  assert.match(page.diagnostic.action,/Kết nối lại token/);assert.doesNotMatch(JSON.stringify((await f.request('/api/management/pages')).body),/page-secret-100000/);
+});
+
+test('successful read checks are not listed as Page errors',async t=>{
+  const f=await fixture(t,1);await f.request('/api/management/pages/check',{ids:['100000']});await f.waitCheck();
+  const page=pageRows(f.store)[0];assert.equal(page.error,'');assert.equal(page.diagnostic.level,'success');
+});
+
 async function fixture(t,count=3,overrides={}){
   const base=path.resolve('.verification'),root=path.join(base,`management-${randomUUID()}`);
   const store=new Store(root),project=store.createProject('Quản lý QA');

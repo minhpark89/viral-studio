@@ -13,6 +13,14 @@ import { writeNewsNarration, rankNewsImages } from '../server/news-plan.js';
 import { v3PhotoGraph } from '../server/news-v3-motion.js';
 import { safeProviderMessage } from '../server/dreamface-diagnostics.js';
 import { changePhase } from '../shared/job-timing.js';
+import { queueIssueGroups } from '../shared/queue-issues.js';
+
+test('88 failures are explained before retry: 55 ambiguous, 27 rejected, six missing-image preparations',()=>{
+  const jobs=[...Array.from({length:55},(_,i)=>({id:`unknown-${i}`,type:'news',status:'failed',errorCode:'PROVIDER_SUBMISSION_UNCONFIRMED',submittedAt:'2026-11-15T01:00:00Z',payload:{}})),...Array.from({length:27},(_,i)=>({id:`rejected-${i}`,type:'news',status:'failed',errorCode:'PROVIDER_CONTENT_REJECTED',payload:{}}))];
+  const preparations=Array.from({length:6},(_,i)=>({id:`prep-${i}`,status:'needs_assets'}));
+  const groups=queueIssueGroups(jobs,preparations,{jobs,media:[]});
+  assert.deepEqual(groups.map(g=>[g.key,g.ids.length,g.retryable]),[['receipt',55,false],['content',27,false],['assets',6,true]]);
+});
 
 async function fixture(t, options = {}) {
   const root = path.resolve('.verification', `news-quality-${randomUUID()}`), store = new Store(root), project = store.createProject('News quality');
@@ -62,6 +70,26 @@ test('missing MC file and ambiguous receipt cannot trigger another paid generati
  const result=retryFailedSelection(f.store,f.queue,f.service,{projectId:f.project.id,jobIds:[missing.id,ambiguous.id]});
  assert.equal(result.queued,0);assert.equal(result.review,2);assert.equal(f.store.state.jobs.length,2);
  assert.throws(()=>f.queue.retry(ambiguous.id,false),{code:'CONFIRM_RESUBMIT'});
+});
+
+test('retry-all leaves rejected scripts for review instead of resending unchanged content',async t=>{
+ const f=await fixture(t);
+ const blocked=f.store.add('jobs',{projectId:f.project.id,type:'news',status:'failed',errorCode:'PROVIDER_CONTENT_REJECTED',payload:{newsPlan:{narration:'Reviewed source narration'}}});
+ const result=retryFailedSelection(f.store,f.queue,f.service,{projectId:f.project.id,jobIds:[blocked.id]});
+ assert.equal(result.queued,0);assert.equal(result.review,1);assert.equal(f.store.state.jobs.length,1);
+ assert.match(result.results[0].reason,/DreamFace/);
+ assert.throws(()=>f.queue.retry(blocked.id,false),{code:'NEWS_NARRATION_REVIEW_REQUIRED'});
+ assert.throws(()=>f.queue.retry(blocked.id,false,'Reviewed source narration'),{code:'NEWS_NARRATION_REVIEW_REQUIRED'});
+ const retried=f.queue.retry(blocked.id,false,'A newly reviewed factual narration for this news story.');
+ assert.equal(retried.payload.newsPlan.narration,'A newly reviewed factual narration for this news story.');
+ assert.equal(blocked.payload.newsPlan.narration,'Reviewed source narration');
+});
+
+test('narration editing cannot replace a script already submitted to the provider',async t=>{
+ const f=await fixture(t);
+ const job=f.store.add('jobs',{projectId:f.project.id,type:'news',status:'failed',errorCode:'PROVIDER_CONTENT_REJECTED',payload:{newsAvatarRequest:{id:'existing-task'},newsPlan:{narration:'Original source narration'}}});
+ assert.throws(()=>f.queue.retry(job.id,true,'A different narration that must not reuse the old task.'),{code:'NEWS_NARRATION_EDIT_UNSAFE'});
+ assert.equal(f.store.state.jobs.length,1);
 });
 
 test('phase totals close once and provider notices redact account details',()=>{
